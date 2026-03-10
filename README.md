@@ -40,7 +40,7 @@ psql -U postgres gitlab_kpi_version3 < bdd_sprint1.sql
 ```
 
 > Le fichier **bdd_sprint1.sql** est fourni séparément (Google Drive).
-
+https://drive.google.com/file/d/1y38CadRuAjhyUaKmazcXxKusEbh-9Ck9/view?usp=sharing
 ---
 
 ## 3. Installer et démarrer le Backend
