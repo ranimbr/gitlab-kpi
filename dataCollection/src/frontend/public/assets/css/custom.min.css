@@ -1,0 +1,14 @@
+
+/*# sourceMappingURL=custom.min.css.map */
+.telnet-logo {
+  opacity: 0;
+  transform: translateY(-8px);
+  animation: logoFadeIn 0.6s ease-out forwards;
+}
+
+@keyframes logoFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

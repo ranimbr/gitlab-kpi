@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-layout="vertical" data-layout-style="detached" 
+      data-sidebar="light" data-topbar="dark" data-sidebar-size="lg">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitLab KPI Dashboard</title>
+    <link rel="shortcut icon" href="/assets/images/favicon.ico" />
+    <link href="/assets/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="/assets/css/icons.min.css" rel="stylesheet" />
+    <link href="/assets/css/app.min.css" rel="stylesheet" />
+    <link href="/assets/css/custom.min.css" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- React monte ici -->
+    <div id="root"></div>
+
+    <!-- React en premier -->
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Scripts Velzon APRÈS React -->
+    <script src="/assets/libs/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="/assets/libs/simplebar/simplebar.min.js"></script>
+    <script src="/assets/libs/node-waves/waves.min.js"></script>
+    <script src="/assets/libs/feather-icons/feather.min.js"></script>
+    <script src="/assets/js/plugins.js"></script>
+  </body>
+</html>

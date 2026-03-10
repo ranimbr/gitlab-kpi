@@ -1,0 +1,229 @@
+{
+  "lot_id": 1,
+  "project_id": 1,
+  "period_id": 1,
+  "type": "MONTHLY",
+  "generated_at": "2026-03-04T23:50:11.018124+00:00",
+  "commits": [
+    {
+      "sha": "ed08b421a09555936736c02cf5f5acf362334b2d",
+      "title": "Add missing LICENSE file",
+      "authored_date": "2026-01-21T11:32:52+01:00",
+      "additions": 47,
+      "deletions": 0,
+      "total_changes": 47,
+      "developer_id": 1
+    },
+    {
+      "sha": "1d74c94a9d09d2caecd9704e198fadaa382684c3",
+      "title": "CODEOWNERS: add designated merge request approvals",
+      "authored_date": "2025-04-06T11:02:07+01:00",
+      "additions": 2,
+      "deletions": 0,
+      "total_changes": 2,
+      "developer_id": 1
+    },
+    {
+      "sha": "1e7470fe4cdf1ee71594fb8e41fbfa1f7fb2d031",
+      "title": "Decrase sleep from 30 to 20",
+      "authored_date": "2025-01-17T13:35:19+01:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "developer_id": 1
+    },
+    {
+      "sha": "3343f8f2ba37a2b4a324f3567aa1b6c1dafeb103",
+      "title": "Sleep for additional 10 seconds",
+      "authored_date": "2025-01-17T13:09:43+01:00",
+      "additions": 4,
+      "deletions": 0,
+      "total_changes": 4,
+      "developer_id": 1
+    },
+    {
+      "sha": "8346248eb53f87a50d8e6c02c6b18f4be9f231c5",
+      "title": "Sleep for 30 seconds",
+      "authored_date": "2025-01-17T13:09:43+01:00",
+      "additions": 4,
+      "deletions": 0,
+      "total_changes": 4,
+      "developer_id": 1
+    },
+    {
+      "sha": "d887a78b26f0e945212859d1fc4f7c628978f4c1",
+      "title": "ci: Add default pipeline rules and cram test job",
+      "authored_date": "2025-01-17T13:23:25+01:00",
+      "additions": 10,
+      "deletions": 1,
+      "total_changes": 11,
+      "developer_id": 1
+    },
+    {
+      "sha": "4c53b7b40871059c821543a38b8f3b01425bc3fa",
+      "title": "Test good bye in Czech",
+      "authored_date": "2025-01-07T21:00:35+01:00",
+      "additions": 5,
+      "deletions": 0,
+      "total_changes": 5,
+      "developer_id": 1
+    },
+    {
+      "sha": "6cc6b1347e9ba49e24c75aea3b9c76e6954a726b",
+      "title": "Test saying something",
+      "authored_date": "2025-01-07T21:02:51+01:00",
+      "additions": 6,
+      "deletions": 0,
+      "total_changes": 6,
+      "developer_id": 1
+    },
+    {
+      "sha": "6e4368aad21edc73adf436bcdca6ac99fd1ce0f7",
+      "title": "Improved tests with Czech",
+      "authored_date": "2025-01-07T20:48:13+01:00",
+      "additions": 5,
+      "deletions": 0,
+      "total_changes": 5,
+      "developer_id": 1
+    },
+    {
+      "sha": "4f03dfaf3142f14cba61ed1449f189fd120459f2",
+      "title": "Fix cram tests",
+      "authored_date": "2025-01-07T20:32:28+01:00",
+      "additions": 1,
+      "deletions": 1,
+      "total_changes": 2,
+      "developer_id": 1
+    },
+    {
+      "sha": "60ea36198f6dc90ed253f700192fc1eb4ed66b63",
+      "title": "Add cram tests",
+      "authored_date": "2025-01-07T18:48:48+01:00",
+      "additions": 20,
+      "deletions": 0,
+      "total_changes": 20,
+      "developer_id": 1
+    },
+    {
+      "sha": "938f704e37e203f8172857b6e6007b9a9a14603b",
+      "title": "Initial commit",
+      "authored_date": "2025-01-07T13:30:57+01:00",
+      "additions": 93,
+      "deletions": 0,
+      "total_changes": 93,
+      "developer_id": 1
+    }
+  ],
+  "merge_requests": [
+    {
+      "gitlab_mr_id": 11,
+      "title": "Testing CODEOWNERS",
+      "state": "opened",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": null,
+      "time_to_approve": 1897.08,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 10,
+      "title": "Testing just some random change",
+      "state": "closed",
+      "is_draft": false,
+      "approved": false,
+      "merged_at": null,
+      "time_to_approve": null,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 9,
+      "title": "TMR-4: Sleep for additional 10 seconds",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": "2025-01-17T13:40:17.602000+01:00",
+      "time_to_approve": 0.0,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 8,
+      "title": "TMR-3 ci: Add default pipeline rules and cram test job",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": "2025-01-17T13:26:48.055000+01:00",
+      "time_to_approve": 0.0,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 7,
+      "title": "TMR-2: Sleep for additional 40 seconds",
+      "state": "opened",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": null,
+      "time_to_approve": 0.03,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 6,
+      "title": "TMR-1: Sleep for 30 seconds",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": "2025-01-17T13:27:45.358000+01:00",
+      "time_to_approve": 0.07,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 5,
+      "title": "Marge Bot Batch MR - DO NOT TOUCH",
+      "state": "opened",
+      "is_draft": false,
+      "approved": false,
+      "merged_at": null,
+      "time_to_approve": null,
+      "developer_id": 2
+    },
+    {
+      "gitlab_mr_id": 4,
+      "title": "Test saying something",
+      "state": "closed",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": null,
+      "time_to_approve": 0.01,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 3,
+      "title": "Improve tests with hello (batched example)",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": "2025-01-07T21:07:54.420000+01:00",
+      "time_to_approve": 0.01,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 2,
+      "title": "Improved tests with Czech",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": "2025-01-07T20:58:03.337000+01:00",
+      "time_to_approve": 0.03,
+      "developer_id": 1
+    },
+    {
+      "gitlab_mr_id": 1,
+      "title": "Add cram tests (various issues example)",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "merged_at": "2025-01-07T20:35:06.791000+01:00",
+      "time_to_approve": 1.5,
+      "developer_id": 1
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Environnement
+.env
+*.env
+
+# Frontend
+dataCollection/src/frontend/node_modules/
+dataCollection/src/frontend/dist/
+
+# Base de données
+*.sql
+
+# OS
+.DS_Store
+Thumbs.db

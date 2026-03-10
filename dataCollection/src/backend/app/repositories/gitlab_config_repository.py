@@ -1,0 +1,32 @@
+from sqlalchemy.orm import Session
+from typing import Optional, List
+
+from app.models.gitlab_config import GitLabConfig
+from app.repositories.base import BaseRepository
+
+
+class GitLabConfigRepository(BaseRepository[GitLabConfig]):
+
+    def __init__(self):
+        super().__init__(GitLabConfig)
+
+    def get_by_domain(self, db: Session, domain: str) -> Optional[GitLabConfig]:
+        return (
+            db.query(GitLabConfig)
+            .filter(GitLabConfig.domain == domain)
+            .one_or_none()
+        )
+
+    def get_active_configs(self, db: Session) -> List[GitLabConfig]:
+        return (
+            db.query(GitLabConfig)
+            .filter(GitLabConfig.is_active.is_(True))
+            .all()
+        )
+
+    def domain_exists(self, db: Session, domain: str) -> bool:
+        return (
+            db.query(GitLabConfig)
+            .filter(GitLabConfig.domain == domain)
+            .first() is not None
+        )
