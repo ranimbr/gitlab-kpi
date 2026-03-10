@@ -154,7 +154,7 @@ Ouvrir dans le navigateur : **http://localhost:5173**
 | Champ | Valeur |
 |-------|--------|
 | Email | admin@test.com |
-| Mot de passe | admin123! |
+| Mot de passe | admin123|
 
 ---
 
