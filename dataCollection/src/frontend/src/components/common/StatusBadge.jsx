@@ -1,15 +1,24 @@
 /**
  * StatusBadge — Badge de statut réutilisable
  *
- * Gère : period status, extraction status, MR state, user status,
- *        KPI alert level (threshold)
+ * Types supportés :
+ *   period    — open | closed
+ *   lot       — pending | running | completed | failed
+ *   lotType   — REALTIME | MONTHLY
+ *   mr        — opened | merged | closed
+ *   user      — true | false (is_active)
+ *   role      — admin | user
+ *   draft     — true | false (is_draft)
+ *   gitlab    — active | inactive
+ *   threshold — ok | warning | critical | unknown  (KPI alert level)
+ *   site      — true | false (is_active)
+ *   alert     — WARNING | CRITICAL
  *
- * Usage : <StatusBadge type="period"    value="open" />
- *         <StatusBadge type="lot"       value="completed" />
- *         <StatusBadge type="mr"        value="merged" />
- *         <StatusBadge type="user"      value={true} />      // is_active
- *         <StatusBadge type="draft"     value={true} />      // is_draft
- *         <StatusBadge type="threshold" value="warning" />   // [NEW] KPI alert level
+ * CORRECTION :
+ *   Fallback original → typeConfig[Object.keys(typeConfig)[0]]
+ *   Problème : affichait le premier statut du type (ex: "Open") pour toute
+ *   valeur inconnue → badge trompeur.
+ *   ✅ FIX : fallback neutre { label: String(value), color: "secondary", icon: "ri-question-line" }
  */
 
 const CONFIG = {
@@ -57,12 +66,21 @@ const CONFIG = {
     inactive: { label: "Inactive", color: "secondary", icon: "ri-forbid-line" },
   },
 
-  // [NEW] Niveaux d'alerte KPI — mappés depuis KpiAlertLevel.level
-  // Valeurs : "ok" | "warning" | "critical"
   threshold: {
-    ok:       { label: "OK",       color: "success", icon: "ri-checkbox-circle-line" },
-    warning:  { label: "Warning",  color: "warning", icon: "ri-alert-line" },
-    critical: { label: "Critical", color: "danger",  icon: "ri-close-circle-line" },
+    ok:       { label: "OK",       color: "success",   icon: "ri-checkbox-circle-line" },
+    warning:  { label: "Warning",  color: "warning",   icon: "ri-alert-line" },
+    critical: { label: "Critical", color: "danger",    icon: "ri-close-circle-line" },
+    unknown:  { label: "Unknown",  color: "secondary", icon: "ri-question-line" },
+  },
+
+  site: {
+    true:  { label: "Actif",   color: "success",   icon: "ri-map-pin-line" },
+    false: { label: "Inactif", color: "secondary", icon: "ri-map-pin-2-line" },
+  },
+
+  alert: {
+    WARNING:  { label: "Warning",  color: "warning", icon: "ri-alert-line" },
+    CRITICAL: { label: "Critical", color: "danger",  icon: "ri-close-circle-line" },
   },
 };
 
@@ -70,8 +88,15 @@ export default function StatusBadge({ type, value, size = "sm" }) {
   const typeConfig = CONFIG[type];
   if (!typeConfig) return null;
 
-  const key    = String(value);
-  const cfg    = typeConfig[key] || typeConfig[Object.keys(typeConfig)[0]];
+  const key = String(value);
+
+  // ✅ FIX : fallback neutre au lieu du premier élément du type
+  const cfg = typeConfig[key] ?? {
+    label: String(value),
+    color: "secondary",
+    icon:  "ri-question-line",
+  };
+
   const { label, color, icon } = cfg;
 
   return (

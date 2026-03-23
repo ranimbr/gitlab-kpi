@@ -1,25 +1,27 @@
+"""database/init_db.py — inchangé."""
 import logging
-
 from app.database.session import engine
 from app.models.base import Base
+from app.models.app_user             import AppUser            # noqa
+from app.models.gitlab_config        import GitLabConfig       # noqa
+from app.models.project              import Project            # noqa
+from app.models.developer_group      import DeveloperGroup     # noqa
+from app.models.developer            import Developer          # noqa
+from app.models.period               import Period             # noqa
+from app.models.extraction_lot       import ExtractionLot      # noqa
+from app.models.commit               import Commit             # noqa
+from app.models.merge_request        import MergeRequest       # noqa
+from app.models.commit_merge_request import CommitMergeRequest # noqa
+from app.models.kpi_snapshot         import KpiSnapshot        # noqa
+from app.models.kpi_threshold        import KpiThreshold       # noqa
+from app.models.dashboard            import Dashboard          # noqa
+from app.models.site                 import Site               # noqa
+from app.models.kpi_definition       import KpiDefinition      # noqa
+from app.models.alert                import Alert              # noqa
+from app.models.audit_log            import AuditLog           # noqa
+from app.models.period_filter        import PeriodFilter       # noqa
 
 logger = logging.getLogger(__name__)
-
-from app.models.app_user             import AppUser           # noqa: F401
-from app.models.gitlab_config        import GitLabConfig      # noqa: F401
-from app.models.project              import Project           # noqa: F401
-from app.models.sub_project          import SubProject        # noqa: F401
-from app.models.developer_group      import DeveloperGroup    # noqa: F401
-from app.models.developer            import Developer         # noqa: F401
-from app.models.period               import Period            # noqa: F401
-from app.models.extraction_lot       import ExtractionLot     # noqa: F401
-from app.models.commit               import Commit            # noqa: F401
-from app.models.merge_request        import MergeRequest      # noqa: F401
-from app.models.commit_merge_request import CommitMergeRequest # noqa: F401
-from app.models.kpi_snapshot         import KpiSnapshot       # noqa: F401
-from app.models.kpi_threshold        import KpiThreshold      # noqa: F401  ✅ AJOUT
-from app.models.dashboard            import Dashboard         # noqa: F401
-from app.models.dashboard_access     import DashboardAccess   # noqa: F401
 
 def init_db() -> None:
     try:

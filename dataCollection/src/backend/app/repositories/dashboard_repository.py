@@ -1,8 +1,12 @@
-from sqlalchemy.orm import Session
+"""
+repositories/dashboard_repository.py — inchangé fonctionnellement, nettoyé.
+DashboardAccessRepository supprimé (table DashboardAccess supprimée).
+get_accessible_by_user() utilise AppUser.dashboard_access[].
+"""
 from typing import Optional, List
-
+from sqlalchemy.orm import Session, joinedload
 from app.models.dashboard import Dashboard
-from app.models.dashboard_access import DashboardAccess
+from app.models.app_user import AppUser
 from app.repositories.base import BaseRepository
 
 
@@ -11,87 +15,55 @@ class DashboardRepository(BaseRepository[Dashboard]):
     def __init__(self):
         super().__init__(Dashboard)
 
-    def get_by_project(
-        self, db: Session, project_id: int
-    ) -> List[Dashboard]:
+    def get_by_project(self, db: Session, project_id: int) -> List[Dashboard]:
         return (
             db.query(Dashboard)
+            .options(joinedload(Dashboard.period_filters))
             .filter(Dashboard.project_id == project_id)
             .all()
         )
 
-    def get_accessible_by_user(
-        self,
-        db              : Session,
-        user_id         : int,
-        view_group      : Optional[str] = None
-    ) -> List[Dashboard]:
-        """
-        Retourne les dashboards accessibles à un utilisateur :
-        - Via DashboardAccess (accès individuel)
-        - Via view_group (accès par groupe)
-        """
-        # Accès individuels
-        individual = (
-            db.query(Dashboard)
-            .join(DashboardAccess, DashboardAccess.dashboard_id == Dashboard.id)
-            .filter(DashboardAccess.user_id == user_id)
-            .all()
-        )
+    def get_by_site_id(self, db: Session, site_id: int) -> List[Dashboard]:
+        return db.query(Dashboard).filter(Dashboard.site_id == site_id).all()
 
-        ids_individual = {d.id for d in individual}
+    def get_public_dashboards(self, db: Session) -> List[Dashboard]:
+        return db.query(Dashboard).filter(Dashboard.is_public.is_(True)).all()
 
-        # Accès par groupe
-        group_dashboards = []
-        if view_group:
-            group_dashboards = (
+    def get_accessible_by_user(self, db: Session, user_id: int) -> List[Dashboard]:
+        """
+        Dashboards accessibles à un user :
+          - IDs dans AppUser.dashboard_access[] (ARRAY PostgreSQL)
+          - OU is_public=True
+        """
+        user = db.query(AppUser).filter(AppUser.id == user_id).one_or_none()
+        if not user:
+            return []
+
+        accessible_ids   = list(user.dashboard_access or [])
+        private_dashboards: List[Dashboard] = []
+
+        if accessible_ids:
+            private_dashboards = (
                 db.query(Dashboard)
-                .filter(Dashboard.view_group == view_group)
+                .filter(Dashboard.id.in_(accessible_ids))
                 .all()
             )
 
+        public_dashboards = db.query(Dashboard).filter(Dashboard.is_public.is_(True)).all()
+
         # Fusion sans doublons
-        all_dashboards = list(individual)
-        for d in group_dashboards:
-            if d.id not in ids_individual:
-                all_dashboards.append(d)
+        seen   = {d.id for d in private_dashboards}
+        result = list(private_dashboards)
+        for d in public_dashboards:
+            if d.id not in seen:
+                result.append(d)
+        return result
 
-        return all_dashboards
+    def get_by_creator(self, db: Session, created_by: int) -> List[Dashboard]:
+        return db.query(Dashboard).filter(Dashboard.created_by == created_by).all()
 
-
-class DashboardAccessRepository(BaseRepository[DashboardAccess]):
-
-    def __init__(self):
-        super().__init__(DashboardAccess)
-
-    def get_by_user_and_dashboard(
-        self,
-        db          : Session,
-        user_id     : int,
-        dashboard_id: int
-    ) -> Optional[DashboardAccess]:
-        return (
-            db.query(DashboardAccess)
-            .filter(
-                DashboardAccess.user_id      == user_id,
-                DashboardAccess.dashboard_id == dashboard_id
-            )
-            .one_or_none()
-        )
-
-    def get_user_accesses(
-        self, db: Session, user_id: int
-    ) -> List[DashboardAccess]:
-        return (
-            db.query(DashboardAccess)
-            .filter(DashboardAccess.user_id == user_id)
-            .all()
-        )
-
-    def access_exists(
-        self,
-        db          : Session,
-        user_id     : int,
-        dashboard_id: int
-    ) -> bool:
-        return self.get_by_user_and_dashboard(db, user_id, dashboard_id) is not None
+    def create(self, db: Session, data: dict) -> Dashboard:
+        dashboard = Dashboard(**data)
+        db.add(dashboard)
+        db.flush()
+        return dashboard

@@ -1,7 +1,19 @@
+/**
+ * pages/admin/ExtractionLotsPage.jsx
+ *
+ * CORRECTIONS :
+ *   1. FIX CRITIQUE — lot.type → lot.extraction_type (renommage modèle)
+ *      AVANT : l.type !== typeFilter → filtre ne marche jamais (undefined !== "REALTIME")
+ *              <StatusBadge value={lot.type}/> → affiche rien
+ *      ✅ FIX : l.extraction_type partout.
+ *
+ *   2. FIX — mounted flag sur les deux useEffect
+ *      → évite setState sur composant démonté (memory leak / warning React)
+ */
 import { useState, useEffect } from "react";
-import projectService          from "../../services/projectService";
-import extractionLotService    from "../../services/extractionLotService";
-import periodService           from "../../services/periodService";
+import projectService       from "../../services/projectService";
+import extractionLotService from "../../services/extractionLotService";
+import periodService        from "../../services/periodService";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EmptyState     from "../../components/common/EmptyState";
 import StatusBadge    from "../../components/common/StatusBadge";
@@ -29,13 +41,10 @@ function DownloadButton({ lot }) {
   const [downloading, setDownloading] = useState(false);
   const [error,       setError]       = useState(null);
 
-  if (!lot.md5sum) {
-    return <span className="text-muted fs-12">—</span>;
-  }
+  if (!lot.md5sum) return <span className="text-muted fs-12">—</span>;
 
   const handleDownload = async () => {
-    setDownloading(true);
-    setError(null);
+    setDownloading(true); setError(null);
     try {
       const token    = localStorage.getItem("access_token");
       const response = await fetch(
@@ -69,17 +78,14 @@ function DownloadButton({ lot }) {
           className="fs-11 text-muted"
           title={`MD5: ${lot.md5sum} — Cliquez pour copier`}
           style={{ cursor: "pointer" }}
-          onClick={() => navigator.clipboard.writeText(lot.md5sum)}
-        >
+          onClick={() => navigator.clipboard.writeText(lot.md5sum)}>
           {lot.md5sum.slice(0, 8)}…
         </code>
         <button
           className="btn btn-sm btn-soft-success py-0 px-2"
           onClick={handleDownload}
           disabled={downloading}
-          title="Télécharger le fichier dump JSON (RG-04)"
-          style={{ fontSize: "11px" }}
-        >
+          style={{ fontSize: "11px" }}>
           {downloading
             ? <span className="spinner-border spinner-border-sm"></span>
             : <><i className="ri-download-2-line me-1"></i>DL</>
@@ -102,39 +108,47 @@ export default function ExtractionLotsPage() {
   const [loading,      setLoading]      = useState(true);
   const [projFilter,   setProjFilter]   = useState("");
   const [periodFilter, setPeriodFilter] = useState("");
+  // ✅ FIX : typeFilter compare sur extraction_type (pas type)
   const [typeFilter,   setTypeFilter]   = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page,         setPage]         = useState(1);
   const perPage = 12;
 
+  // ✅ FIX : mounted flag — évite setState sur composant démonté
   useEffect(() => {
-    Promise.all([
-      projectService.getAll(),
-      periodService.getAll(),
-    ]).then(([projs, pers]) => {
-      setProjects(projs);
-      setPeriods(pers);
-    });
+    let mounted = true;
+    Promise.all([projectService.getAll(), periodService.getAll()])
+      .then(([projs, pers]) => {
+        if (!mounted) return;
+        setProjects(projs);
+        setPeriods(pers);
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
   }, []);
 
+  // ✅ FIX : mounted flag sur le chargement des lots
   useEffect(() => {
+    let mounted = true;
     setLoading(true);
     extractionLotService.getAll(
       projFilter   ? parseInt(projFilter)   : null,
       periodFilter ? parseInt(periodFilter) : null,
     )
-      .then((data) => {
-        const normalized = Array.isArray(data) ? data : (data?.items ?? []);
-        setLots(normalized);
+      .then(data => {
+        if (!mounted) return;
+        setLots(Array.isArray(data) ? data : (data?.items ?? []));
         setPage(1);
       })
-      .catch(() => setLots([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (mounted) setLots([]); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, [projFilter, periodFilter]);
 
-  const filtered = lots.filter((l) => {
-    if (typeFilter   !== "all" && l.type   !== typeFilter)   return false;
-    if (statusFilter !== "all" && l.status !== statusFilter) return false;
+  const filtered = lots.filter(l => {
+    // ✅ FIX : extraction_type au lieu de type
+    if (typeFilter   !== "all" && l.extraction_type !== typeFilter)   return false;
+    if (statusFilter !== "all" && l.status          !== statusFilter) return false;
     return true;
   });
 
@@ -142,22 +156,19 @@ export default function ExtractionLotsPage() {
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
 
   const totalLots     = lots.length;
-  const completedLots = lots.filter((l) => l.status === "completed").length;
-  const failedLots    = lots.filter((l) => l.status === "failed").length;
-  const runningLots   = lots.filter((l) => l.status === "running").length;
+  const completedLots = lots.filter(l => l.status === "completed").length;
+  const failedLots    = lots.filter(l => l.status === "failed").length;
+  const runningLots   = lots.filter(l => l.status === "running").length;
 
-  const getProjectName = (lot) => {
-    if (lot.project?.name) return lot.project.name;
-    const found = projects.find((p) => p.id === lot.project_id);
-    return found?.name || `Projet #${lot.project_id}`;
-  };
+  const getProjectName = (lot) =>
+    lot.project?.name ||
+    projects.find(p => p.id === lot.project_id)?.name ||
+    `Projet #${lot.project_id}`;
 
   const getPeriodLabel = (lot) => {
-    if (lot.period?.year) {
-      return `${lot.period.year}/${String(lot.period.month).padStart(2, "0")}`;
-    }
-    const found = periods.find((p) => p.id === lot.period_id);
-    if (found) return `${found.year}/${String(found.month).padStart(2, "0")}`;
+    if (lot.period?.year) return `${lot.period.year}/${String(lot.period.month).padStart(2, "0")}`;
+    const found = periods.find(p => p.id === lot.period_id);
+    if (found)            return `${found.year}/${String(found.month).padStart(2, "0")}`;
     return lot.period_id ? `Période #${lot.period_id}` : "—";
   };
 
@@ -172,29 +183,27 @@ export default function ExtractionLotsPage() {
     <div className="page-content">
       <div className="container-fluid">
 
-        <div className="row">
+        <div className="row mb-1">
           <div className="col-12">
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
               <h4 className="mb-sm-0">
-                <i className="ri-list-check me-2 text-primary"></i>
-                Lots d'extraction
+                <i className="ri-list-check me-2 text-primary"></i>Lots d'extraction
               </h4>
-              <div className="page-title-right">
-                <ol className="breadcrumb m-0">
-                  <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
-                  <li className="breadcrumb-item active">Extraction Lots</li>
-                </ol>
-              </div>
+              <ol className="breadcrumb m-0">
+                <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
+                <li className="breadcrumb-item active">Extraction Lots</li>
+              </ol>
             </div>
           </div>
         </div>
 
+        {/* Stats */}
         <div className="row mb-4">
           {[
-            { label: "Total Lots",  value: totalLots,     color: "primary", icon: "ri-list-check"           },
-            { label: "Complétés",   value: completedLots, color: "success", icon: "ri-checkbox-circle-line" },
-            { label: "En erreur",   value: failedLots,    color: "danger",  icon: "ri-close-circle-line"    },
-            { label: "En cours",    value: runningLots,   color: "info",    icon: "ri-loader-4-line"        },
+            { label: "Total Lots",   value: totalLots,     color: "primary", icon: "ri-list-check"             },
+            { label: "Complétés",    value: completedLots, color: "success", icon: "ri-checkbox-circle-line"   },
+            { label: "En erreur",    value: failedLots,    color: "danger",  icon: "ri-close-circle-line"      },
+            { label: "En cours",     value: runningLots,   color: "info",    icon: "ri-loader-4-line"          },
           ].map((s, i) => (
             <div key={i} className="col-xl-3 col-sm-6">
               <div className="card card-animate">
@@ -216,6 +225,7 @@ export default function ExtractionLotsPage() {
           ))}
         </div>
 
+        {/* Filtres */}
         <div className="card mb-3">
           <div className="card-body py-3">
             <div className="row g-2">
@@ -223,28 +233,20 @@ export default function ExtractionLotsPage() {
                 <label className="form-label fs-12 text-muted fw-semibold mb-1">
                   <i className="ri-folder-2-line me-1"></i>Projet
                 </label>
-                <select
-                  className="form-select form-select-sm"
-                  value={projFilter}
-                  onChange={(e) => setProjFilter(e.target.value)}
-                >
+                <select className="form-select form-select-sm" value={projFilter}
+                  onChange={e => setProjFilter(e.target.value)}>
                   <option value="">Tous les projets</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
               <div className="col-md-3">
                 <label className="form-label fs-12 text-muted fw-semibold mb-1">
                   <i className="ri-calendar-2-line me-1"></i>Période
                 </label>
-                <select
-                  className="form-select form-select-sm"
-                  value={periodFilter}
-                  onChange={(e) => setPeriodFilter(e.target.value)}
-                >
+                <select className="form-select form-select-sm" value={periodFilter}
+                  onChange={e => setPeriodFilter(e.target.value)}>
                   <option value="">Toutes les périodes</option>
-                  {periods.map((p) => (
+                  {periods.map(p => (
                     <option key={p.id} value={p.id}>
                       {p.year}/{String(p.month).padStart(2, "0")}
                     </option>
@@ -253,11 +255,8 @@ export default function ExtractionLotsPage() {
               </div>
               <div className="col-md-2">
                 <label className="form-label fs-12 text-muted fw-semibold mb-1">Type</label>
-                <select
-                  className="form-select form-select-sm"
-                  value={typeFilter}
-                  onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-                >
+                <select className="form-select form-select-sm" value={typeFilter}
+                  onChange={e => { setTypeFilter(e.target.value); setPage(1); }}>
                   <option value="all">Tous</option>
                   <option value="REALTIME">Realtime</option>
                   <option value="MONTHLY">Monthly</option>
@@ -265,11 +264,8 @@ export default function ExtractionLotsPage() {
               </div>
               <div className="col-md-2">
                 <label className="form-label fs-12 text-muted fw-semibold mb-1">Statut</label>
-                <select
-                  className="form-select form-select-sm"
-                  value={statusFilter}
-                  onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                >
+                <select className="form-select form-select-sm" value={statusFilter}
+                  onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
                   <option value="all">Tous</option>
                   <option value="pending">Pending</option>
                   <option value="running">Running</option>
@@ -278,13 +274,11 @@ export default function ExtractionLotsPage() {
                 </select>
               </div>
               <div className="col-md-2 d-flex align-items-end">
-                <button
-                  className="btn btn-sm btn-light w-100"
+                <button className="btn btn-sm btn-light w-100"
                   onClick={() => {
                     setProjFilter(""); setPeriodFilter("");
                     setTypeFilter("all"); setStatusFilter("all"); setPage(1);
-                  }}
-                >
+                  }}>
                   <i className="ri-filter-off-line me-1"></i>Reset
                 </button>
               </div>
@@ -292,15 +286,15 @@ export default function ExtractionLotsPage() {
           </div>
         </div>
 
+        {/* Table */}
         <div className="card">
           <div className="card-header d-flex align-items-center border-0">
             <h5 className="card-title mb-0 flex-grow-1">
-              <i className="ri-list-check me-2 text-primary"></i>
-              Lots ({filtered.length})
+              <i className="ri-list-check me-2 text-primary"></i>Lots ({filtered.length})
             </h5>
             <span className="text-muted fs-12">
               <i className="ri-information-line me-1 text-info"></i>
-              MD5 cliquable pour copier · DL pour télécharger le dump JSON (RG-04)
+              MD5 cliquable pour copier · DL pour télécharger le dump JSON
             </span>
           </div>
           <div className="card-body">
@@ -330,14 +324,15 @@ export default function ExtractionLotsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {paginated.map((lot) => (
+                      {paginated.map(lot => (
                         <tr key={lot.id}>
                           <td className="text-muted fs-12 fw-semibold">#{lot.id}</td>
-                          <td>
-                            <span className="fw-medium fs-13">{getProjectName(lot)}</span>
-                          </td>
+                          <td><span className="fw-medium fs-13">{getProjectName(lot)}</span></td>
                           <td className="text-muted fs-13">{getPeriodLabel(lot)}</td>
-                          <td><StatusBadge type="lotType" value={lot.type} /></td>
+                          <td>
+                            {/* ✅ FIX : extraction_type au lieu de type */}
+                            <StatusBadge type="lotType" value={lot.extraction_type} />
+                          </td>
                           <td><StatusBadge type="lot" value={lot.status} /></td>
                           <td className="text-muted fs-12">{getTriggeredBy(lot)}</td>
                           <td className="text-muted fs-12">{formatDate(lot.created_at)}</td>
@@ -361,7 +356,6 @@ export default function ExtractionLotsPage() {
             )}
           </div>
         </div>
-
       </div>
     </div>
   );

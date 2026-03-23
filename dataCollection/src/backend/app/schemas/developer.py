@@ -1,55 +1,79 @@
-from pydantic import BaseModel, EmailStr
+"""schemas/developer.py — CORRIGÉ : is_validated, is_bot, source + DeveloperValidate."""
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
 
-# ─── Developer Group ─────────────────────────────────────────────
-
 class DeveloperGroupCreate(BaseModel):
-    name: str
-    site: str
+    name:       str = Field(min_length=1, max_length=100)
     project_id: int
+    site_id:    Optional[int] = None
+    manager_id: Optional[int] = None
+
+
+class DeveloperGroupUpdate(BaseModel):
+    name:       Optional[str] = None
+    site_id:    Optional[int] = None
+    manager_id: Optional[int] = None
 
 
 class DeveloperGroupResponse(BaseModel):
-    id: int
-    name: str
-    site: str
+    id:         int
+    name:       str
     project_id: int
+    site_id:    Optional[int]
+    manager_id: Optional[int]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
-
-# ─── Developer ───────────────────────────────────────────────────
 
 class DeveloperCreate(BaseModel):
+    username:       str = Field(min_length=1, max_length=255)
+    name:           Optional[str] = None
+    email:          Optional[str] = None
+    company:        Optional[str] = None
     gitlab_user_id: Optional[int] = None
-    username: str
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    project_id: int
-    group_id: Optional[int] = None
+    project_id:     int
+    group_id:       Optional[int] = None
+    site_id:        Optional[int] = None
+    is_active:      bool = True
+    # source forcé à "manual" côté router — non exposé au client
 
 
 class DeveloperUpdate(BaseModel):
-    group_id: Optional[int] = None
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    # site supprimé — dérivé automatiquement du groupe via hybrid_property
+    username:  Optional[str]  = None
+    name:      Optional[str]  = None
+    email:     Optional[str]  = None
+    company:   Optional[str]  = None
+    group_id:  Optional[int]  = None
+    site_id:   Optional[int]  = None
+    is_active: Optional[bool] = None
+
+
+class DeveloperValidate(BaseModel):
+    """PATCH /developers/{id}/validate — validation ou rejet par l'admin."""
+    is_validated: bool
+    is_bot:       Optional[bool] = None   # correction détection auto
+    site_id:      Optional[int]  = None   # assigner un site au moment de validation
+    group_id:     Optional[int]  = None   # assigner un groupe au moment de validation
 
 
 class DeveloperResponse(BaseModel):
-    id: int
+    id:             int
     gitlab_user_id: Optional[int]
-    username: str
-    name: Optional[str]
-    email: Optional[str]
-    site: Optional[str]   # retourné via hybrid_property depuis le groupe
-    project_id: int
-    group_id: Optional[int]
-    created_at: datetime
+    username:       str
+    name:           Optional[str]
+    email:          Optional[str]
+    company:        Optional[str]
+    project_id:     int
+    group_id:       Optional[int]
+    site_id:        Optional[int]
+    is_active:      bool
+    is_validated:   bool
+    is_bot:         bool
+    source:         str
+    created_by:     Optional[int]
+    created_at:     datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}

@@ -1,21 +1,23 @@
-from pydantic import BaseModel, HttpUrl, model_validator
+"""schemas/project.py — CORRIGÉ : site_id ajouté."""
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
 
 class ProjectCreate(BaseModel):
-    name:              Optional[str]  = None
     gitlab_project_id: int
     gitlab_config_id:  int
+    site_id:           Optional[int]  = None
     is_active:         Optional[bool] = True
 
 
 class ProjectUpdate(BaseModel):
     name:           Optional[str]  = None
-    description:    Optional[str]  = None
-    default_branch: Optional[str]  = None
     is_active:      Optional[bool] = None
     archived:       Optional[bool] = None
+    description:    Optional[str]  = None
+    default_branch: Optional[str]  = None
+    site_id:        Optional[int]  = None
 
 
 class ProjectResponse(BaseModel):
@@ -23,29 +25,17 @@ class ProjectResponse(BaseModel):
     gitlab_project_id: int
     name:              str
     path:              str
-    namespace:         Optional[str]      = None
-    description:       Optional[str]      = None
-    visibility:        Optional[str]      = None
-    default_branch:    Optional[str]      = None
+    namespace:         Optional[str]
+    description:       Optional[str]
+    visibility:        Optional[str]
+    default_branch:    Optional[str]
     archived:          bool
-    gitlab_config_id:  Optional[int]      = None
     is_active:         bool
-    created_at:        datetime
-
+    gitlab_config_id:  Optional[int]
+    site_id:           Optional[int]
     commit_count:      Optional[int]      = 0
     contributor_count: Optional[int]      = 0
     last_commit_date:  Optional[datetime] = None
+    created_at:        datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ExtractionRequest(BaseModel):
-    project_id:  Optional[int]     = None
-    project_url: Optional[HttpUrl] = None
-
-    @model_validator(mode="after")
-    def validate_input(self):
-        if not self.project_id and not self.project_url:
-            raise ValueError("Either project_id or project_url must be provided")
-        return self
+    model_config = {"from_attributes": True}

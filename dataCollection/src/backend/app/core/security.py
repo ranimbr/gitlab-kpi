@@ -1,3 +1,17 @@
+"""
+core/security.py
+
+CORRECTION — _get_fernet() :
+    Contrôle `if len(raw) != 44` sur des bytes après .encode().
+    
+    Problème : si ENCRYPTION_KEY contient des caractères non-ASCII
+    (ex: unicode), `.encode()` produit plus de bytes que de chars
+    → len(bytes) != len(str) → la vérification était incorrecte.
+    
+    ✅ FIX : comparer len(key) sur la STRING d'origine (avant encode)
+    et valider que c'est un base64-url valide via base64.urlsafe_b64decode().
+    Si invalide → dériver depuis SECRET_KEY.
+"""
 import base64
 import hashlib
 import logging
@@ -15,9 +29,9 @@ from app.core.config import get_settings
 from app.database.session import get_db
 
 settings = get_settings()
-logger = logging.getLogger(__name__)
+logger   = logging.getLogger(__name__)
 
-# ─── Password Hashing ────────────────────────────────────────────────────────
+# ── Password Hashing ──────────────────────────────────────────────────────────
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security    = HTTPBearer(auto_error=True)
@@ -33,19 +47,17 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-# ─── JWT ─────────────────────────────────────────────────────────────────────
+# ── JWT ───────────────────────────────────────────────────────────────────────
 
 def create_access_token(
-    data: Dict[str, Any],
+    data:          Dict[str, Any],
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Crée un JWT access token signé avec SECRET_KEY."""
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    to_encode        = data.copy()
+    to_encode["exp"] = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode["exp"] = expire
-
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
@@ -62,35 +74,69 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-# ─── Token GitLab Encryption (Fernet AES-128-CBC) ────────────────────────────
+# ── Token GitLab Encryption (Fernet AES-128-CBC) ─────────────────────────────
+
+def _derive_key_from_secret() -> bytes:
+    """
+    Dérive une clé Fernet déterministe depuis SECRET_KEY.
+    Utilisé en dev/test quand ENCRYPTION_KEY n'est pas défini.
+    """
+    return base64.urlsafe_b64encode(
+        hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+    )
+
 
 def _get_fernet() -> Fernet:
     """
-    Retourne une instance Fernet initialisée avec ENCRYPTION_KEY.
+    Retourne une instance Fernet pour chiffrement/déchiffrement.
 
-    Si ENCRYPTION_KEY n'est pas configuré en .env, on dérive une clé
-    déterministe depuis SECRET_KEY (pratique pour dev / tests).
-    En PRODUCTION, définir impérativement ENCRYPTION_KEY dans .env.
+    Priorité :
+        1. ENCRYPTION_KEY depuis .env (recommandé en production)
+        2. Dérivé depuis SECRET_KEY (dev/test uniquement)
+
+    ✅ FIX : validation correcte de ENCRYPTION_KEY.
+        - Test sur len(key_str) (STRING, pas bytes) pour compter les chars
+        - Validation que c'est un base64-url valide via urlsafe_b64decode()
+        - Si invalide → dérivation depuis SECRET_KEY avec warning
+
+    Générer une clé valide :
+        python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     """
-    key = settings.ENCRYPTION_KEY
+    key_str = settings.ENCRYPTION_KEY
 
-    if key:
-        raw = key.encode() if isinstance(key, str) else key
-        # Fernet exige exactement 32 bytes en base64-url
-        if len(raw) != 44:  # 32 octets encodés en base64-url = 44 chars
-            raw = base64.urlsafe_b64encode(
-                hashlib.sha256(raw).digest()
+    if key_str:
+        # ✅ FIX : len() sur la STRING d'origine, pas sur les bytes encodés
+        is_valid_fernet_key = False
+        try:
+            # Une clé Fernet valide = 32 bytes en base64-url = 44 chars ASCII
+            if len(key_str) == 44:
+                decoded = base64.urlsafe_b64decode(key_str + "==")  # padding tolérant
+                if len(decoded) == 32:
+                    is_valid_fernet_key = True
+        except Exception:
+            pass
+
+        if is_valid_fernet_key:
+            return Fernet(key_str.encode("utf-8"))
+        else:
+            # Clé fournie mais format invalide → dériver depuis elle-même
+            logger.warning(
+                "ENCRYPTION_KEY format is invalid (expected 44-char base64-url string). "
+                "Deriving key from ENCRYPTION_KEY value. "
+                "Generate a proper key with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             )
-    else:
-        logger.warning(
-            "ENCRYPTION_KEY not set — deriving from SECRET_KEY. "
-            "Set ENCRYPTION_KEY in .env for production!"
-        )
-        raw = base64.urlsafe_b64encode(
-            hashlib.sha256(settings.SECRET_KEY.encode()).digest()
-        )
+            derived = base64.urlsafe_b64encode(
+                hashlib.sha256(key_str.encode("utf-8")).digest()
+            )
+            return Fernet(derived)
 
-    return Fernet(raw)
+    # Pas de ENCRYPTION_KEY → dériver depuis SECRET_KEY (dev uniquement)
+    logger.warning(
+        "ENCRYPTION_KEY not configured — deriving from SECRET_KEY. "
+        "This is acceptable for development but NOT for production. "
+        "Set ENCRYPTION_KEY in .env!"
+    )
+    return Fernet(_derive_key_from_secret())
 
 
 def encrypt_token(plain_token: str) -> str:
@@ -99,8 +145,7 @@ def encrypt_token(plain_token: str) -> str:
     Utilise Fernet (AES-128-CBC + HMAC-SHA256).
     """
     try:
-        f = _get_fernet()
-        return f.encrypt(plain_token.encode("utf-8")).decode("utf-8")
+        return _get_fernet().encrypt(plain_token.encode("utf-8")).decode("utf-8")
     except Exception as e:
         logger.error(f"Token encryption failed: {e}")
         raise ValueError("Token encryption failed") from e
@@ -114,12 +159,11 @@ def decrypt_token(encrypted_token: str) -> str:
     retourne le token brut — logged comme WARNING.
     """
     try:
-        f = _get_fernet()
-        return f.decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
+        return _get_fernet().decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
     except InvalidToken:
-        # Token non chiffré (legacy / dev sans encryption)
+        # Token non chiffré (legacy / dev sans encryption configurée)
         logger.warning(
-            "decrypt_token: token does not appear to be encrypted — "
+            "decrypt_token: token does not appear to be Fernet-encrypted — "
             "returning raw value. Encrypt all tokens in production."
         )
         return encrypted_token
@@ -128,17 +172,21 @@ def decrypt_token(encrypted_token: str) -> str:
         raise ValueError("Token decryption failed") from e
 
 
-# ─── FastAPI Dependency ───────────────────────────────────────────────────────
+# ── FastAPI Dependency ────────────────────────────────────────────────────────
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
+    db:          Session                       = Depends(get_db),
 ):
     """
     Dependency FastAPI — récupère l'utilisateur connecté depuis le JWT Bearer.
-    Lève HTTP 401 si token invalide / expiré / utilisateur inactif.
+    Lève HTTP 401 si token invalide / expiré / utilisateur inexistant.
+    Lève HTTP 403 si utilisateur inactif.
+
+    Import local de AppUser pour éviter les imports circulaires :
+        security.py → AppUser → (via relations) → security.py
     """
-    from app.models.app_user import AppUser  # évite circular import
+    from app.models.app_user import AppUser  # import local intentionnel
 
     payload = decode_access_token(credentials.credentials)
 

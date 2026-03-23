@@ -1,36 +1,10 @@
+/**services/periodService.js — inchangé.*/
 import api from "./api";
-
 const periodService = {
-
-  // GET /periods/
-  getAll: async () => {
-    const response = await api.get("/periods/");
-    return response.data;
-  },
-
-  // GET /periods/current
-  getCurrent: async () => {
-    const response = await api.get("/periods/current");
-    return response.data;
-  },
-
-  // GET /periods/{id}
-  getById: async (periodId) => {
-    const response = await api.get(`/periods/${periodId}`);
-    return response.data;
-  },
-
-  // POST /periods/
-  create: async (year, month) => {
-    const response = await api.post("/periods/", { year, month });
-    return response.data;
-  },
-
-  // POST /periods/{id}/close
-  close: async (periodId) => {
-    const response = await api.post(`/periods/${periodId}/close`);
-    return response.data; // PeriodCloseResponse
-  },
+  getAll:     async ()              => (await api.get("/periods/")).data,
+  getCurrent: async ()              => (await api.get("/periods/current")).data,
+  getById:    async (id)            => (await api.get(`/periods/${id}`)).data,
+  create:     async (year, month)   => (await api.post("/periods/", { year, month })).data,
+  close:      async (id)            => (await api.post(`/periods/${id}/close`)).data,
 };
-
 export default periodService;

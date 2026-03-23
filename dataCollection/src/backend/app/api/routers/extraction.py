@@ -1,33 +1,34 @@
+"""
+api/routers/extraction.py
+
+CORRECTIONS :
+
+"""
 import os
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Path as FPath, status
+from fastapi import APIRouter, Depends, HTTPException, Path as FPath, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.database.session import get_db
 from app.api.dependencies import get_current_admin, get_current_user
-from app.schemas.extraction_lot import (
-    ExtractionLotCreate,
-    ExtractionRunResponse,
-    ExtractionType,
-)
-from app.repositories.gitlab_config_repository import GitLabConfigRepository
-from app.repositories.project_repository import ProjectRepository
-from app.repositories.extraction_lot_repository import ExtractionLotRepository
-from app.services.extraction.extraction_service import ExtractionService
-from app.services.kpi.kpi_service import KpiService
+from app.database.session import get_db
 from app.models.app_user import AppUser
 from app.models.extraction_lot import ExtractionLot
+from app.repositories.gitlab_config_repository import GitLabConfigRepository
+from app.repositories.extraction_lot_repository import ExtractionLotRepository
+from app.repositories.project_repository import ProjectRepository
+from app.schemas.extraction_lot import ExtractionLotCreate, ExtractionRunResponse
+from app.schemas.enums import ExtractionTypeEnum
+from app.services.extraction.extraction_service import ExtractionService
+from app.services.kpi.kpi_service import KpiService
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/extraction", tags=["Extraction"])
 
 config_repo  = GitLabConfigRepository()
 project_repo = ProjectRepository()
 lot_repo     = ExtractionLotRepository()
-
 
 # =============================================================================
 # POST /extraction/run
@@ -35,9 +36,9 @@ lot_repo     = ExtractionLotRepository()
 
 @router.post(
     "/run",
-    response_model=ExtractionRunResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Lancer une extraction GitLab (REALTIME ou MONTHLY)",
+    response_model = ExtractionRunResponse,
+    status_code    = status.HTTP_200_OK,
+    summary        = "Lancer une extraction GitLab (REALTIME ou MONTHLY)",
 )
 async def run_extraction(
     request:       ExtractionLotCreate,
@@ -47,21 +48,14 @@ async def run_extraction(
     """
     Lance une extraction GitLab pour un projet donné.
 
-    - **REALTIME** : extraction manuelle — la période doit être ouverte (RG-01).
-      Génère un snapshot KPI immédiat (non bloquant).
-
-    - **MONTHLY** : extraction mensuelle officielle — clôture la période,
-      génère le fichier dump + md5sum (RG-04), génère les snapshots KPI.
-      Impossible si un lot MONTHLY existe déjà pour cette période (RG).
+    - **REALTIME** : extraction manuelle — période doit être ouverte (RG-01).
+    - **MONTHLY**  : clôture la période, dump JSON + KPI snapshot.
+    - **is_backfill** : si True + MONTHLY → recalcule les KPIs sur une période
+      déjà extraite sans lever 409. Équivalent Airflow --backfill.
     """
-
-    # ── Validation projet ────────────────────────────────────────────────────
     project = project_repo.get_by_id(db, request.project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail="Project not found",
-        )
+        raise HTTPException(status_code=404, detail="Project not found")
 
     if not project.gitlab_config_id:
         raise HTTPException(
@@ -82,7 +76,7 @@ async def run_extraction(
     # =========================================================================
     # REALTIME
     # =========================================================================
-    if request.extraction_type == ExtractionType.REALTIME:
+    if request.extraction_type == ExtractionTypeEnum.REALTIME:
 
         lot = await service.run_realtime_extraction(
             db                = db,
@@ -91,8 +85,6 @@ async def run_extraction(
             triggered_by_user = current_admin.id,
         )
 
-        # Snapshot KPI non bloquant — l'extraction reste un succès même si
-        # la génération du snapshot échoue
         try:
             await kpi_service.generate_snapshot(
                 db         = db,
@@ -113,9 +105,9 @@ async def run_extraction(
         message = "Extraction REALTIME completed successfully"
 
     # =========================================================================
-    # MONTHLY
+    # MONTHLY  (+ BACKFILL)
     # =========================================================================
-    elif request.extraction_type == ExtractionType.MONTHLY:
+    elif request.extraction_type == ExtractionTypeEnum.MONTHLY:
 
         if not request.period_id:
             raise HTTPException(
@@ -123,14 +115,17 @@ async def run_extraction(
                 detail="period_id is required for MONTHLY extraction",
             )
 
+        # ✅ FIX CRITIQUE : is_backfill lu depuis le schéma et passé au service
+        is_backfill = request.is_backfill  # défaut False dans le schéma
+
         lot = await service.run_monthly_extraction(
             db            = db,
             project_id    = request.project_id,
             period_id     = request.period_id,
             gitlab_config = gitlab_config,
+            is_backfill   = is_backfill,
         )
 
-        # Snapshot KPI MONTHLY — obligatoire pour le Dashboard KPI historique
         try:
             await kpi_service.generate_snapshot(
                 db         = db,
@@ -139,34 +134,35 @@ async def run_extraction(
                 lot_id     = lot.id,
             )
             logger.info(
-                f"KPI snapshot generated after MONTHLY — "
+                f"KPI snapshot generated after "
+                f"{'BACKFILL' if is_backfill else 'MONTHLY'} — "
                 f"project_id={project.id} period_id={lot.period_id}"
             )
         except Exception as e:
-            # Le lot est committed — snapshot régénérable via /analytics/generate-snapshot
             logger.error(
-                f"KPI snapshot failed after MONTHLY — "
-                f"project_id={project.id} period_id={lot.period_id}: {e}"
+                f"KPI snapshot failed after "
+                f"{'BACKFILL' if is_backfill else 'MONTHLY'} — "
+                f"project_id={project.id}: {e}"
             )
 
-        message = "Extraction MONTHLY completed — KPI snapshot generated"
-
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid extraction type",
+        message = (
+            "Backfill completed — KPI snapshot recalculated"
+            if is_backfill
+            else "Extraction MONTHLY completed — KPI snapshot generated"
         )
 
-    return ExtractionRunResponse(
-        message        = message,
-        lot_id         = lot.id,
-        type           = lot.type.value,
-        project_id     = lot.project_id,
-        period_id      = lot.period_id,
-        generated_file = lot.generated_file,
-        md5sum         = lot.md5sum,
-    )
+    else:
+        raise HTTPException(status_code=400, detail="Invalid extraction type")
 
+    return ExtractionRunResponse(
+        message         = message,
+        lot_id          = lot.id,
+        extraction_type = lot.extraction_type.value,
+        project_id      = lot.project_id,
+        period_id       = lot.period_id,
+        generated_file  = lot.generated_file,
+        md5sum          = lot.md5sum,
+    )
 
 # =============================================================================
 # GET /extraction/lots/{lot_id}/download
@@ -178,27 +174,13 @@ async def run_extraction(
     response_class = FileResponse,
 )
 def download_lot_file(
-    lot_id:        int     = FPath(..., ge=1, description="ID du lot d'extraction"),
+    lot_id:        int     = FPath(..., ge=1),
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    """
-    Télécharge le fichier dump JSON généré lors de l'extraction MONTHLY.
-
-    - Réservé aux **admins**.
-    - Retourne le fichier en `application/json`.
-    - Header **`X-MD5-Checksum`** : md5sum du fichier pour vérification RG-04.
-    - Header **`X-Lot-ID`** : ID du lot pour traçabilité.
-
-    Codes d'erreur :
-    - `404` : lot introuvable ou pas de fichier généré (lot REALTIME ou échoué).
-    - `410` : fichier supprimé du serveur (archivage).
-    """
-    lot: ExtractionLot = (
-        db.query(ExtractionLot)
-        .filter(ExtractionLot.id == lot_id)
-        .first()
-    )
+    lot: ExtractionLot = db.query(ExtractionLot).filter(
+        ExtractionLot.id == lot_id
+    ).first()
 
     if not lot:
         raise HTTPException(
@@ -210,34 +192,29 @@ def download_lot_file(
         raise HTTPException(
             status_code=404,
             detail=(
-                f"No dump file available for lot id={lot_id}. "
-                f"Only completed MONTHLY extractions generate a dump file."
+                f"No dump file for lot id={lot_id}. "
+                "Only completed MONTHLY extractions generate a file."
             ),
         )
 
     if not os.path.exists(lot.generated_file):
         raise HTTPException(
             status_code=410,
-            detail=(
-                f"File '{os.path.basename(lot.generated_file)}' "
-                f"no longer exists on the server (may have been archived)."
-            ),
+            detail=f"File '{os.path.basename(lot.generated_file)}' no longer exists.",
         )
 
-    # ── RG-04 : md5sum retourné dans les headers pour vérification côté client ──
     headers = {
-        "X-Lot-ID":        str(lot.id),
-        "X-Project-ID":    str(lot.project_id),
-        "X-Period-ID":     str(lot.period_id),
-        "X-Extraction-Type": lot.type.value,
+        "X-Lot-ID":          str(lot.id),
+        "X-Project-ID":      str(lot.project_id),
+        "X-Period-ID":       str(lot.period_id),
+        "X-Extraction-Type": lot.extraction_type.value,
     }
     if lot.md5sum:
         headers["X-MD5-Checksum"] = lot.md5sum
 
     logger.info(
-        f"Download requested — lot_id={lot_id} "
-        f"file={lot.generated_file} "
-        f"by admin_id={current_admin.id}"
+        f"Download — lot_id={lot_id} file={lot.generated_file} "
+        f"admin_id={current_admin.id}"
     )
 
     return FileResponse(
@@ -247,27 +224,18 @@ def download_lot_file(
         headers    = headers,
     )
 
-
 # =============================================================================
-# GET /extraction/lots — Liste des lots (admin)
+# GET /extraction/lots
 # =============================================================================
 
-@router.get(
-    "/lots",
-    summary = "Lister tous les lots d'extraction",
-)
+@router.get("/lots", summary="Lister les lots d'extraction")
 def list_lots(
-    project_id:    int            = None,
-    period_id:     int            = None,
-    db:            Session        = Depends(get_db),
-    current_admin: AppUser        = Depends(get_current_admin),
+    project_id:    int     = Query(default=None),
+    period_id:     int     = Query(default=None),
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
 ):
-    """
-    Liste les lots d'extraction avec filtres optionnels project_id / period_id.
-    Réservé aux admins.
-    """
     q = db.query(ExtractionLot)
-
     if project_id:
         q = q.filter(ExtractionLot.project_id == project_id)
     if period_id:
@@ -277,16 +245,18 @@ def list_lots(
 
     return [
         {
-            "id":             lot.id,
-            "type":           lot.type.value,
-            "status":         lot.status.value,
-            "project_id":     lot.project_id,
-            "period_id":      lot.period_id,
-            "triggered_by":   lot.triggered_by,
-            "created_at":     lot.created_at.isoformat() if lot.created_at else None,
-            "generated_file": os.path.basename(lot.generated_file) if lot.generated_file else None,
-            "md5sum":         lot.md5sum,
-            "has_file":       lot.generated_file is not None and os.path.exists(lot.generated_file),
+            "id":              lot.id,
+            "extraction_type": lot.extraction_type.value,
+            "status":          lot.status.value,
+            "project_id":      lot.project_id,
+            "period_id":       lot.period_id,
+            "triggered_by":    lot.triggered_by,
+            "created_at":      lot.created_at.isoformat() if lot.created_at else None,
+            "completed_at":    lot.completed_at.isoformat() if lot.completed_at else None,
+            "generated_file":  os.path.basename(lot.generated_file) if lot.generated_file else None,
+            "md5sum":          lot.md5sum,
+            "has_file":        bool(lot.generated_file and os.path.exists(lot.generated_file)),
+            "error_message":   lot.error_message,
         }
         for lot in lots
     ]

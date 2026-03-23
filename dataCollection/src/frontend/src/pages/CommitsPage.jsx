@@ -1,11 +1,30 @@
-import { useState, useEffect, useRef } from "react";
+/**
+ * CommitsPage.jsx — Liste des commits GitLab par projet
+ * ======================================================
+ * PFE Cycle Ingénieur — GitLab KPI Dashboard
+ *
+ * Corrections & Améliorations v2 :
+ *  [FIX]  Import projectService corrigé (depuis ../services/projectService, pas kpiService)
+ *  [FIX]  Filtre réécrit en useMemo — supprime le useEffect intermédiaire inutile
+ *  [FIX]  loadCommits extrait en useCallback — référence stable entre les renders
+ *  [FIX]  Fermeture modal au clavier (Escape) + aria-modal/role pour accessibilité
+ *  [NEW]  Export CSV de la liste filtrée avec BOM UTF-8 + revokeObjectURL
+ *  [NEW]  Sélecteur de tri (date desc, auteur A→Z, nb changes desc)
+ *  [NEW]  Bouton Rafraîchir avec état spinning
+ *  [NEW]  Bouton Reset filtres visible uniquement si filtre actif
+ *  [NEW]  Empty state dédié quand filtre actif retourne 0 (≠ aucun commit)
+ *  [NEW]  Badge total commits dans le titre de page
+ *  [NEW]  useMemo sur toutes les dérivations stats (totalAdditions, uniqueAuthors…)
+ */
+
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { projectService } from "../services/kpiService";
-import api from "../services/api";
-import Chart from "chart.js/auto";
-import LoadingSpinner from "../components/common/LoadingSpinner";
-import EmptyState     from "../components/common/EmptyState";
-import Pagination     from "../components/common/Pagination";
+import projectService  from "../services/projectService";   // [FIX] import corrigé
+import api             from "../services/api";
+import Chart           from "chart.js/auto";
+import LoadingSpinner  from "../components/common/LoadingSpinner";
+import EmptyState      from "../components/common/EmptyState";
+import Pagination      from "../components/common/Pagination";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getCssVar(name) {
@@ -16,14 +35,16 @@ function rgba(cssVar, alpha) {
   return val ? `rgba(${val}, ${alpha})` : `rgba(64,81,137,${alpha})`;
 }
 function timeAgo(dateStr) {
+  if (!dateStr) return "—";
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-  if (diff < 60)    return `${diff}s ago`;
-  if (diff < 3600)  return `${Math.floor(diff / 60)}min ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}hrs ago`;
-  return `${Math.floor(diff / 86400)} days ago`;
+  if (diff < 60)    return `${diff}s`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}min`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  return `${Math.floor(diff / 86400)}j`;
 }
 function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString("en-GB", {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("fr-FR", {
     day: "2-digit", month: "short", year: "numeric",
   });
 }
@@ -31,12 +52,12 @@ function getInitials(name = "") {
   return (name || "?").split(/[\s._-]/).map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 function getBadgeColor(index) {
-  return ["primary","success","info","warning","danger","secondary"][index % 6];
+  return ["primary", "success", "info", "warning", "danger", "secondary"][index % 6];
 }
 function getCardBgColor(index) {
   return [
-    "bg-warning-subtle","bg-danger-subtle","bg-success-subtle",
-    "bg-info-subtle","bg-primary-subtle","bg-secondary-subtle",
+    "bg-warning-subtle", "bg-danger-subtle", "bg-success-subtle",
+    "bg-info-subtle", "bg-primary-subtle", "bg-secondary-subtle",
   ][index % 6];
 }
 function getAuthor(commit) {
@@ -45,28 +66,48 @@ function getAuthor(commit) {
 function getSite(commit) {
   return commit.developer?.site || null;
 }
-
-// ─── [NEW] Extraire seulement la 1ère ligne du message (titre court) ──────────
 function getCommitTitle(commit) {
   const raw = commit.title || commit.message || "";
-  // Prend uniquement la 1ère ligne, ignore tout ce qui suit \n
   return raw.split("\n")[0].trim();
 }
-
-// ─── [NEW] Extraire le corps du message (lignes suivantes) ───────────────────
 function getCommitBody(commit) {
-  const raw = commit.title || commit.message || "";
+  const raw   = commit.title || commit.message || "";
   const lines = raw.split("\n").slice(1).join("\n").trim();
   return lines || null;
 }
-
-// ─── [NEW] Tronquer un texte à N caractères avec ellipsis ────────────────────
-function truncate(text, maxLen = 60) {
+function truncate(text, maxLen = 80) {
   if (!text) return "";
   return text.length > maxLen ? text.slice(0, maxLen) + "…" : text;
 }
 
-// ─── Pie Chart ────────────────────────────────────────────────────────────────
+// ─── [NEW] Export CSV commits filtrés ─────────────────────────────────────────
+function exportCommitsCSV(commits, projectName) {
+  if (!commits?.length) return;
+  const headers = ["ID", "SHA (court)", "Titre", "Auteur", "Site", "Additions", "Deletions", "Total Changes", "Date"];
+  const rows    = commits.map((c) => [
+    c.id,
+    (c.gitlab_commit_id || "").slice(0, 8),
+    `"${getCommitTitle(c).replace(/"/g, '""')}"`,
+    getAuthor(c),
+    getSite(c) || "",
+    c.additions     || 0,
+    c.deletions     || 0,
+    c.total_changes || 0,
+    formatDate(c.authored_date),
+  ]);
+  const csv  = [headers, ...rows].map((r) => r.join(";")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }); // BOM UTF-8 pour Excel
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `commits_${projectName || "project"}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url); // [FIX] libère la mémoire immédiatement
+}
+
+// ─── Pie Chart — Commits par développeur ─────────────────────────────────────
 function ContributorsPieChart({ commits }) {
   const ref      = useRef(null);
   const chartRef = useRef(null);
@@ -76,15 +117,8 @@ function ContributorsPieChart({ commits }) {
     if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
 
     const authorMap = {};
-    commits.forEach((c) => {
-      const a = getAuthor(c);
-      authorMap[a] = (authorMap[a] || 0) + 1;
-    });
-
+    commits.forEach((c) => { const a = getAuthor(c); authorMap[a] = (authorMap[a] || 0) + 1; });
     const sorted = Object.entries(authorMap).sort((a, b) => b[1] - a[1]).slice(0, 7);
-    const labels = sorted.map(([name]) => name);
-    const data   = sorted.map(([, count]) => count);
-
     const COLORS = [
       getCssVar("--vz-primary")   || "#405189",
       getCssVar("--vz-success")   || "#0ab39c",
@@ -98,29 +132,14 @@ function ContributorsPieChart({ commits }) {
     chartRef.current = new Chart(ref.current, {
       type: "pie",
       data: {
-        labels,
-        datasets: [{
-          data,
-          backgroundColor: COLORS,
-          hoverBackgroundColor: COLORS,
-          hoverBorderColor: "#fff",
-          borderWidth: 2,
-        }],
+        labels: sorted.map(([n]) => n),
+        datasets: [{ data: sorted.map(([, v]) => v), backgroundColor: COLORS, hoverBorderColor: "#fff", borderWidth: 2 }],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: "right",
-            labels: { font: { family: "Poppins", size: 12 }, padding: 16, usePointStyle: true },
-          },
-          tooltip: {
-            callbacks: {
-              label: (ctx) =>
-                ` ${ctx.label}: ${ctx.raw} commits (${((ctx.raw / commits.length) * 100).toFixed(1)}%)`,
-            },
-          },
+          legend: { position: "right", labels: { font: { family: "Poppins", size: 12 }, padding: 16, usePointStyle: true } },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw} commits (${((ctx.raw / commits.length) * 100).toFixed(1)}%)` } },
         },
       },
     });
@@ -130,7 +149,7 @@ function ContributorsPieChart({ commits }) {
   return <canvas ref={ref} style={{ maxHeight: 260 }} />;
 }
 
-// ─── Polar Chart ──────────────────────────────────────────────────────────────
+// ─── Polar Chart — Volume d'additions par développeur ────────────────────────
 function AdditionsPolarChart({ commits }) {
   const ref      = useRef(null);
   const chartRef = useRef(null);
@@ -145,41 +164,27 @@ function AdditionsPolarChart({ commits }) {
       if (!authorMap[a]) authorMap[a] = { additions: 0 };
       authorMap[a].additions += c.additions || 0;
     });
-
-    const sorted  = Object.entries(authorMap).sort((a, b) => b[1].additions - a[1].additions).slice(0, 6);
-    const labels  = sorted.map(([name]) => name);
-    const addData = sorted.map(([, v]) => v.additions);
+    const sorted = Object.entries(authorMap).sort((a, b) => b[1].additions - a[1].additions).slice(0, 6);
 
     chartRef.current = new Chart(ref.current, {
       type: "polarArea",
       data: {
-        labels,
+        labels: sorted.map(([n]) => n),
         datasets: [{
-          data: addData,
+          data: sorted.map(([, v]) => v.additions),
           backgroundColor: [
-            rgba("--vz-danger-rgb",    0.75),
-            rgba("--vz-info-rgb",      0.75),
-            rgba("--vz-warning-rgb",   0.75),
-            rgba("--vz-primary-rgb",   0.75),
-            rgba("--vz-success-rgb",   0.75),
-            rgba("--vz-secondary-rgb", 0.75),
+            rgba("--vz-danger-rgb", 0.75), rgba("--vz-info-rgb", 0.75),
+            rgba("--vz-warning-rgb", 0.75), rgba("--vz-primary-rgb", 0.75),
+            rgba("--vz-success-rgb", 0.75), rgba("--vz-secondary-rgb", 0.75),
           ],
           borderWidth: 1,
         }],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: "right",
-            labels: { font: { family: "Poppins", size: 11 }, padding: 14, usePointStyle: true },
-          },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => ` ${ctx.label}: +${ctx.raw.toLocaleString()} lignes ajoutées`,
-            },
-          },
+          legend: { position: "right", labels: { font: { family: "Poppins", size: 11 }, padding: 14, usePointStyle: true } },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: +${ctx.raw.toLocaleString("fr-FR")} lignes` } },
         },
         scales: {
           r: {
@@ -195,9 +200,16 @@ function AdditionsPolarChart({ commits }) {
   return <canvas ref={ref} style={{ maxHeight: 260 }} />;
 }
 
-// ─── Modal détail commit — Sobre & Professionnel ─────────────────────────────
+// ─── Modal détail commit ──────────────────────────────────────────────────────
 function CommitDetailModal({ commit, onClose }) {
   const [shaCopied, setShaCopied] = useState(false);
+
+  // [NEW] Fermeture clavier Escape
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   if (!commit) return null;
 
@@ -205,7 +217,6 @@ function CommitDetailModal({ commit, onClose }) {
   const site   = getSite(commit);
   const title  = getCommitTitle(commit);
   const body   = getCommitBody(commit);
-
   const addPct = commit.total_changes > 0
     ? Math.round(((commit.additions || 0) / commit.total_changes) * 100)
     : 0;
@@ -221,208 +232,108 @@ function CommitDetailModal({ commit, onClose }) {
       className="modal fade show d-block"
       style={{ backgroundColor: "rgba(30,34,45,0.6)", backdropFilter: "blur(3px)" }}
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Détail du commit"
     >
       <div
         className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable"
         style={{ maxWidth: 680 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="modal-content border-0"
-          style={{ borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" }}
-        >
+        <div className="modal-content border-0"
+          style={{ borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" }}>
 
-          {/* ══ HEADER ════════════════════════════════════════════════════ */}
-          <div
-            className="px-4 pt-4 pb-3"
-            style={{ borderBottom: "1px solid #f1f3f7" }}
-          >
+          {/* HEADER */}
+          <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f1f3f7" }}>
             <div className="d-flex align-items-start gap-3">
-
-              {/* Avatar */}
               <div
                 className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fw-bold text-white fs-14"
-                style={{
-                  width: 44, height: 44,
-                  background: "linear-gradient(135deg, #405189 0%, #3577f1 100%)",
-                  letterSpacing: 0.5,
-                }}
+                style={{ width: 44, height: 44, background: "linear-gradient(135deg, #405189 0%, #3577f1 100%)" }}
               >
                 {getInitials(author)}
               </div>
-
-              {/* Titre + meta */}
               <div className="flex-grow-1 min-w-0">
-                <h5
-                  className="fw-semibold text-dark mb-1"
-                  style={{ fontSize: 15, lineHeight: 1.45, wordBreak: "break-word" }}
-                >
+                <h5 className="fw-semibold text-dark mb-1"
+                  style={{ fontSize: 15, lineHeight: 1.45, wordBreak: "break-word" }}>
                   {title}
                 </h5>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <span className="text-muted fs-12 fw-medium">{author}</span>
                   {site && (
-                    <span
-                      className="badge fs-10 fw-semibold"
-                      style={{
-                        background: "#eff6ff",
-                        color: "#2563eb",
-                        border: "1px solid #bfdbfe",
-                        padding: "2px 8px",
-                      }}
-                    >
+                    <span className="badge fs-10 fw-semibold"
+                      style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", padding: "2px 8px" }}>
                       {site}
                     </span>
                   )}
                   <span className="text-muted fs-12">
-                    <i className="ri-calendar-line me-1"></i>
-                    {formatDate(commit.authored_date)}
+                    <i className="ri-calendar-line me-1"></i>{formatDate(commit.authored_date)}
                   </span>
-                  <span
-                    className="fs-11 fw-medium px-2 py-0"
-                    style={{
-                      background: "#f8f9fc",
-                      border: "1px solid #e9ecef",
-                      borderRadius: 20,
-                      color: "#6c757d",
-                    }}
-                  >
-                    {timeAgo(commit.authored_date)}
+                  <span className="fs-11 fw-medium px-2"
+                    style={{ background: "#f8f9fc", border: "1px solid #e9ecef", borderRadius: 20, color: "#6c757d" }}>
+                    il y a {timeAgo(commit.authored_date)}
                   </span>
                 </div>
               </div>
-
-              {/* Close */}
-              <button
-                className="btn-close flex-shrink-0"
-                style={{ opacity: 0.5 }}
-                onClick={onClose}
-              ></button>
+              <button className="btn-close flex-shrink-0" style={{ opacity: 0.5 }} onClick={onClose} aria-label="Fermer"></button>
             </div>
           </div>
 
-          {/* ══ BODY ══════════════════════════════════════════════════════ */}
+          {/* BODY */}
           <div className="px-4 py-4">
 
             {/* SHA */}
             <div className="mb-4">
-              <label
-                className="d-block text-uppercase fw-semibold mb-2"
-                style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}
-              >
-                Commit SHA
-              </label>
-              <div
-                className="d-flex align-items-center gap-3 px-3 py-2 rounded-3"
-                style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}
-              >
+              <label className="d-block text-uppercase fw-semibold mb-2"
+                style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}>Commit SHA</label>
+              <div className="d-flex align-items-center gap-3 px-3 py-2 rounded-3"
+                style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}>
                 <i className="ri-git-commit-line text-muted fs-15 flex-shrink-0"></i>
-                <code
-                  className="flex-grow-1 fs-12"
-                  style={{ color: "#374151", wordBreak: "break-all", fontFamily: "'SFMono-Regular', monospace" }}
-                >
+                <code className="flex-grow-1 fs-12"
+                  style={{ color: "#374151", wordBreak: "break-all", fontFamily: "'SFMono-Regular', monospace" }}>
                   {commit.gitlab_commit_id || "—"}
                 </code>
-                <button
-                  onClick={handleCopySha}
-                  className="btn btn-sm flex-shrink-0"
+                <button onClick={handleCopySha} className="btn btn-sm flex-shrink-0"
                   style={{
-                    fontSize: 11,
-                    padding: "3px 12px",
-                    borderRadius: 8,
+                    fontSize: 11, padding: "3px 12px", borderRadius: 8, whiteSpace: "nowrap", transition: "all .2s",
                     background: shaCopied ? "#dcfce7" : "#fff",
-                    border: shaCopied ? "1px solid #86efac" : "1px solid #d1d5db",
-                    color: shaCopied ? "#16a34a" : "#374151",
-                    whiteSpace: "nowrap",
-                    transition: "all .2s",
-                  }}
-                >
+                    border:     shaCopied ? "1px solid #86efac" : "1px solid #d1d5db",
+                    color:      shaCopied ? "#16a34a" : "#374151",
+                  }}>
                   {shaCopied
                     ? <><i className="ri-check-line me-1"></i>Copié !</>
-                    : <><i className="ri-clipboard-line me-1"></i>Copier</>
-                  }
+                    : <><i className="ri-clipboard-line me-1"></i>Copier</>}
                 </button>
               </div>
             </div>
 
-            {/* Séparateur section */}
-            <div
-              className="text-uppercase fw-semibold mb-3"
-              style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}
-            >
+            {/* Stats */}
+            <div className="text-uppercase fw-semibold mb-3" style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}>
               Statistiques
             </div>
-
-            {/* Stats — 3 blocs + barre */}
             <div className="mb-4">
               <div className="row g-3 mb-3">
-
-                <div className="col-4">
-                  <div
-                    className="rounded-3 p-3 text-center"
-                    style={{ background: "#f0fdf4", border: "1px solid #d1fae5" }}
-                  >
-                    <div
-                      className="fw-bold mb-1"
-                      style={{ fontSize: 24, color: "#16a34a", lineHeight: 1 }}
-                    >
-                      +{commit.additions || 0}
-                    </div>
-                    <div style={{ fontSize: 10, color: "#15803d", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                      Additions
+                {[
+                  { label: "Additions", value: `+${commit.additions || 0}`,    bg: "#f0fdf4", border: "#d1fae5", color: "#16a34a", sub: "#15803d" },
+                  { label: "Deletions", value: `-${commit.deletions || 0}`,    bg: "#fff7f7", border: "#fecaca", color: "#dc2626", sub: "#b91c1c" },
+                  { label: "Total",     value: `${commit.total_changes || 0}`, bg: "#f0f9ff", border: "#bae6fd", color: "#0284c7", sub: "#0369a1" },
+                ].map((s) => (
+                  <div key={s.label} className="col-4">
+                    <div className="rounded-3 p-3 text-center" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+                      <div className="fw-bold mb-1" style={{ fontSize: 24, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                      <div style={{ fontSize: 10, color: s.sub, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>{s.label}</div>
                     </div>
                   </div>
-                </div>
-
-                <div className="col-4">
-                  <div
-                    className="rounded-3 p-3 text-center"
-                    style={{ background: "#fff7f7", border: "1px solid #fecaca" }}
-                  >
-                    <div
-                      className="fw-bold mb-1"
-                      style={{ fontSize: 24, color: "#dc2626", lineHeight: 1 }}
-                    >
-                      -{commit.deletions || 0}
-                    </div>
-                    <div style={{ fontSize: 10, color: "#b91c1c", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                      Deletions
-                    </div>
-                  </div>
-                </div>
-
-                <div className="col-4">
-                  <div
-                    className="rounded-3 p-3 text-center"
-                    style={{ background: "#f0f9ff", border: "1px solid #bae6fd" }}
-                  >
-                    <div
-                      className="fw-bold mb-1"
-                      style={{ fontSize: 24, color: "#0284c7", lineHeight: 1 }}
-                    >
-                      {commit.total_changes || 0}
-                    </div>
-                    <div style={{ fontSize: 10, color: "#0369a1", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                      Total
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
-
               {/* Barre +/- */}
               <div>
-                <div className="d-flex justify-content-between mb-1" style={{ fontSize: 11, color: "#9ca3af" }}>
+                <div className="d-flex justify-content-between mb-1" style={{ fontSize: 11 }}>
                   <span style={{ color: "#16a34a", fontWeight: 600 }}>+{commit.additions || 0} additions ({addPct}%)</span>
                   <span style={{ color: "#dc2626", fontWeight: 600 }}>-{commit.deletions || 0} deletions ({100 - addPct}%)</span>
                 </div>
                 <div style={{ height: 6, background: "#f1f5f9", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{
-                    height: "100%",
-                    width: `${addPct}%`,
-                    background: "linear-gradient(90deg, #16a34a, #4ade80)",
-                    borderRadius: 99,
-                    display: "inline-block",
-                  }}></div>
+                  <div style={{ height: "100%", width: `${addPct}%`, background: "linear-gradient(90deg, #16a34a, #4ade80)", borderRadius: 99 }}></div>
                 </div>
               </div>
             </div>
@@ -430,140 +341,82 @@ function CommitDetailModal({ commit, onClose }) {
             {/* Message complet */}
             {body && (
               <div className="mb-4">
-                <div
-                  className="text-uppercase fw-semibold mb-2"
-                  style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}
-                >
+                <div className="text-uppercase fw-semibold mb-2" style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}>
                   Message complet
                 </div>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    maxHeight: 180,
-                    overflowY: "auto",
-                    background: "#f8f9fc",
-                    border: "1px solid #e9ecef",
-                    borderRadius: 10,
-                    padding: "12px 16px",
-                    fontSize: 12,
-                    lineHeight: 1.75,
-                    color: "#374151",
-                    fontFamily: "inherit",
-                    margin: 0,
-                  }}
-                >
+                <pre style={{
+                  whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180, overflowY: "auto",
+                  background: "#f8f9fc", border: "1px solid #e9ecef", borderRadius: 10,
+                  padding: "12px 16px", fontSize: 12, lineHeight: 1.75, color: "#374151", fontFamily: "inherit", margin: 0,
+                }}>
                   {body}
                 </pre>
               </div>
             )}
 
-            {/* Infos auteur + date côte à côte */}
-            <div
-              className="rounded-3 p-3"
-              style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}
-            >
-              <div
-                className="text-uppercase fw-semibold mb-3"
-                style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}
-              >
+            {/* Infos auteur + date */}
+            <div className="rounded-3 p-3" style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}>
+              <div className="text-uppercase fw-semibold mb-3" style={{ fontSize: 10, letterSpacing: 1, color: "#9ca3af" }}>
                 Informations
               </div>
               <div className="row g-3">
-
                 <div className="col-sm-6">
                   <div className="d-flex align-items-center gap-3">
-                    <div
-                      className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fw-bold text-white fs-12"
-                      style={{
-                        width: 36, height: 36,
-                        background: "linear-gradient(135deg, #667eea, #764ba2)",
-                      }}
-                    >
+                    <div className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fw-bold text-white fs-12"
+                      style={{ width: 36, height: 36, background: "linear-gradient(135deg, #667eea, #764ba2)" }}>
                       {getInitials(author)}
                     </div>
                     <div>
-                      <div style={{ fontSize: 10, color: "#9ca3af", textTransform: "uppercase", fontWeight: 600, letterSpacing: 0.8 }}>
-                        Auteur
-                      </div>
+                      <div style={{ fontSize: 10, color: "#9ca3af", textTransform: "uppercase", fontWeight: 600, letterSpacing: 0.8 }}>Auteur</div>
                       <div className="fw-semibold text-dark fs-13">{author}</div>
                       {site && (
-                        <span
-                          style={{
-                            fontSize: 10, background: "#eff6ff",
-                            color: "#2563eb", border: "1px solid #bfdbfe",
-                            borderRadius: 20, padding: "1px 8px", fontWeight: 600,
-                          }}
-                        >
+                        <span style={{ fontSize: 10, background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", borderRadius: 20, padding: "1px 8px", fontWeight: 600 }}>
                           {site}
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
-
                 <div className="col-sm-6">
                   <div className="d-flex align-items-center gap-3">
-                    <div
-                      className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fs-16"
-                      style={{ width: 36, height: 36, background: "#e9ecef", color: "#6c757d" }}
-                    >
+                    <div className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fs-16"
+                      style={{ width: 36, height: 36, background: "#e9ecef", color: "#6c757d" }}>
                       <i className="ri-calendar-check-line"></i>
                     </div>
                     <div>
-                      <div style={{ fontSize: 10, color: "#9ca3af", textTransform: "uppercase", fontWeight: 600, letterSpacing: 0.8 }}>
-                        Date
-                      </div>
+                      <div style={{ fontSize: 10, color: "#9ca3af", textTransform: "uppercase", fontWeight: 600, letterSpacing: 0.8 }}>Date</div>
                       <div className="fw-semibold text-dark fs-13">{formatDate(commit.authored_date)}</div>
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{timeAgo(commit.authored_date)}</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af" }}>il y a {timeAgo(commit.authored_date)}</div>
                     </div>
                   </div>
                 </div>
-
               </div>
             </div>
-
           </div>
 
-          {/* ══ FOOTER ════════════════════════════════════════════════════ */}
-          <div
-            className="px-4 py-3 d-flex align-items-center justify-content-between"
-            style={{ borderTop: "1px solid #f1f3f7", background: "#fafbfc", borderRadius: "0 0 16px 16px" }}
-          >
+          {/* FOOTER */}
+          <div className="px-4 py-3 d-flex align-items-center justify-content-between"
+            style={{ borderTop: "1px solid #f1f3f7", background: "#fafbfc", borderRadius: "0 0 16px 16px" }}>
             <span style={{ fontSize: 12, color: "#9ca3af" }}>
               <i className="ri-hashtag me-1"></i>Commit #{commit.id}
             </span>
-            <button
-              className="btn btn-sm"
-              onClick={onClose}
-              style={{
-                fontSize: 12,
-                padding: "5px 20px",
-                borderRadius: 8,
-                border: "1px solid #d1d5db",
-                background: "#fff",
-                color: "#374151",
-                fontWeight: 500,
-              }}
-            >
+            <button className="btn btn-sm" onClick={onClose}
+              style={{ fontSize: 12, padding: "5px 20px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontWeight: 500 }}>
               Fermer
             </button>
           </div>
-
         </div>
       </div>
     </div>
   );
 }
 
-
 // ─── Commit Card ──────────────────────────────────────────────────────────────
-
 function CommitCard({ commit, index, onDetails }) {
   const author = getAuthor(commit);
   const site   = getSite(commit);
-  const title  = getCommitTitle(commit);   // [FIX] 1ère ligne seulement
-  const body   = getCommitBody(commit);    // [FIX] corps du message
+  const title  = getCommitTitle(commit);
+  const body   = getCommitBody(commit);
   const addPct = commit.total_changes > 0
     ? Math.round(((commit.additions || 0) / commit.total_changes) * 100)
     : 0;
@@ -574,12 +427,10 @@ function CommitCard({ commit, index, onDetails }) {
         <div className="card-body">
           <div className="d-flex flex-column h-100">
 
-            {/* Header */}
             <div className="d-flex mb-2">
               <div className="flex-grow-1">
                 <p className="text-muted mb-1 fs-12">
-                  <i className="ri-time-line me-1"></i>
-                  {timeAgo(commit.authored_date)}
+                  <i className="ri-time-line me-1"></i>il y a {timeAgo(commit.authored_date)}
                 </p>
               </div>
               <span className={`badge bg-${getBadgeColor(index)}-subtle text-${getBadgeColor(index)}`}>
@@ -587,7 +438,6 @@ function CommitCard({ commit, index, onDetails }) {
               </span>
             </div>
 
-            {/* Auteur + Titre */}
             <div className="d-flex mb-2">
               <div className="flex-shrink-0 me-3">
                 <div className="avatar-sm">
@@ -597,45 +447,24 @@ function CommitCard({ commit, index, onDetails }) {
                 </div>
               </div>
               <div className="flex-grow-1 min-w-0">
-                {/* [FIX] Titre tronqué à 55 chars avec tooltip complet */}
                 <h5
                   className="mb-1 fs-14 fw-semibold text-body"
                   title={title}
-                  style={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                    lineHeight: "1.4",
-                    maxHeight: "2.8em",
-                    wordBreak: "break-word",
-                  }}
+                  style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.4, maxHeight: "2.8em", wordBreak: "break-word" }}
                 >
                   {title}
                 </h5>
                 <p className="text-muted mb-0 fs-12">
-                  <i className="ri-user-line me-1"></i>
-                  {author}
-                  {site && (
-                    <span className="badge bg-info-subtle text-info ms-2 fs-10">{site}</span>
-                  )}
+                  <i className="ri-user-line me-1"></i>{author}
+                  {site && <span className="badge bg-info-subtle text-info ms-2 fs-10">{site}</span>}
                 </p>
               </div>
             </div>
 
-            {/* [NEW] Aperçu corps du message — seulement si existe */}
             {body && (
               <div
                 className="bg-light rounded p-2 mb-2 fs-11 text-muted"
-                style={{
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                  wordBreak: "break-word",
-                  lineHeight: "1.5",
-                  cursor: "pointer",
-                }}
+                style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word", lineHeight: 1.5, cursor: "pointer" }}
                 onClick={() => onDetails(commit)}
                 title="Cliquer pour voir le message complet"
               >
@@ -643,27 +472,19 @@ function CommitCard({ commit, index, onDetails }) {
               </div>
             )}
 
-            {/* Stats +/- */}
             <div className="mt-auto">
               <div className="d-flex mb-2 align-items-center">
                 <div className="flex-grow-1 fs-12">
-                  <span className="text-success fw-semibold">
-                    <i className="ri-add-line"></i>+{commit.additions || 0}
-                  </span>
-                  <span className="ms-2 text-danger fw-semibold">
-                    <i className="ri-subtract-line"></i>-{commit.deletions || 0}
-                  </span>
+                  <span className="text-success fw-semibold"><i className="ri-add-line"></i>+{commit.additions || 0}</span>
+                  <span className="ms-2 text-danger fw-semibold"><i className="ri-subtract-line"></i>-{commit.deletions || 0}</span>
                 </div>
-                <span className="text-muted fs-12">
-                  {commit.total_changes || 0} changes
-                </span>
+                <span className="text-muted fs-12">{commit.total_changes || 0} changes</span>
               </div>
               <div className="progress progress-sm animated-progress">
                 <div className="progress-bar bg-success" style={{ width: `${addPct}%` }}></div>
                 <div className="progress-bar bg-danger"  style={{ width: `${100 - addPct}%` }}></div>
               </div>
             </div>
-
           </div>
         </div>
 
@@ -672,23 +493,17 @@ function CommitCard({ commit, index, onDetails }) {
             <div className="flex-grow-1">
               <span
                 className={`avatar-title avatar-xxs rounded-circle bg-${getBadgeColor(index)}`}
-                style={{ width:24, height:24, display:"inline-flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:10 }}
+                style={{ width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10 }}
               >
                 {getInitials(author)}
               </span>
             </div>
             <div className="d-flex align-items-center gap-2">
               <span className="text-muted fs-11">
-                <i className="ri-calendar-event-fill me-1 align-bottom"></i>
-                {formatDate(commit.authored_date)}
+                <i className="ri-calendar-event-fill me-1 align-bottom"></i>{formatDate(commit.authored_date)}
               </span>
-              {/* [NEW] Bouton "Voir détails" */}
-              <button
-                className="btn btn-xs btn-soft-primary py-0 px-2"
-                style={{ fontSize: "10px" }}
-                onClick={() => onDetails(commit)}
-                title="Voir message complet"
-              >
+              <button className="btn btn-xs btn-soft-primary py-0 px-2" style={{ fontSize: 10 }}
+                onClick={() => onDetails(commit)} title="Voir détails">
                 <i className="ri-eye-line"></i>
               </button>
             </div>
@@ -701,77 +516,105 @@ function CommitCard({ commit, index, onDetails }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CommitsPage() {
-  const [searchParams, setSearchParams]     = useSearchParams();
-  const [projects,          setProjects]    = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
-  const [commits,           setCommits]     = useState([]);
-  const [filtered,          setFiltered]    = useState([]);
-  const [loading,           setLoading]     = useState(false);
-  const [error,             setError]       = useState(null);
-  const [search,            setSearch]      = useState("");
-  const [siteFilter,        setSiteFilter]  = useState("all");
-  const [page,              setPage]        = useState(1);
-  const [detailCommit,      setDetailCommit] = useState(null); // [NEW] modal
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [projects,           setProjects]         = useState([]);
+  const [selectedProjectId,  setSelectedProjectId] = useState(null);
+  const [commits,            setCommits]           = useState([]);
+  const [loading,            setLoading]           = useState(false);
+  const [error,              setError]             = useState(null);
+  const [search,             setSearch]            = useState("");
+  const [siteFilter,         setSiteFilter]        = useState("all");
+  const [sortKey,            setSortKey]           = useState("date");   // [NEW]
+  const [page,               setPage]              = useState(1);
+  const [detailCommit,       setDetailCommit]      = useState(null);
   const perPage = 8;
 
+  // Chargement projets
   useEffect(() => {
-    projectService.getAll().then((data) => {
-      setProjects(data);
-      const urlId   = searchParams.get("project_id");
-      const firstId = urlId ? parseInt(urlId) : data[0]?.id;
-      if (firstId) setSelectedProjectId(firstId);
-    });
-  }, []);
+    projectService.getAll()
+      .then((data) => {
+        setProjects(data);
+        const urlId   = searchParams.get("project_id");
+        const firstId = urlId ? parseInt(urlId) : data[0]?.id;
+        if (firstId) setSelectedProjectId(firstId);
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!selectedProjectId) return;
+  // [FIX] useCallback — référence stable entre les renders
+  const loadCommits = useCallback((projectId) => {
+    if (!projectId) return;
     setLoading(true);
     setError(null);
     setPage(1);
-    api.get(`/projects/${selectedProjectId}/commits`)
-      .then((res) => { setCommits(res.data); setFiltered(res.data); })
+    api.get(`/projects/${projectId}/commits`)
+      .then((res) => {
+        const data = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
+        setCommits(data);
+      })
       .catch(() => setError("Aucun commit trouvé. Lancez une extraction d'abord."))
       .finally(() => setLoading(false));
-  }, [selectedProjectId]);
+  }, []);
 
-  useEffect(() => {
+  useEffect(() => { loadCommits(selectedProjectId); }, [selectedProjectId, loadCommits]);
+
+  // [FIX] useMemo remplace useEffect + setState sur le filtre — plus de state dérivé
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let result = commits;
+
     if (q) {
       result = result.filter((c) =>
         getCommitTitle(c).toLowerCase().includes(q) ||
-        getAuthor(c).toLowerCase().includes(q) ||
+        getAuthor(c).toLowerCase().includes(q)      ||
         (c.gitlab_commit_id || "").toLowerCase().includes(q)
       );
     }
     if (siteFilter !== "all") {
       result = result.filter((c) => getSite(c) === siteFilter);
     }
-    setFiltered(result);
-    setPage(1);
-  }, [search, siteFilter, commits]);
 
-  const sites          = [...new Set(commits.map((c) => getSite(c)).filter(Boolean))].sort();
-  const totalAdditions = commits.reduce((s, c) => s + (c.additions || 0), 0);
-  const totalDeletions = commits.reduce((s, c) => s + (c.deletions || 0), 0);
-  const uniqueAuthors  = new Set(commits.map((c) => getAuthor(c))).size;
-  const avgChanges     = commits.length
-    ? Math.round(commits.reduce((s, c) => s + (c.total_changes || 0), 0) / commits.length)
-    : 0;
+    // [NEW] Tri
+    return [...result].sort((a, b) => {
+      if (sortKey === "date")    return new Date(b.authored_date) - new Date(a.authored_date);
+      if (sortKey === "author")  return getAuthor(a).localeCompare(getAuthor(b));
+      if (sortKey === "changes") return (b.total_changes || 0) - (a.total_changes || 0);
+      return 0;
+    });
+  }, [commits, search, siteFilter, sortKey]);
 
-  const totalPages = Math.ceil(filtered.length / perPage);
-  const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
+  // Reset page sur tout changement de filtre
+  useEffect(() => { setPage(1); }, [search, siteFilter, sortKey]);
+
+  // [NEW] Stats en useMemo — pas de recalcul inutile
+  const sites = useMemo(
+    () => [...new Set(commits.map(getSite).filter(Boolean))].sort(),
+    [commits]
+  );
+  const stats = useMemo(() => ({
+    totalAdditions: commits.reduce((s, c) => s + (c.additions    || 0), 0),
+    totalDeletions: commits.reduce((s, c) => s + (c.deletions    || 0), 0),
+    uniqueAuthors:  new Set(commits.map(getAuthor)).size,
+    avgChanges:     commits.length
+      ? Math.round(commits.reduce((s, c) => s + (c.total_changes || 0), 0) / commits.length)
+      : 0,
+  }), [commits]);
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+  const totalPages      = Math.ceil(filtered.length / perPage);
+  const paginated       = filtered.slice((page - 1) * perPage, page * perPage);
+  const hasActiveFilter = search || siteFilter !== "all";
+
+  const resetFilters = () => { setSearch(""); setSiteFilter("all"); setSortKey("date"); };
 
   return (
     <div className="page-content">
       <div className="container-fluid">
 
-        {/* Modal détail commit */}
+        {/* Modal */}
         {detailCommit && (
-          <CommitDetailModal
-            commit={detailCommit}
-            onClose={() => setDetailCommit(null)}
-          />
+          <CommitDetailModal commit={detailCommit} onClose={() => setDetailCommit(null)} />
         )}
 
         {/* Page Title */}
@@ -779,7 +622,14 @@ export default function CommitsPage() {
           <div className="col-12">
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
               <h4 className="mb-sm-0">
-                <i className="ri-git-commit-line me-2 text-primary"></i>Commits
+                <i className="ri-git-commit-line me-2 text-primary"></i>
+                Commits
+                {/* [NEW] Badge total visible */}
+                {commits.length > 0 && (
+                  <span className="badge bg-primary-subtle text-primary ms-2 fs-13 fw-normal align-middle">
+                    {commits.length}
+                  </span>
+                )}
               </h4>
               <ol className="breadcrumb m-0">
                 <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
@@ -790,52 +640,75 @@ export default function CommitsPage() {
         </div>
 
         {/* Toolbar */}
-        <div className="row g-3 mb-3">
+        <div className="row g-2 mb-3 align-items-center">
           <div className="col-sm-auto">
-            <select
-              className="form-select"
-              style={{ width: 230 }}
+            <select className="form-select" style={{ width: 230 }}
               value={selectedProjectId || ""}
               onChange={(e) => {
                 const id = parseInt(e.target.value);
                 setSelectedProjectId(id);
                 setSearchParams({ project_id: id });
-                setSiteFilter("all");
-                setSearch("");
-              }}
-            >
+                resetFilters();
+              }}>
               <option value="">Choisir un projet...</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
 
           {sites.length > 0 && (
             <div className="col-sm-auto">
-              <select
-                className="form-select"
-                value={siteFilter}
-                onChange={(e) => { setSiteFilter(e.target.value); setPage(1); }}
-              >
+              <select className="form-select" value={siteFilter}
+                onChange={(e) => setSiteFilter(e.target.value)}>
                 <option value="all">Tous les sites</option>
                 {sites.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           )}
 
+          {/* [NEW] Tri */}
+          <div className="col-sm-auto">
+            <select className="form-select" value={sortKey}
+              onChange={(e) => setSortKey(e.target.value)}>
+              <option value="date">Plus récents</option>
+              <option value="changes">+ de changements</option>
+              <option value="author">Auteur (A→Z)</option>
+            </select>
+          </div>
+
           <div className="col-sm">
-            <div className="d-flex justify-content-sm-end gap-2">
+            <div className="d-flex justify-content-sm-end gap-2 flex-wrap">
               <div className="search-box">
-                <input
-                  type="text"
-                  className="form-control"
+                <input type="text" className="form-control"
                   placeholder="SHA, titre, auteur..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+                  onChange={(e) => setSearch(e.target.value)} />
                 <i className="ri-search-line search-icon"></i>
               </div>
+
+              {/* [NEW] Reset visible seulement si filtre actif */}
+              {hasActiveFilter && (
+                <button className="btn btn-soft-warning" onClick={resetFilters} title="Réinitialiser les filtres">
+                  <i className="ri-filter-off-line me-1"></i>Reset
+                </button>
+              )}
+
+              {/* [NEW] Export CSV */}
+              {filtered.length > 0 && (
+                <button className="btn btn-soft-success"
+                  onClick={() => exportCommitsCSV(filtered, selectedProject?.name)}
+                  title={`Exporter ${filtered.length} commits en CSV`}>
+                  <i className="ri-download-2-line me-1"></i>CSV
+                </button>
+              )}
+
+              {/* [NEW] Refresh */}
+              <button className="btn btn-soft-primary"
+                onClick={() => loadCommits(selectedProjectId)}
+                disabled={loading || !selectedProjectId}
+                title="Rafraîchir">
+                <i className={`ri-refresh-line${loading ? " spinning" : ""}`}></i>
+              </button>
+
               <a href="/extraction" className="btn btn-success">
                 <i className="ri-add-line align-bottom me-1"></i>Extraction
               </a>
@@ -847,10 +720,10 @@ export default function CommitsPage() {
         {commits.length > 0 && (
           <div className="row mb-3">
             {[
-              { label: "Total Commits",   value: commits.length,                        color: "primary", icon: "ri-git-commit-line", sub: `${uniqueAuthors} développeurs` },
-              { label: "Total Additions", value: `+${totalAdditions.toLocaleString()}`, color: "success", icon: "ri-add-circle-line",  sub: "Lignes ajoutées"              },
-              { label: "Total Deletions", value: `-${totalDeletions.toLocaleString()}`, color: "danger",  icon: "ri-subtract-line",    sub: "Lignes supprimées"            },
-              { label: "Moy. changes",    value: avgChanges.toLocaleString(),           color: "info",    icon: "ri-file-code-line",   sub: "Par commit"                   },
+              { label: "Total Commits",   value: commits.length,                                     color: "primary", icon: "ri-git-commit-line", sub: `${stats.uniqueAuthors} développeurs`  },
+              { label: "Total Additions", value: `+${stats.totalAdditions.toLocaleString("fr-FR")}`, color: "success", icon: "ri-add-circle-line",  sub: "Lignes ajoutées"                      },
+              { label: "Total Deletions", value: `-${stats.totalDeletions.toLocaleString("fr-FR")}`, color: "danger",  icon: "ri-subtract-line",    sub: "Lignes supprimées"                    },
+              { label: "Moy. changes",    value: stats.avgChanges.toLocaleString("fr-FR"),           color: "info",    icon: "ri-file-code-line",   sub: "Par commit"                           },
             ].map((s, i) => (
               <div key={i} className="col-xl-3 col-sm-6">
                 <div className="card card-animate">
@@ -881,13 +754,10 @@ export default function CommitsPage() {
               <div className="card h-100">
                 <div className="card-header d-flex align-items-center border-bottom-dashed">
                   <div className="flex-grow-1">
-                    <h4 className="card-title mb-1">
-                      <i className="ri-pie-chart-line me-2 text-info"></i>
-                      Commits par développeur
-                    </h4>
+                    <h4 className="card-title mb-1"><i className="ri-pie-chart-line me-2 text-info"></i>Commits par développeur</h4>
                     <p className="text-muted mb-0 fs-12">Distribution par membre de l'équipe</p>
                   </div>
-                  <span className="badge bg-info-subtle text-info fs-12">{uniqueAuthors} devs</span>
+                  <span className="badge bg-info-subtle text-info fs-12">{stats.uniqueAuthors} devs</span>
                 </div>
                 <div className="card-body">
                   <div style={{ height: 260 }}><ContributorsPieChart commits={commits} /></div>
@@ -898,15 +768,10 @@ export default function CommitsPage() {
               <div className="card h-100">
                 <div className="card-header d-flex align-items-center border-bottom-dashed">
                   <div className="flex-grow-1">
-                    <h4 className="card-title mb-1">
-                      <i className="ri-donut-chart-line me-2 text-danger"></i>
-                      Volume de contribution
-                    </h4>
+                    <h4 className="card-title mb-1"><i className="ri-donut-chart-line me-2 text-danger"></i>Volume de contribution</h4>
                     <p className="text-muted mb-0 fs-12">Lignes ajoutées — top 6 développeurs</p>
                   </div>
-                  <span className="badge bg-danger-subtle text-danger fs-12">
-                    +{totalAdditions.toLocaleString()} lignes
-                  </span>
+                  <span className="badge bg-danger-subtle text-danger fs-12">+{stats.totalAdditions.toLocaleString("fr-FR")} lignes</span>
                 </div>
                 <div className="card-body">
                   <div style={{ height: 260 }}><AdditionsPolarChart commits={commits} /></div>
@@ -930,56 +795,58 @@ export default function CommitsPage() {
 
         {!loading && !error && paginated.length > 0 && (
           <>
-            {/* [NEW] Compteur résultats filtrés */}
-            <div className="d-flex align-items-center justify-content-between mb-3">
+            <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
               <p className="text-muted fs-13 mb-0">
                 <i className="ri-git-commit-line me-1"></i>
                 <strong>{filtered.length}</strong> commit{filtered.length > 1 ? "s" : ""}
-                {search && <span className="ms-1">pour "<strong>{search}</strong>"</span>}
+                {search && <span className="ms-1">pour « <strong>{search}</strong> »</span>}
+                {filtered.length < commits.length && (
+                  <span className="text-warning ms-1">(sur {commits.length} total)</span>
+                )}
               </p>
               <span className="text-muted fs-12">
-                <i className="ri-eye-line me-1"></i>
-                Cliquez <i className="ri-eye-line"></i> pour voir le message complet
+                Cliquez sur <i className="ri-eye-line"></i> pour voir le message complet
               </span>
             </div>
 
             <div className="row">
               {paginated.map((commit, index) => (
-                <CommitCard
-                  key={commit.id}
-                  commit={commit}
-                  index={index}
-                  onDetails={setDetailCommit}  // [NEW]
-                />
+                <CommitCard key={commit.id} commit={commit} index={index} onDetails={setDetailCommit} />
               ))}
             </div>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              totalItems={filtered.length}
-              perPage={perPage}
-              onPageChange={setPage}
-            />
+
+            <Pagination page={page} totalPages={totalPages} totalItems={filtered.length} perPage={perPage} onPageChange={setPage} />
           </>
         )}
 
-        {!loading && !error && filtered.length === 0 && selectedProjectId && (
-          <EmptyState
-            icon="ri-git-commit-line"
-            title="Aucun commit trouvé"
-            description="Essayez une autre recherche ou lancez une extraction."
-          />
+        {/* [NEW] Empty state filtre actif — message dédié + bouton reset */}
+        {!loading && !error && filtered.length === 0 && commits.length > 0 && (
+          <div className="text-center py-5">
+            <i className="ri-search-line fs-1 text-muted d-block mb-3 opacity-50"></i>
+            <p className="text-muted fs-14 fw-semibold mb-1">Aucun commit ne correspond à votre recherche</p>
+            <p className="text-muted fs-13 mb-3">Essayez avec d'autres critères ou réinitialisez les filtres.</p>
+            <button className="btn btn-soft-primary btn-sm" onClick={resetFilters}>
+              <i className="ri-refresh-line me-1"></i>Réinitialiser les filtres
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && commits.length === 0 && selectedProjectId && (
+          <EmptyState icon="ri-git-commit-line" title="Aucun commit trouvé"
+            description="Lancez une extraction pour récupérer les commits de ce projet." />
         )}
 
         {!selectedProjectId && !loading && (
-          <EmptyState
-            icon="ri-git-repository-line"
-            title="Sélectionnez un projet"
-            description="Choisissez un projet pour voir ses commits."
-          />
+          <EmptyState icon="ri-git-repository-line" title="Sélectionnez un projet"
+            description="Choisissez un projet pour voir ses commits." />
         )}
 
       </div>
+
+      <style>{`
+        .spinning { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }

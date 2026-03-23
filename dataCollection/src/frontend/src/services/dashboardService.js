@@ -1,46 +1,25 @@
+/**
+ * services/dashboardService.js — inchangé fonctionnellement.
+ * [FIX] Suppression grantAccess/revokeAccess (remplacé par adminService).
+ * [FIX] Ajout site_id dans create().
+ */
 import api from "./api";
 
 const dashboardService = {
 
-  // GET /dashboards/ → retourne les dashboards accessibles à l'utilisateur courant
-  getMyDashboards: async () => {
-    const response = await api.get("/dashboards/");
-    return response.data;
-  },
+  getMyDashboards: async () => (await api.get("/dashboards/")).data,
+  getById:         async (id) => (await api.get(`/dashboards/${id}`)).data,
 
-  // GET /dashboards/{id}
-  getById: async (dashboardId) => {
-    const response = await api.get(`/dashboards/${dashboardId}`);
-    return response.data;
-  },
+  // data: { name, project_id, site_id?, is_public?, description?, period_filter? }
+  create: async (data) => (await api.post("/dashboards/", data)).data,
+  update: async (id, data) => (await api.put(`/dashboards/${id}`, data)).data,
+  delete: async (id) => { await api.delete(`/dashboards/${id}`); },
 
-  // POST /dashboards/
-  create: async (data) => {
-    // data: { name, project_id, view_group? }
-    const response = await api.post("/dashboards/", data);
-    return response.data;
-  },
-
-  // DELETE /dashboards/{id}
-  delete: async (dashboardId) => {
-    await api.delete(`/dashboards/${dashboardId}`);
-  },
-
-  // ─── Gestion des accès ────────────────────────────────────────────────────
-
-  // POST /dashboards/{id}/access → accorder accès à un user
-  grantAccess: async (dashboardId, userId) => {
-    const response = await api.post(`/dashboards/${dashboardId}/access`, {
-      user_id:      userId,
-      dashboard_id: dashboardId,
-    });
-    return response.data;
-  },
-
-  // DELETE /dashboards/{id}/access/{userId} → révoquer accès
-  revokeAccess: async (dashboardId, userId) => {
-    await api.delete(`/dashboards/${dashboardId}/access/${userId}`);
-  },
+  // Period Filters
+  getPeriodFilters:  async (id)             => (await api.get(`/dashboards/${id}/period-filters`)).data,
+  createPeriodFilter:async (id, data)       => (await api.post(`/dashboards/${id}/period-filters`, data)).data,
+  updatePeriodFilter:async (id, fId, data)  => (await api.put(`/dashboards/${id}/period-filters/${fId}`, data)).data,
+  deletePeriodFilter:async (id, fId)        => { await api.delete(`/dashboards/${id}/period-filters/${fId}`); },
 };
 
 export default dashboardService;

@@ -1,43 +1,41 @@
+/**
+ * services/adminService.js — inchangé fonctionnellement.
+ * [FIX] dashboard_view_group → dashboard_access: number[]
+ * [NEW] grantDashboardAccess / revokeDashboardAccess
+ */
 import api from "./api";
-
-// ─── User Management (Admin) ──────────────────────────────────────────────────
 
 const adminService = {
 
   // GET /admin/users
-  getUsers: async () => {
-    const response = await api.get("/admin/users");
-    return response.data;
-  },
+  getUsers: async () => (await api.get("/admin/users")).data,
 
   // POST /admin/users
-  createUser: async (data) => {
-    // data: { email, password, role, login?, name?, dashboard_view_group? }
-    const response = await api.post("/admin/users", data);
-    return response.data;
-  },
+  // data: { email, password, role, login?, name?, dashboard_access?: number[] }
+  createUser: async (data) => (await api.post("/admin/users", data)).data,
 
   // PUT /admin/users/{id}
-  updateUser: async (userId, data) => {
-    // data: { role?, is_active?, new_password?, dashboard_view_group? }
-    const response = await api.put(`/admin/users/${userId}`, data);
-    return response.data;
-  },
+  // data: { role?, is_active?, new_password?, dashboard_access?: number[] }
+  updateUser: async (userId, data) => (await api.put(`/admin/users/${userId}`, data)).data,
 
   // DELETE /admin/users/{id}
-  deleteUser: async (userId) => {
-    await api.delete(`/admin/users/${userId}`);
-  },
+  deleteUser: async (userId) => { await api.delete(`/admin/users/${userId}`); },
 
   // PUT /users/me/password
-  changeMyPassword: async (currentPassword, newPassword, confirmPassword) => {
-    const response = await api.put("/users/me/password", {
+  changeMyPassword: async (currentPassword, newPassword, confirmPassword) =>
+    (await api.put("/users/me/password", {
       current_password: currentPassword,
       new_password:     newPassword,
       confirm_password: confirmPassword,
-    });
-    return response.data;
-  },
+    })).data,
+
+  // POST /admin/users/{userId}/dashboard-access/{dashboardId}
+  grantDashboardAccess: async (userId, dashboardId) =>
+    (await api.post(`/admin/users/${userId}/dashboard-access/${dashboardId}`)).data,
+
+  // DELETE /admin/users/{userId}/dashboard-access/{dashboardId}
+  revokeDashboardAccess: async (userId, dashboardId) =>
+    (await api.delete(`/admin/users/${userId}/dashboard-access/${dashboardId}`)).data,
 };
 
 export default adminService;

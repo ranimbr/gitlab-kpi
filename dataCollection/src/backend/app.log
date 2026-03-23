@@ -888,3 +888,347 @@ DETAIL:  La ligne en échec contient (2, null, Petr Štetiar, Petr Štetiar, pet
 2026-03-10 01:36:43,359 | INFO | app.services.extraction.extraction_service | MONTHLY extraction completed — lot id=3 project=prplOS file=dumps\lot_3_project_1_period_1.json md5=f7cd17cce59a0c1bdcff2c9d46fe1de3
 2026-03-10 01:36:43,393 | INFO | app.services.kpi.kpi_service | KpiSnapshot saved — lot_id=3 project_id=1 period=2025/01 site=None | commits=10 devs=2 approved_rate=88.89% merged_rate=75.00% avg_review=0.2h
 2026-03-10 01:36:43,396 | INFO | app.api.routers.extraction | KPI snapshot generated after MONTHLY — project_id=1 period_id=1
+2026-03-10 21:58:01,951 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-10 21:58:01,952 | INFO | app.main | Database initialized
+2026-03-10 21:58:02,081 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-10 21:58:02,083 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-10 21:58:02,087 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-10 21:58:02,087 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-10 21:58:02,088 | INFO | app.main | Scheduler started
+2026-03-10 22:07:41,908 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359 "HTTP/1.1 200 OK"
+2026-03-10 22:07:41,953 | INFO | app.api.routers.projects | Project created — id=2 name=tr181-homeplug gitlab_id=71642359
+2026-03-10 22:08:06,261 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/repository/commits?with_stats=true&page=1&per_page=100 "HTTP/1.1 200 OK"
+2026-03-10 22:08:06,281 | WARNING | app.services.extraction.extraction_service | Author without GitLab account — name='prplbot' email='bot@prplfoundation.org' → synthetic_id=1104498030
+2026-03-10 22:08:06,299 | WARNING | app.services.extraction.extraction_service | Author without GitLab account — name='Sathishkumar Selvam' email='sathishkumar.selvam@capgemini.com' → synthetic_id=130960352
+2026-03-10 22:08:06,310 | WARNING | app.services.extraction.extraction_service | Author without GitLab account — name='Girdhari Yadav' email='girdhari.yadav_ext@softathome.com' → synthetic_id=992916380
+2026-03-10 22:08:06,317 | WARNING | app.services.extraction.extraction_service | Author without GitLab account — name='Francisco Ferreira' email='francisco.ferreira_ext@softathome.com' → synthetic_id=1323534878
+2026-03-10 22:08:06,326 | WARNING | app.services.extraction.extraction_service | Author without GitLab account — name='Matthias Franck' email='matthias.franck@softathome.com' → synthetic_id=1403623672
+2026-03-10 22:08:06,339 | WARNING | app.services.extraction.extraction_service | Author without GitLab account — name='Ward Lindekens' email='ward.lindekens_ext@softathome.com' → synthetic_id=466730193
+2026-03-10 22:08:06,365 | INFO | app.services.extraction.extraction_service | Commits — created:12 skipped:0 project=tr181-homeplug
+2026-03-10 22:08:07,513 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests?state=all&with_labels_details=false&page=1&per_page=100 "HTTP/1.1 200 OK"
+2026-03-10 22:08:07,964 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/7/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:08,550 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/6/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:09,069 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/5/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:09,704 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/4/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:10,143 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/3/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:10,589 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/2/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:11,083 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/1/approvals "HTTP/1.1 200 OK"
+2026-03-10 22:08:11,092 | INFO | app.services.extraction.extraction_service | MRs — created:7 skipped:0 project=tr181-homeplug
+2026-03-10 22:08:11,118 | INFO | app.services.extraction.extraction_service | REALTIME extraction completed — lot id=4 project=tr181-homeplug
+2026-03-10 22:08:11,162 | INFO | app.services.kpi.kpi_service | KpiSnapshot saved — lot_id=4 project_id=2 period=2026/03 site=None | commits=0 devs=8 approved_rate=0.00% merged_rate=0.00% avg_review=0.0h
+2026-03-10 22:08:11,164 | INFO | app.api.routers.extraction | KPI snapshot generated after REALTIME — project_id=2 period_id=2
+2026-03-10 22:09:21,120 | INFO | app.services.kpi.threshold_service | KpiThreshold created — project=2 kpi=mr_rate_per_site warning=1.5 critical=1.0
+2026-03-11 01:15:55,439 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:15:55,440 | INFO | app.main | Database initialized
+2026-03-11 01:15:55,553 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:15:55,553 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:15:55,557 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:15:55,557 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:15:55,557 | INFO | app.main | Scheduler started
+2026-03-11 01:20:51,664 | INFO | app.main | Scheduler stopped
+2026-03-11 01:20:51,673 | INFO | app.main | Application shutdown
+2026-03-11 01:20:51,693 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:20:57,024 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:20:57,025 | INFO | app.main | Database initialized
+2026-03-11 01:20:57,136 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:20:57,136 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:20:57,140 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:20:57,140 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:20:57,141 | INFO | app.main | Scheduler started
+2026-03-11 01:21:26,948 | INFO | app.main | Scheduler stopped
+2026-03-11 01:21:26,948 | INFO | app.main | Application shutdown
+2026-03-11 01:21:26,948 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:21:30,496 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:21:30,497 | INFO | app.main | Database initialized
+2026-03-11 01:21:30,584 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:21:30,585 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:21:30,587 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:21:30,587 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:21:30,588 | INFO | app.main | Scheduler started
+2026-03-11 01:22:00,559 | INFO | app.main | Scheduler stopped
+2026-03-11 01:22:00,561 | INFO | app.main | Application shutdown
+2026-03-11 01:22:00,564 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:22:05,109 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:22:05,110 | INFO | app.main | Database initialized
+2026-03-11 01:22:05,277 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:22:05,278 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:22:05,282 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:22:05,282 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:22:05,282 | INFO | app.main | Scheduler started
+2026-03-11 01:22:35,192 | INFO | app.main | Scheduler stopped
+2026-03-11 01:22:35,193 | INFO | app.main | Application shutdown
+2026-03-11 01:22:35,196 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:22:38,176 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:22:38,177 | INFO | app.main | Database initialized
+2026-03-11 01:22:38,267 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:22:38,269 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:22:38,271 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:22:38,272 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:22:38,272 | INFO | app.main | Scheduler started
+2026-03-11 01:23:08,240 | INFO | app.main | Scheduler stopped
+2026-03-11 01:23:08,241 | INFO | app.main | Application shutdown
+2026-03-11 01:23:08,242 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:23:10,922 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:23:10,923 | INFO | app.main | Database initialized
+2026-03-11 01:23:11,005 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:23:11,006 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:23:11,008 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:23:11,008 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:23:11,009 | INFO | app.main | Scheduler started
+2026-03-11 01:23:41,012 | INFO | app.main | Scheduler stopped
+2026-03-11 01:23:41,012 | INFO | app.main | Application shutdown
+2026-03-11 01:23:41,013 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:23:44,076 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:23:44,077 | INFO | app.main | Database initialized
+2026-03-11 01:23:44,181 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:23:44,181 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:23:44,184 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:23:44,184 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:23:44,184 | INFO | app.main | Scheduler started
+2026-03-11 01:24:14,278 | INFO | app.main | Scheduler stopped
+2026-03-11 01:24:14,281 | INFO | app.main | Application shutdown
+2026-03-11 01:24:14,289 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:24:20,086 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:24:20,088 | INFO | app.main | Database initialized
+2026-03-11 01:24:20,279 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:24:20,280 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:24:20,284 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:24:20,285 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:24:20,285 | INFO | app.main | Scheduler started
+2026-03-11 01:24:50,074 | INFO | app.main | Scheduler stopped
+2026-03-11 01:24:50,075 | INFO | app.main | Application shutdown
+2026-03-11 01:24:50,077 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:24:53,246 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:24:53,247 | INFO | app.main | Database initialized
+2026-03-11 01:24:53,358 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:24:53,359 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:24:53,363 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:24:53,363 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:24:53,364 | INFO | app.main | Scheduler started
+2026-03-11 01:25:23,294 | INFO | app.main | Scheduler stopped
+2026-03-11 01:25:23,295 | INFO | app.main | Application shutdown
+2026-03-11 01:25:23,295 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:25:25,621 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:25:25,621 | INFO | app.main | Database initialized
+2026-03-11 01:25:25,703 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:25:25,703 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:25:25,705 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:25:25,706 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:25:25,706 | INFO | app.main | Scheduler started
+2026-03-11 01:25:51,593 | INFO | app.main | Scheduler stopped
+2026-03-11 01:25:51,593 | INFO | app.main | Application shutdown
+2026-03-11 01:25:51,593 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:25:54,970 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:25:54,970 | INFO | app.main | Database initialized
+2026-03-11 01:25:55,055 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:25:55,056 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:25:55,058 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:25:55,058 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:25:55,059 | INFO | app.main | Scheduler started
+2026-03-11 01:26:25,079 | INFO | app.main | Scheduler stopped
+2026-03-11 01:26:25,080 | INFO | app.main | Application shutdown
+2026-03-11 01:26:25,083 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:26:31,636 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:26:31,637 | INFO | app.main | Database initialized
+2026-03-11 01:26:31,854 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:26:31,855 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:26:31,860 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:26:31,860 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:26:31,860 | INFO | app.main | Scheduler started
+2026-03-11 01:28:25,433 | INFO | app.main | Scheduler stopped
+2026-03-11 01:28:25,439 | INFO | app.main | Application shutdown
+2026-03-11 01:28:25,454 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:28:30,633 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:28:30,634 | INFO | app.main | Database initialized
+2026-03-11 01:28:30,904 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:28:30,906 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:28:30,912 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:28:30,913 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:28:30,913 | INFO | app.main | Scheduler started
+2026-03-11 01:28:42,828 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-11 01:38:33,191 | INFO | app.main | Scheduler stopped
+2026-03-11 01:38:33,197 | INFO | app.main | Application shutdown
+2026-03-11 01:38:33,211 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-11 01:42:15,514 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 01:42:15,515 | INFO | app.main | Database initialized
+2026-03-11 01:42:15,628 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 01:42:15,629 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 01:42:15,632 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 01:42:15,632 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 01:42:15,632 | INFO | app.main | Scheduler started
+2026-03-11 11:29:08,564 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-11 11:29:08,565 | INFO | app.main | Database initialized
+2026-03-11 11:29:08,690 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-11 11:29:08,690 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-11 11:29:08,694 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-11 11:29:08,695 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-11 11:29:08,695 | INFO | app.main | Scheduler started
+2026-03-11 11:30:03,312 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-11 14:14:36,409 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-11 15:18:36,525 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-11 15:59:20,303 | INFO | app.api.routers.extraction | Download requested — lot_id=3 file=dumps\lot_3_project_1_period_1.json by admin_id=1
+2026-03-11 16:58:44,179 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-13 09:43:44,312 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-13 09:43:44,313 | INFO | app.main | Database initialized
+2026-03-13 09:43:44,464 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-13 09:43:44,464 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-13 09:43:44,469 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-13 09:43:44,470 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-13 09:43:44,470 | INFO | app.main | Scheduler started
+2026-03-13 09:44:34,293 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-13 09:44:52,212 | INFO | app.api.routers.admin_users | User updated by admin 1 — user id=2
+2026-03-13 10:17:40,360 | INFO | app.api.routers.auth | Login success — user id=1 role=admin
+2026-03-15 17:55:08,262 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 17:55:08,263 | INFO | app.main | Database initialized
+2026-03-15 17:55:08,611 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 17:55:08,611 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 17:55:08,618 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 17:55:08,619 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 17:55:08,619 | INFO | app.main | Scheduler started
+2026-03-15 17:55:24,042 | INFO | app.main | Scheduler stopped
+2026-03-15 17:55:24,042 | INFO | app.main | Application shutdown
+2026-03-15 17:55:24,042 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 18:01:40,057 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 18:01:40,058 | INFO | app.main | Database initialized
+2026-03-15 18:01:40,185 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 18:01:40,186 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 18:01:40,190 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 18:01:40,191 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 18:01:40,191 | INFO | app.main | Scheduler started
+2026-03-15 22:00:11,061 | INFO | app.main | Scheduler stopped
+2026-03-15 22:00:11,067 | INFO | app.main | Application shutdown
+2026-03-15 22:00:11,074 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 22:04:49,717 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 22:04:49,717 | INFO | app.main | Database initialized
+2026-03-15 22:04:49,866 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 22:04:49,867 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 22:04:49,870 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 22:04:49,871 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 22:04:49,871 | INFO | app.main | Scheduler started
+2026-03-15 22:05:06,691 | INFO | app.api.routers.auth | Login success — user id=1
+2026-03-15 22:13:35,984 | INFO | app.api.routers.gitlab_configs | GitLab config created — id=1 domain=gitlab.com by admin=1
+2026-03-15 22:14:58,239 | INFO | app.services.admin.site_service | Site created — id=1 name=tunis
+2026-03-15 22:16:03,302 | INFO | app.api.routers.gitlab_configs | GitLab config deleted — id=1 by admin=1
+2026-03-15 22:17:11,374 | INFO | app.api.routers.gitlab_configs | GitLab config created — id=2 domain=gitlab.com by admin=1
+2026-03-15 22:17:43,787 | INFO | app.services.admin.site_service | Site deleted — id=1
+2026-03-15 22:18:00,155 | INFO | app.services.admin.site_service | Site created — id=2 name=Tunis
+2026-03-15 22:20:08,440 | INFO | app.api.routers.gitlab_configs | GitLab config created — id=3 domain=https://gitlab.com by admin=1
+2026-03-15 22:20:11,411 | INFO | app.api.routers.gitlab_configs | GitLab config deleted — id=2 by admin=1
+2026-03-15 22:20:34,067 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066 "HTTP/1.1 200 OK"
+2026-03-15 22:20:34,091 | INFO | app.api.routers.projects | Project created — id=1 name=prplOS gitlab_id=65926066
+2026-03-15 22:20:44,595 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/repository/commits?with_stats=true&page=1&per_page=100 "HTTP/1.1 200 OK"
+2026-03-15 22:20:44,628 | WARNING | app.services.extraction.extraction_service | External author — name='Petr Štetiar' email='petr.stetiar@prplfoundation.org' → synthetic_id=1971997701
+2026-03-15 22:20:44,703 | INFO | app.services.extraction.extraction_service | Commits — created:12 skipped:0 project=prplOS
+2026-03-15 22:20:46,042 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests?state=all&with_labels_details=false&page=1&per_page=100 "HTTP/1.1 200 OK"
+2026-03-15 22:20:46,840 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/11/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:48,911 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/10/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:49,346 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/9/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:49,816 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/8/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:50,568 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/7/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:51,429 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/6/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:52,092 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/5/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:53,061 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/4/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:53,472 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/3/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:54,210 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/2/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:54,696 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/65926066/merge_requests/1/approvals "HTTP/1.1 200 OK"
+2026-03-15 22:20:54,700 | INFO | app.services.extraction.extraction_service | MRs — created:11 skipped:0 project=prplOS
+2026-03-15 22:20:54,720 | INFO | app.services.extraction.extraction_service | REALTIME extraction completed — lot id=1 project=prplOS
+2026-03-15 22:20:54,781 | INFO | app.services.kpi.kpi_service | KpiSnapshot saved — lot_id=1 project_id=1 period=2026/03 site_id=None | commits=0 devs=2 approved_rate=0.00% merged_rate=0.00% avg_review=0.0h
+2026-03-15 22:20:54,786 | INFO | app.api.routers.extraction | KPI snapshot generated after REALTIME — project_id=1 period_id=2
+2026-03-15 22:35:27,797 | INFO | app.api.routers.auth | Login success — user id=1
+2026-03-15 22:56:50,521 | INFO | app.api.routers.auth | Login success — user id=1
+2026-03-15 23:09:35,403 | INFO | app.api.routers.dashboards | Dashboard created — id=1 by admin=1
+2026-03-15 23:25:52,105 | INFO | app.main | Scheduler stopped
+2026-03-15 23:25:52,110 | INFO | app.main | Application shutdown
+2026-03-15 23:25:52,120 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 23:25:56,602 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 23:25:56,603 | INFO | app.main | Database initialized
+2026-03-15 23:25:56,711 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 23:25:56,712 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 23:25:56,717 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 23:25:56,717 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 23:25:56,717 | INFO | app.main | Scheduler started
+2026-03-15 23:26:26,399 | INFO | app.main | Scheduler stopped
+2026-03-15 23:26:26,400 | INFO | app.main | Application shutdown
+2026-03-15 23:26:26,405 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 23:26:30,082 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 23:26:30,083 | INFO | app.main | Database initialized
+2026-03-15 23:26:30,180 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 23:26:30,181 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 23:26:30,184 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 23:26:30,184 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 23:26:30,184 | INFO | app.main | Scheduler started
+2026-03-15 23:26:49,358 | INFO | app.main | Scheduler stopped
+2026-03-15 23:26:49,359 | INFO | app.main | Application shutdown
+2026-03-15 23:26:49,360 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 23:26:52,882 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 23:26:52,883 | INFO | app.main | Database initialized
+2026-03-15 23:26:52,976 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 23:26:52,976 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 23:26:52,980 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 23:26:52,980 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 23:26:52,980 | INFO | app.main | Scheduler started
+2026-03-15 23:27:22,957 | INFO | app.main | Scheduler stopped
+2026-03-15 23:27:22,958 | INFO | app.main | Application shutdown
+2026-03-15 23:27:22,960 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 23:27:25,890 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 23:27:25,891 | INFO | app.main | Database initialized
+2026-03-15 23:27:25,977 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 23:27:25,977 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 23:27:25,980 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 23:27:25,980 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 23:27:25,980 | INFO | app.main | Scheduler started
+2026-03-15 23:30:54,740 | INFO | app.main | Scheduler stopped
+2026-03-15 23:30:54,742 | INFO | app.main | Application shutdown
+2026-03-15 23:30:54,743 | INFO | apscheduler.scheduler | Scheduler has been shut down
+2026-03-15 23:41:21,046 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-15 23:41:21,047 | INFO | app.main | Database initialized
+2026-03-15 23:41:21,288 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-15 23:41:21,288 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-15 23:41:21,293 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-15 23:41:21,293 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-15 23:41:21,293 | INFO | app.main | Scheduler started
+2026-03-16 12:15:38,998 | INFO | app.database.init_db | ✅ Database tables created / verified successfully
+2026-03-16 12:15:38,999 | INFO | app.main | Database initialized
+2026-03-16 12:15:39,141 | INFO | apscheduler.scheduler | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-16 12:15:39,142 | INFO | app.services.scheduler.scheduler | Scheduler configured — last day of month 20:00 UTC
+2026-03-16 12:15:39,146 | INFO | apscheduler.scheduler | Added job "Monthly KPI Generation" to job store "default"
+2026-03-16 12:15:39,146 | INFO | apscheduler.scheduler | Scheduler started
+2026-03-16 12:15:39,146 | INFO | app.main | Scheduler started
+2026-03-16 12:16:48,764 | INFO | app.api.routers.auth | Login success — user id=1
+2026-03-16 12:17:14,478 | INFO | app.services.admin.user_service | User created — id=2 email=ranimbr04@gmail.com role=user
+2026-03-16 12:17:42,595 | INFO | app.api.routers.auth | Login success — user id=2
+2026-03-16 12:29:35,210 | INFO | app.api.routers.auth | Login success — user id=1
+2026-03-16 12:44:25,763 | INFO | app.services.admin.user_service | User updated — id=2
+2026-03-16 12:56:27,810 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359 "HTTP/1.1 200 OK"
+2026-03-16 12:56:27,839 | INFO | app.api.routers.projects | Project created — id=2 name=tr181-homeplug gitlab_id=71642359
+2026-03-16 12:56:45,017 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/repository/commits?with_stats=true&page=1&per_page=100 "HTTP/1.1 200 OK"
+2026-03-16 12:56:45,038 | WARNING | app.services.extraction.extraction_service | External author — name='prplbot' email='bot@prplfoundation.org' → synthetic_id=1104498030
+2026-03-16 12:56:45,040 | INFO | app.services.extraction.extraction_service | Bot detected — username='None' name='prplbot' → is_bot=True
+2026-03-16 12:56:45,054 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='prplbot' is_bot=True project_id=2
+2026-03-16 12:56:45,070 | WARNING | app.services.extraction.extraction_service | External author — name='Sathishkumar Selvam' email='sathishkumar.selvam@capgemini.com' → synthetic_id=130960352
+2026-03-16 12:56:45,073 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='Sathishkumar Selvam' is_bot=False project_id=2
+2026-03-16 12:56:45,084 | WARNING | app.services.extraction.extraction_service | External author — name='Girdhari Yadav' email='girdhari.yadav_ext@softathome.com' → synthetic_id=992916380
+2026-03-16 12:56:45,086 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='Girdhari Yadav' is_bot=False project_id=2
+2026-03-16 12:56:45,092 | WARNING | app.services.extraction.extraction_service | External author — name='Francisco Ferreira' email='francisco.ferreira_ext@softathome.com' → synthetic_id=1323534878
+2026-03-16 12:56:45,094 | INFO | app.services.extraction.extraction_service | Bot detected — username='None' name='Francisco Ferreira' → is_bot=True
+2026-03-16 12:56:45,096 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='Francisco Ferreira' is_bot=True project_id=2
+2026-03-16 12:56:45,103 | WARNING | app.services.extraction.extraction_service | External author — name='Matthias Franck' email='matthias.franck@softathome.com' → synthetic_id=1403623672
+2026-03-16 12:56:45,106 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='Matthias Franck' is_bot=False project_id=2
+2026-03-16 12:56:45,118 | WARNING | app.services.extraction.extraction_service | External author — name='Ward Lindekens' email='ward.lindekens_ext@softathome.com' → synthetic_id=466730193
+2026-03-16 12:56:45,122 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='Ward Lindekens' is_bot=False project_id=2
+2026-03-16 12:56:45,146 | INFO | app.services.extraction.extraction_service | Commits — created:12 skipped:0 project=tr181-homeplug
+2026-03-16 12:56:46,049 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests?state=all&with_labels_details=false&page=1&per_page=100 "HTTP/1.1 200 OK"
+2026-03-16 12:56:46,526 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/7/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:46,539 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='boutheina_g' is_bot=False project_id=2
+2026-03-16 12:56:46,985 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/6/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:46,996 | INFO | app.services.extraction.extraction_service | Developer created from extraction — username='jayamathi-code' is_bot=False project_id=2
+2026-03-16 12:56:47,532 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/5/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:48,063 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/4/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:48,629 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/3/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:49,098 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/2/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:49,582 | INFO | httpx | HTTP Request: GET https://gitlab.com/api/v4/projects/71642359/merge_requests/1/approvals "HTTP/1.1 200 OK"
+2026-03-16 12:56:49,585 | INFO | app.services.extraction.extraction_service | MRs — created:7 skipped:0 project=tr181-homeplug
+2026-03-16 12:56:49,608 | INFO | app.services.extraction.extraction_service | REALTIME extraction completed — lot id=2 project=tr181-homeplug
+2026-03-16 12:56:49,681 | INFO | app.services.kpi.kpi_service | KpiSnapshot saved — lot_id=2 project_id=2 period=2026/03 site_id=None | commits=0 devs=0 approved_rate=0.00% merged_rate=0.00% avg_review=0.0h
+2026-03-16 12:56:49,687 | INFO | app.api.routers.extraction | KPI snapshot generated after REALTIME — project_id=2 period_id=2

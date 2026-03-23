@@ -1,68 +1,35 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/*
+ * src/index.css
+ *
+ * NETTOYAGE : suppression des styles Vite par défaut qui interfèrent
+ * avec le thème Velzon :
+ *   - body { display: flex; place-items: center } → cassait le layout sidebar
+ *   - button { background-color, border } → écrasait les boutons Bootstrap
+ *   - :root { color, background-color } → conflits avec data-bs-theme dark/light
+ *   - @media prefers-color-scheme → doublon avec ThemeCustomizer
+ *
+ * Velzon gère lui-même :
+ *   - font-family via Bootstrap + theme CSS
+ *   - color-scheme via data-bs-theme="light|dark"
+ *   - layout via .app-menu, .main-content, #layout-wrapper
+ */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Reset minimal compatible Velzon ──────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
+/* Velzon a besoin que body soit display:block (pas flex) */
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* Évite que les images dépassent leur conteneur */
+img {
+  max-width: 100%;
 }

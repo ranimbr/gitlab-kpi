@@ -1,16 +1,14 @@
-# services/gitlab/gitlab_mapper.py
+"""
+services/gitlab/gitlab_mapper.py — inchangé fonctionnellement.
+map_developer : site_id FK, company. map_merge_request : review_time_hours.
+"""
 from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
-
 class GitLabMapper:
-
-    # =========================================================================
-    # PROJECT
-    # =========================================================================
 
     @staticmethod
     def map_project(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -25,95 +23,59 @@ class GitLabMapper:
             "archived":          data.get("archived", False),
         }
 
-    # =========================================================================
-    # DEVELOPER
-    # =========================================================================
-
     @staticmethod
     def map_developer(
-        data:       Dict[str, Any],
-        project_id: int,
-        group_id:   Optional[int] = None,
-        # ✅ CORRECTION POINT 1 — "site" supprimé du Developer
-        # Le site est porté par DeveloperGroup, pas Developer
-        # Pour assigner un site à un développeur → assigner le groupe correct
+        data: Dict[str, Any], project_id: int,
+        group_id: Optional[int] = None, site_id: Optional[int] = None,
+        company: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Mappe les données brutes d'un auteur GitLab vers un dict Developer.
-
-        Note : "site" n'est plus un attribut de Developer.
-        Le site d'un développeur se lit via developer.group.site.
-        Pour affecter un site à un développeur, assigner group_id
-        vers un DeveloperGroup qui a le bon site.
-        """
         gitlab_user_id = data.get("id")
-
         if gitlab_user_id is None:
-            logger.error(
-                f"map_developer called with id=None — "
-                f"username='{data.get('username')}' email='{data.get('email')}' "
-                f"project_id={project_id}. Missing synthetic_id in _resolve_developer."
-            )
-
+            logger.warning(f"map_developer: id=None — username='{data.get('username')}' project_id={project_id}")
         return {
             "gitlab_user_id": gitlab_user_id,
             "username":       data.get("username") or "unknown",
             "name":           data.get("name")     or None,
             "email":          data.get("email")    or None,
+            "company":        company,
             "project_id":     project_id,
             "group_id":       group_id,
-            # ✅ "site" supprimé — hérité via DeveloperGroup
+            "site_id":        site_id,
+            "is_active":      True,
         }
-
-    # =========================================================================
-    # COMMIT
-    # =========================================================================
 
     @staticmethod
     def map_commit(
-        data:              Dict[str, Any],
-        project_id:        int,
-        developer_id:      Optional[int] = None,
-        extraction_lot_id: Optional[int] = None,
+        data: Dict[str, Any], project_id: int,
+        developer_id: Optional[int] = None, extraction_lot_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-
         def parse_dt(val: str) -> datetime:
             return datetime.fromisoformat(val.replace("Z", "+00:00"))
-
         authored_date  = parse_dt(data["authored_date"])
         committed_date = parse_dt(data["committed_date"])
-
-        full_message = data.get("message", "")
-        title        = full_message.split("\n", 1)[0]
-        stats        = data.get("stats") or {}
-
+        full_message   = data.get("message", "")
+        title          = full_message.split("\n", 1)[0]
+        stats          = data.get("stats") or {}
         return {
             "gitlab_commit_id":  data["id"],
             "title":             title,
             "message":           full_message,
             "authored_date":     authored_date,
             "committed_date":    committed_date,
-            "additions":         stats.get("additions",  0),
-            "deletions":         stats.get("deletions",  0),
-            "total_changes":     stats.get("total",      0),
+            "additions":         stats.get("additions", 0),
+            "deletions":         stats.get("deletions", 0),
+            "total_changes":     stats.get("total",     0),
             "project_id":        project_id,
             "developer_id":      developer_id,
             "extraction_lot_id": extraction_lot_id,
         }
 
-    # =========================================================================
-    # MERGE REQUEST
-    # =========================================================================
-
     @staticmethod
     def map_merge_request(
-        data:              Dict[str, Any],
-        project_id:        int,
-        developer_id:      Optional[int]            = None,
-        extraction_lot_id: Optional[int]            = None,
-        approvals_data:    Optional[Dict[str, Any]] = None,
+        data: Dict[str, Any], project_id: int,
+        developer_id: Optional[int] = None, extraction_lot_id: Optional[int] = None,
+        approvals_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-
         def parse_dt(val: Optional[str]) -> Optional[datetime]:
             if not val:
                 return None
@@ -126,14 +88,11 @@ class GitLabMapper:
         created_at = parse_dt(data.get("created_at"))
         merged_at  = parse_dt(data.get("merged_at"))
         closed_at  = parse_dt(data.get("closed_at"))
-
-        title = data.get("title") or ""
+        title      = data.get("title") or ""
 
         is_draft = (
-            data.get("work_in_progress", False)
-            or data.get("draft", False)
-            or title.upper().startswith("DRAFT:")
-            or title.upper().startswith("WIP:")
+            data.get("work_in_progress", False) or data.get("draft", False)
+            or title.upper().startswith("DRAFT:") or title.upper().startswith("WIP:")
         )
 
         approved    = False
@@ -141,32 +100,25 @@ class GitLabMapper:
 
         if approvals_data:
             approved_by = approvals_data.get("approved_by") or []
-
             if approved_by:
                 approved   = True
                 timestamps = []
-
                 for approval in approved_by:
-                    ts = (
-                        approval.get("approved_at")
-                        or approvals_data.get("approved_at")
-                    )
+                    ts = approval.get("approved_at") or approvals_data.get("approved_at")
                     if ts:
                         parsed = parse_dt(ts)
                         if parsed:
                             timestamps.append(parsed)
-
                 if timestamps:
                     approved_at = max(timestamps)
-
             if not approved_at and approvals_data.get("approved_at"):
                 approved_at = parse_dt(approvals_data["approved_at"])
                 approved    = approved_at is not None
 
-        time_to_approve = None
+        review_time_hours = None
         if approved_at and created_at:
-            delta           = approved_at - created_at
-            time_to_approve = round(delta.total_seconds() / 3600, 2)
+            delta             = approved_at - created_at
+            review_time_hours = round(delta.total_seconds() / 3600, 2)
 
         return {
             "gitlab_mr_id":      data["iid"],
@@ -179,7 +131,10 @@ class GitLabMapper:
             "closed_at":         closed_at,
             "approved_at":       approved_at,
             "approved":          approved,
-            "time_to_approve":   time_to_approve,
+            "review_time_hours": review_time_hours,
+            "additions":         data.get("additions",     0),
+            "deletions":         data.get("deletions",     0),
+            "total_changes":     data.get("total_changes", 0),
             "project_id":        project_id,
             "developer_id":      developer_id,
             "extraction_lot_id": extraction_lot_id,

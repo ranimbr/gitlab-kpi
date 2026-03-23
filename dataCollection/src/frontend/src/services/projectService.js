@@ -1,58 +1,73 @@
+/**
+ * services/projectService.js
+ *
+ * Corrections :
+ *   - getAll() et getAllAdmin() ne passent plus site_id (non supporté backend)
+ *   - getBySite() filtre côté client avec note claire
+ *   - getArchived() utilise le nouveau param archived=true (supporté backend)
+ */
+
 import api from "./api";
 
 const projectService = {
+  /** GET /projects/ — projets actifs non archivés */
+  getAll: async () => (await api.get("/projects/")).data,
 
-  // Utilisé par toutes les pages normales — projets actifs seulement
-  getAll: async () => {
-    const response = await api.get("/projects/");
-    return response.data;
+  /** GET /projects/?all_projects=true — admin : tous projets y compris inactifs */
+  getAllAdmin: async () =>
+    (await api.get("/projects/", { params: { all_projects: true } })).data,
+
+  /** GET /projects/?archived=true — projets archivés (filtre SQL côté backend) */
+  getArchived: async () =>
+    (await api.get("/projects/", { params: { archived: true } })).data,
+
+  /** GET /projects/{id} */
+  getById: async (projectId) =>
+    (await api.get(`/projects/${projectId}`)).data,
+
+  /**
+   * Filtrage par site côté client.
+   * Le backend ne supporte pas encore site_id en query param sur /projects/.
+   * Cette méthode charge tous les projets actifs puis filtre en mémoire.
+   */
+  getBySite: async (siteId) => {
+    const projects = await projectService.getAll();
+    return projects.filter((p) => p.site_id === siteId);
   },
 
-  // Utilisé par AdminProjectsPage — tous les projets (actifs + inactifs)
-  getAllAdmin: async () => {
-    const response = await api.get("/projects/", {
-      params: { all_projects: true },
-    });
-    return response.data;
-  },
+  /** POST /projects/ */
+  create: async (payload) =>
+    (await api.post("/projects/", payload)).data,
 
-  getById: async (projectId) => {
-    const response = await api.get(`/projects/${projectId}`);
-    return response.data;
-  },
+  /** PUT /projects/{id} */
+  update: async (projectId, payload) =>
+    (await api.put(`/projects/${projectId}`, payload)).data,
 
-  create: async (payload) => {
-    const response = await api.post("/projects/", payload);
-    return response.data;
-  },
+  /** PATCH /projects/{id}/toggle-active */
+  toggleActive: async (projectId) =>
+    (await api.patch(`/projects/${projectId}/toggle-active`)).data,
 
-  update: async (projectId, payload) => {
-    const response = await api.put(`/projects/${projectId}`, payload);
-    return response.data;
-  },
-
-  toggleActive: async (projectId) => {
-    const response = await api.patch(`/projects/${projectId}/toggle-active`);
-    return response.data;
-  },
-
+  /** DELETE /projects/{id} */
   delete: async (projectId) => {
     await api.delete(`/projects/${projectId}`);
   },
 
-  getCommits: async (projectId, limit = 50, offset = 0) => {
-    const response = await api.get(`/projects/${projectId}/commits`, {
+  /** GET /projects/{id}/commits */
+  getCommits: async (projectId, limit = 50, offset = 0) =>
+    (await api.get(`/projects/${projectId}/commits`, {
       params: { limit, offset },
-    });
-    return response.data;
-  },
+    })).data,
 
-  getMergeRequests: async (projectId, excludeDraft = true, limit = 50, offset = 0) => {
-    const response = await api.get(`/projects/${projectId}/merge-requests`, {
+  /** GET /projects/{id}/merge-requests */
+  getMergeRequests: async (
+    projectId,
+    excludeDraft = true,
+    limit = 50,
+    offset = 0
+  ) =>
+    (await api.get(`/projects/${projectId}/merge-requests`, {
       params: { exclude_draft: excludeDraft, limit, offset },
-    });
-    return response.data;
-  },
+    })).data,
 };
 
 export default projectService;

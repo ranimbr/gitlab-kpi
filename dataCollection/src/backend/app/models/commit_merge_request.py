@@ -30,8 +30,6 @@ class CommitMergeRequest(Base):
         primary_key=True,
         nullable=False,
     )
-    # ✅ FIX — developer_id ajouté (manquant dans la version précédente)
-    # Référencé par Developer.commit_merge_requests
     developer_id = Column(
         Integer,
         ForeignKey("developer.id", ondelete="SET NULL"),
@@ -44,9 +42,8 @@ class CommitMergeRequest(Base):
     )
 
     # Relations
-    commit        = relationship("Commit",       back_populates="commit_mrs")
-    merge_request = relationship("MergeRequest", back_populates="commit_mrs")
-    # ✅ FIX — relation developer ajoutée avec foreign_keys explicite
+    commit        = relationship("Commit",        back_populates="commit_mrs")
+    merge_request = relationship("MergeRequest",  back_populates="commit_mrs")
     developer     = relationship(
         "Developer",
         back_populates="commit_merge_requests",

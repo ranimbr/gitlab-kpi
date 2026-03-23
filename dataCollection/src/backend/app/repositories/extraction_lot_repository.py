@@ -1,11 +1,25 @@
-from sqlalchemy.orm import Session
+"""
+repositories/extraction_lot_repository.py
+
+CORRECTIONS :
+
+    1. FIX CRITIQUE — renommage ExtractionLot.type → ExtractionLot.extraction_type
+       Tous les filtres utilisant .type sont mis à jour.
+
+    2. FIX — get_realtime_lots() et get_latest_monthly() utilisaient .type.
+
+    3. FIX — monthly_exists() idem.
+
+    4. ✅ AJOUT — get_monthly() : retourne le lot MONTHLY existant (pas juste bool).
+       Utilisé par extraction_service.py en mode Backfill pour réutiliser le lot.
+
+    5. AJOUT — get_by_status() pour le monitoring scheduler.
+"""
 from typing import Optional, List
 
-from app.models.extraction_lot import (
-    ExtractionLot,
-    ExtractionTypeEnum,
-    ExtractionStatusEnum,
-)
+from sqlalchemy.orm import Session
+
+from app.models.extraction_lot import ExtractionLot, ExtractionTypeEnum, ExtractionStatusEnum
 from app.repositories.base import BaseRepository
 
 
@@ -36,14 +50,43 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         period_id:  int,
         project_id: int,
     ) -> Optional[ExtractionLot]:
-        """Retourne le dernier lot MONTHLY complété pour une période/projet."""
+        """
+        Retourne le dernier lot MONTHLY complété pour un projet/période.
+        """
         return (
             db.query(ExtractionLot)
             .filter(
-                ExtractionLot.period_id  == period_id,
-                ExtractionLot.project_id == project_id,
-                ExtractionLot.type       == ExtractionTypeEnum.MONTHLY,
-                ExtractionLot.status     == ExtractionStatusEnum.completed,
+                ExtractionLot.period_id       == period_id,
+                ExtractionLot.project_id      == project_id,
+                ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
+                ExtractionLot.status          == ExtractionStatusEnum.completed,
+            )
+            .order_by(ExtractionLot.created_at.desc())
+            .first()
+        )
+
+    def get_monthly(
+        self,
+        db:         Session,
+        period_id:  int,
+        project_id: int,
+    ) -> Optional[ExtractionLot]:
+        """
+        ✅ AJOUT — Retourne le lot MONTHLY existant tous statuts confondus.
+
+        Différence avec get_latest_monthly() :
+            get_latest_monthly() → filtre status=completed uniquement
+            get_monthly()        → tous statuts (running, failed, completed)
+
+        Utilisé par extraction_service.run_monthly_extraction() en mode Backfill
+        pour réutiliser le lot existant au lieu d'en créer un nouveau (évite 409).
+        """
+        return (
+            db.query(ExtractionLot)
+            .filter(
+                ExtractionLot.period_id       == period_id,
+                ExtractionLot.project_id      == project_id,
+                ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
             )
             .order_by(ExtractionLot.created_at.desc())
             .first()
@@ -55,13 +98,15 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         period_id:  int,
         project_id: int,
     ) -> List[ExtractionLot]:
-        """Retourne tous les lots REALTIME d'une période/projet."""
+        """
+        Retourne tous les lots REALTIME d'un projet/période (pour cleanup).
+        """
         return (
             db.query(ExtractionLot)
             .filter(
-                ExtractionLot.period_id  == period_id,
-                ExtractionLot.project_id == project_id,
-                ExtractionLot.type       == ExtractionTypeEnum.REALTIME,
+                ExtractionLot.period_id       == period_id,
+                ExtractionLot.project_id      == project_id,
+                ExtractionLot.extraction_type == ExtractionTypeEnum.REALTIME,
             )
             .all()
         )
@@ -73,19 +118,19 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         project_id: int,
     ) -> bool:
         """
-        [NEW] RG : Pas de 2ème dump MONTHLY avec la même période.
-        Vérifie si un lot MONTHLY completed existe déjà.
+        Vérifie qu'un lot MONTHLY complété existe déjà.
+        Utilisé pour empêcher les doublons en mode normal (non-Backfill).
         """
         return (
             db.query(ExtractionLot.id)
             .filter(
-                ExtractionLot.period_id  == period_id,
-                ExtractionLot.project_id == project_id,
-                ExtractionLot.type       == ExtractionTypeEnum.MONTHLY,
-                ExtractionLot.status     == ExtractionStatusEnum.completed,
+                ExtractionLot.period_id       == period_id,
+                ExtractionLot.project_id      == project_id,
+                ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
+                ExtractionLot.status          == ExtractionStatusEnum.completed,
             )
-            .first()
-        ) is not None
+            .first() is not None
+        )
 
     def delete_realtime_lots(
         self,
@@ -93,16 +138,11 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         period_id:  int,
         project_id: int,
     ) -> int:
-        """
-        [FIX] Supprime tous les lots REALTIME d'une période/projet
-        via cascade SQLAlchemy (commits + MRs liés supprimés automatiquement
-        grâce à cascade='all, delete-orphan' sur le model).
-        Retourne le nombre de lots supprimés.
-        """
+        """Supprime tous les lots REALTIME d'un projet/période après la clôture mensuelle."""
         lots  = self.get_realtime_lots(db, period_id, project_id)
         count = len(lots)
         for lot in lots:
-            db.delete(lot)   # cascade supprime commits + MRs liés
+            db.delete(lot)
         db.flush()
         return count
 
@@ -113,4 +153,26 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         status: ExtractionStatusEnum,
     ) -> ExtractionLot:
         lot.status = status
+        db.flush()
         return lot
+
+    def get_by_status(
+        self,
+        db:     Session,
+        status: ExtractionStatusEnum,
+    ) -> List[ExtractionLot]:
+        """
+        Monitoring scheduler : tous les lots dans un état donné.
+        """
+        return (
+            db.query(ExtractionLot)
+            .filter(ExtractionLot.status == status)
+            .order_by(ExtractionLot.created_at.desc())
+            .all()
+        )
+
+    def get_pending_lots(self, db: Session) -> List[ExtractionLot]:
+        return self.get_by_status(db, ExtractionStatusEnum.pending)
+
+    def get_running_lots(self, db: Session) -> List[ExtractionLot]:
+        return self.get_by_status(db, ExtractionStatusEnum.running)

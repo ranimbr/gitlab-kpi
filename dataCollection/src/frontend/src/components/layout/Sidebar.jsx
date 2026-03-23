@@ -1,8 +1,26 @@
+/**
+ * components/layout/Sidebar.jsx
+ *
+ * CORRECTIONS :
+ *   1. [NEW] Analyse KPI (/kpi-analysis) ajouté dans le menu principal
+ *   2. Réorganisation en groupes logiques pour éviter la condensation :
+ *      - "Menu" : Dashboard, Projets, Commits, MRs, Alertes
+ *      - "Analyse" : Analyse KPI (nouveau), Développeurs
+ *      - "Administration" : sections admin groupées en sous-menus
+ *   3. Sous-menus admin regroupés pour réduire la hauteur totale :
+ *      - Extraction (Run + Lots)
+ *      - KPI (Thresholds + Definitions)
+ *      - Gestion (Sites + Projets Admin + GitLab Configs)
+ *      - Accès (Dashboards + Utilisateurs + Audit Log)
+ */
+
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
-// ─── MenuItem ─────────────────────────────────────────────────────────────────
+// =============================================================================
+// MenuItem
+// =============================================================================
 function MenuItem({ icon, label, children, to, badge }) {
   const location = useLocation();
 
@@ -18,9 +36,9 @@ function MenuItem({ icon, label, children, to, badge }) {
 
   useEffect(() => {
     if (children && isActive) setOpen(true);
-  }, [location.pathname]); // eslint-disable-line
+  }, [location.pathname, children, isActive]);
 
-  // Lien simple
+  // ── Lien simple ────────────────────────────────────────────────────────────
   if (!children) {
     return (
       <li className="nav-item">
@@ -31,9 +49,7 @@ function MenuItem({ icon, label, children, to, badge }) {
           {icon && <i className={icon}></i>}
           <span>{label}</span>
           {badge && (
-            <span
-              className={`badge badge-pill bg-${badge.color} ms-auto fs-10`}
-            >
+            <span className={`badge badge-pill bg-${badge.color} ms-auto fs-10`}>
               {badge.text}
             </span>
           )}
@@ -42,7 +58,7 @@ function MenuItem({ icon, label, children, to, badge }) {
     );
   }
 
-  // Lien avec sous-menu
+  // ── Lien avec sous-menu ────────────────────────────────────────────────────
   return (
     <li className="nav-item">
       <Link
@@ -56,14 +72,19 @@ function MenuItem({ icon, label, children, to, badge }) {
       >
         {icon && <i className={icon}></i>}
         <span>{label}</span>
+        {badge && (
+          <span className={`badge badge-pill bg-${badge.color} ms-auto me-1 fs-10`}>
+            {badge.text}
+          </span>
+        )}
         <i
           className="ri-arrow-right-s-line ms-auto"
           style={{
-            transition:  "transform .2s",
-            transform:   open ? "rotate(90deg)" : "rotate(0deg)",
-            fontSize:    16,
+            transition: "transform .2s",
+            transform:  open ? "rotate(90deg)" : "rotate(0deg)",
+            fontSize:   16,
           }}
-        ></i>
+        />
       </Link>
 
       {(open || isActive) && (
@@ -82,9 +103,7 @@ function MenuItem({ icon, label, children, to, badge }) {
                     {child.icon && <i className={`${child.icon} me-1`}></i>}
                     {child.label}
                     {child.badge && (
-                      <span
-                        className={`badge bg-${child.badge.color} ms-auto fs-10`}
-                      >
+                      <span className={`badge bg-${child.badge.color} ms-auto fs-10`}>
                         {child.badge.text}
                       </span>
                     )}
@@ -99,7 +118,9 @@ function MenuItem({ icon, label, children, to, badge }) {
   );
 }
 
-// ─── Séparateur de section ────────────────────────────────────────────────────
+// =============================================================================
+// MenuSection
+// =============================================================================
 function MenuSection({ icon, label }) {
   return (
     <li className="menu-title">
@@ -109,7 +130,9 @@ function MenuSection({ icon, label }) {
   );
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+// =============================================================================
+// Sidebar
+// =============================================================================
 export default function Sidebar() {
   const { user } = useAuth();
   const isAdmin  = user?.role === "admin";
@@ -117,22 +140,22 @@ export default function Sidebar() {
   return (
     <div className="app-menu navbar-menu">
 
-      {/* ── Logo ── */}
+      {/* ── Logo ─────────────────────────────────────────────────────────── */}
       <div className="navbar-brand-box">
         <Link to="/" className="logo logo-dark">
           <span className="logo-sm">
-            <img src="/assets/images/logo-sm.png" alt="logo" height="22" />
+            <img src="/assets/images/telnet.png" alt="logo" height={22} />
           </span>
           <span className="logo-lg">
-            <img src="/assets/images/logo-dark.png" alt="logo" height="17" />
+            <img src="/assets/images/telnet.png" alt="logo" height={17} />
           </span>
         </Link>
         <Link to="/" className="logo logo-light">
           <span className="logo-sm">
-            <img src="/assets/images/logo-sm.png" alt="logo" height="22" />
+            <img src="/assets/images/telnet.png" alt="logo" height={32} />
           </span>
           <span className="logo-lg">
-            <img src="/assets/images/logo-light.png" alt="logo" height="17" />
+            <img src="/assets/images/telnet.png" alt="logo" height={32} />
           </span>
         </Link>
         <button
@@ -144,12 +167,12 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* ── Scrollbar ── */}
+      {/* ── Scrollbar ────────────────────────────────────────────────────── */}
       <div id="scrollbar">
         <div className="container-fluid">
           <ul className="navbar-nav" id="navbar-nav">
 
-            {/* ════ MENU PRINCIPAL ════ */}
+            {/* ════ MENU PRINCIPAL ════════════════════════════════════════ */}
             <MenuSection label="Menu" />
 
             <MenuItem
@@ -160,7 +183,7 @@ export default function Sidebar() {
 
             <MenuItem
               icon="ri-folder-line"
-              label="Projects"
+              label="Projets"
               to="/projects"
             />
 
@@ -170,11 +193,27 @@ export default function Sidebar() {
               to="/commits"
             />
 
-            {/* [FIX] Route corrigée : /merge (pas /merges) */}
             <MenuItem
               icon="ri-git-merge-line"
               label="Merge Requests"
               to="/merge"
+            />
+
+            <MenuItem
+              icon="ri-alarm-warning-line"
+              label="Alertes KPI"
+              to="/alerts"
+            />
+
+            {/* ════ ANALYSE ════════════════════════════════════════════════ */}
+            <MenuSection label="Analyse" />
+
+            {/* [NEW] Page d'analyse KPI interactive */}
+            <MenuItem
+              icon="ri-bar-chart-grouped-line"
+              label="Analyse KPI"
+              to="/kpi-analysis"
+              badge={{ color: "success", text: "New" }}
             />
 
             <MenuItem
@@ -183,11 +222,18 @@ export default function Sidebar() {
               to="/developers"
             />
 
-            {/* ════ ADMINISTRATION ════ */}
+            <MenuItem
+              icon="ri-list-check"
+              label="Extraction Lots"
+              to="/extraction-lots"
+            />
+
+            {/* ════ ADMINISTRATION (admin uniquement) ═════════════════════ */}
             {isAdmin && (
               <>
                 <MenuSection icon="ri-shield-line" label="Administration" />
 
+                {/* Extraction */}
                 <MenuItem
                   icon="ri-download-cloud-2-line"
                   label="Extraction"
@@ -198,51 +244,77 @@ export default function Sidebar() {
                       icon:  "ri-play-circle-line",
                     },
                     {
-                      to:    "/extraction-lots",
-                      label: "Extraction Lots",
-                      icon:  "ri-stack-line",
+                      to:    "/admin/periods",
+                      label: "Périodes",
+                      icon:  "ri-calendar-2-line",
                     },
                   ]}
                 />
 
+                {/* KPI */}
                 <MenuItem
-                  icon="ri-calendar-2-line"
-                  label="Periods"
-                  to="/admin/periods"
+                  icon="ri-bar-chart-grouped-line"
+                  label="KPI"
+                  children={[
+                    {
+                      to:    "/admin/kpi-thresholds",
+                      label: "Seuils (Thresholds)",
+                      icon:  "ri-alarm-warning-line",
+                    },
+                    {
+                      to:    "/admin/kpi-definitions",
+                      label: "Définitions",
+                      icon:  "ri-book-open-line",
+                    },
+                  ]}
                 />
 
+                {/* Gestion des données */}
                 <MenuItem
-                  icon="ri-settings-4-line"
-                  label="GitLab Configs"
-                  to="/admin/gitlab-configs"
+                  icon="ri-database-2-line"
+                  label="Données"
+                  children={[
+                    {
+                      to:    "/admin/sites",
+                      label: "Sites",
+                      icon:  "ri-map-pin-line",
+                    },
+                    {
+                      to:    "/admin/projects",
+                      label: "Projets",
+                      icon:  "ri-git-repository-line",
+                    },
+                    {
+                      to:    "/admin/gitlab-configs",
+                      label: "GitLab Configs",
+                      icon:  "ri-settings-4-line",
+                    },
+                  ]}
                 />
 
-                <MenuItem
-                  icon="ri-git-repository-line"
-                  label="Projects Admin"
-                  to="/admin/projects"
-                />
-
-                {/* [NEW] KPI Thresholds — accès admin à la config des seuils */}
-                <MenuItem
-                  icon="ri-alarm-warning-line"
-                  label="KPI Thresholds"
-                  to="/admin/kpi-thresholds"
-                  badge={{ color: "warning", text: "New" }}
-                />
-
-                <MenuItem
-                  icon="ri-layout-grid-line"
-                  label="Dashboards"
-                  to="/admin/dashboards"
-                />
-
+                {/* Accès & utilisateurs */}
                 <MenuItem
                   icon="ri-user-settings-line"
-                  label="User Management"
-                  to="/admin/users"
-                  badge={{ color: "danger", text: "Admin" }}
+                  label="Accès & Users"
+                  children={[
+                    {
+                      to:    "/admin/users",
+                      label: "Utilisateurs",
+                      icon:  "ri-user-line",
+                    },
+                    {
+                      to:    "/admin/dashboards",
+                      label: "Dashboards",
+                      icon:  "ri-layout-grid-line",
+                    },
+                    {
+                      to:    "/admin/audit-log",
+                      label: "Audit Log",
+                      icon:  "ri-file-list-3-line",
+                    },
+                  ]}
                 />
+
               </>
             )}
 
