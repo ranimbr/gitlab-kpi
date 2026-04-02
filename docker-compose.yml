@@ -42,7 +42,7 @@ services:
       ALLOWED_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
       SCHEDULER_ENABLED: "False"
       ADMIN_EMAIL: "admin@test.com"
-      ADMIN_PASSWORD: "admin123"
+      ADMIN_PASSWORD: "Admin1234!"
       DUMP_DIR: "dumps"
       LOG_FILE: "logs/app.log"
     volumes:
