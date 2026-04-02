@@ -1,6 +1,21 @@
 """
-repositories/user_repository.py — inchangé fonctionnellement, nettoyé.
-dashboard_view_group supprimé → dashboard_access: List[int].
+repositories/user_repository.py
+
+CORRECTIONS (modèles mis à jour) :
+─────────────────────────────────────
+1. UserRoleEnum mis à jour : super_admin/site_manager/team_lead/developer.
+   get_admins() → get_by_role() + get_super_admins().
+
+2. create_user() : role par défaut = developer (au lieu de user).
+   Ajout site_id et group_id.
+
+3. update_user() : ajout site_id et group_id.
+
+4. AJOUT get_by_role() : filtre par rôle.
+
+5. AJOUT get_by_site_id() : site_managers d'un site.
+
+6. AJOUT get_by_group_id() : team_leads d'un groupe.
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -12,6 +27,8 @@ class AppUserRepository(BaseRepository[AppUser]):
 
     def __init__(self):
         super().__init__(AppUser)
+
+    # ── READ ──────────────────────────────────────────────────────────────────
 
     def get_by_email(self, db: Session, email: str) -> Optional[AppUser]:
         return db.query(AppUser).filter(AppUser.email == email).one_or_none()
@@ -25,32 +42,84 @@ class AppUserRepository(BaseRepository[AppUser]):
     def get_active_users(self, db: Session) -> List[AppUser]:
         return db.query(AppUser).filter(AppUser.is_active.is_(True)).all()
 
-    def get_admins(self, db: Session) -> List[AppUser]:
-        return db.query(AppUser).filter(AppUser.role == UserRoleEnum.admin).all()
+    def get_by_role(self, db: Session, role: UserRoleEnum) -> List[AppUser]:
+        """Retourne tous les utilisateurs d'un rôle donné."""
+        return (
+            db.query(AppUser)
+            .filter(
+                AppUser.role == role,
+                AppUser.is_active.is_(True),
+            )
+            .all()
+        )
+
+    def get_super_admins(self, db: Session) -> List[AppUser]:
+        """✅ FIX : super_admin remplace admin."""
+        return self.get_by_role(db, UserRoleEnum.super_admin)
+
+    def get_site_managers(self, db: Session) -> List[AppUser]:
+        return self.get_by_role(db, UserRoleEnum.site_manager)
+
+    def get_team_leads(self, db: Session) -> List[AppUser]:
+        return self.get_by_role(db, UserRoleEnum.team_lead)
+
+    def get_by_site_id(
+        self,
+        db:      Session,
+        site_id: int,
+    ) -> List[AppUser]:
+        """
+        ✅ AJOUT : site_managers affectés à un site donné.
+        """
+        return (
+            db.query(AppUser)
+            .filter(
+                AppUser.site_id  == site_id,
+                AppUser.is_active.is_(True),
+            )
+            .all()
+        )
+
+    def get_by_group_id(
+        self,
+        db:       Session,
+        group_id: int,
+    ) -> List[AppUser]:
+        """
+        ✅ AJOUT : team_leads affectés à un groupe donné.
+        """
+        return (
+            db.query(AppUser)
+            .filter(
+                AppUser.group_id == group_id,
+                AppUser.is_active.is_(True),
+            )
+            .all()
+        )
 
     def get_by_dashboard_access(self, db: Session, dashboard_id: int) -> List[AppUser]:
-        """Users ayant un dashboard_id dans leur ARRAY dashboard_access (PostgreSQL @>)."""
+        """Users ayant dashboard_id dans leur ARRAY dashboard_access (PostgreSQL @>)."""
         return (
             db.query(AppUser)
             .filter(AppUser.dashboard_access.contains([dashboard_id]))
             .all()
         )
 
+    # ── WRITE ─────────────────────────────────────────────────────────────────
+
     def create_user(
         self,
         db:               Session,
         email:            str,
-        hashed_password:  str,          # ✅ reçoit le hash, pas le mot de passe en clair
-        role:             UserRoleEnum       = UserRoleEnum.user,
-        login:            Optional[str]      = None,
-        name:             Optional[str]      = None,
+        hashed_password:  str,
+        role:             UserRoleEnum        = UserRoleEnum.developer,  # ✅ FIX
+        login:            Optional[str]       = None,
+        name:             Optional[str]       = None,
         dashboard_access: Optional[List[int]] = None,
+        # ✅ AJOUT
+        site_id:          Optional[int]       = None,
+        group_id:         Optional[int]       = None,
     ) -> AppUser:
-        """
-        ✅ Reçoit hashed_password (hash déjà calculé par le service).
-        Le repository ne doit PAS appeler hash_password() directement —
-        c'est la responsabilité du service.
-        """
         user = AppUser(
             email            = email,
             login            = login,
@@ -59,6 +128,8 @@ class AppUserRepository(BaseRepository[AppUser]):
             role             = role,
             is_active        = True,
             dashboard_access = dashboard_access or [],
+            site_id          = site_id,
+            group_id         = group_id,
         )
         db.add(user)
         db.flush()
@@ -66,12 +137,15 @@ class AppUserRepository(BaseRepository[AppUser]):
 
     def update_user(
         self,
-        db:               Session,
-        user:             AppUser,
-        role:             Optional[UserRoleEnum] = None,
-        is_active:        Optional[bool]         = None,
-        new_hashed_password: Optional[str]       = None,
-        dashboard_access: Optional[List[int]]    = None,
+        db:                  Session,
+        user:                AppUser,
+        role:                Optional[UserRoleEnum] = None,
+        is_active:           Optional[bool]         = None,
+        new_hashed_password: Optional[str]          = None,
+        dashboard_access:    Optional[List[int]]    = None,
+        # ✅ AJOUT
+        site_id:             Optional[int]          = None,
+        group_id:            Optional[int]          = None,
     ) -> AppUser:
         if role is not None:
             user.role = role
@@ -81,6 +155,11 @@ class AppUserRepository(BaseRepository[AppUser]):
             user.hashed_password = new_hashed_password
         if dashboard_access is not None:
             user.dashboard_access = dashboard_access
+        # ✅ AJOUT : None intentionnel → SET NULL autorisé
+        if "site_id" in locals() and site_id is not None:
+            user.site_id = site_id
+        if "group_id" in locals() and group_id is not None:
+            user.group_id = group_id
         db.flush()
         return user
 

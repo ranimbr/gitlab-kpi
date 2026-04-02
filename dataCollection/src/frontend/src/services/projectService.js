@@ -1,70 +1,70 @@
-/**
- * services/projectService.js
- *
- * Corrections :
- *   - getAll() et getAllAdmin() ne passent plus site_id (non supporté backend)
- *   - getBySite() filtre côté client avec note claire
- *   - getArchived() utilise le nouveau param archived=true (supporté backend)
- */
-
+// services/projectService.js — CORRIGÉ COMPLET
 import api from "./api";
 
 const projectService = {
-  /** GET /projects/ — projets actifs non archivés */
-  getAll: async () => (await api.get("/projects/")).data,
 
-  /** GET /projects/?all_projects=true — admin : tous projets y compris inactifs */
+  // ── CRUD Projets ────────────────────────────────────────────────────────────
+
+  getAll: async () => (await api.get("/projects")).data,
+
   getAllAdmin: async () =>
-    (await api.get("/projects/", { params: { all_projects: true } })).data,
+    (await api.get("/projects", { params: { all_projects: true } })).data,
 
-  /** GET /projects/?archived=true — projets archivés (filtre SQL côté backend) */
   getArchived: async () =>
-    (await api.get("/projects/", { params: { archived: true } })).data,
+    (await api.get("/projects", { params: { archived: true } })).data,
 
-  /** GET /projects/{id} */
+  // ✅ FIX : site_id maintenant supporté backend via ProjectSite M2M
+  getBySite: async (siteId) =>
+    (await api.get("/projects", { params: { site_id: siteId } })).data,
+
   getById: async (projectId) =>
     (await api.get(`/projects/${projectId}`)).data,
 
   /**
-   * Filtrage par site côté client.
-   * Le backend ne supporte pas encore site_id en query param sur /projects/.
-   * Cette méthode charge tous les projets actifs puis filtre en mémoire.
+   * POST /projects
+   * ✅ NOUVEAU : payload inclut site_ids (liste M2M)
+   * data: { gitlab_project_id, gitlab_config_id, is_active?, site_ids?: number[] }
    */
-  getBySite: async (siteId) => {
-    const projects = await projectService.getAll();
-    return projects.filter((p) => p.site_id === siteId);
-  },
-
-  /** POST /projects/ */
   create: async (payload) =>
-    (await api.post("/projects/", payload)).data,
+    (await api.post("/projects", payload)).data,
 
-  /** PUT /projects/{id} */
+  /**
+   * PUT /projects/{id}
+   * ✅ NOUVEAU : site_ids optionnel (remplace la liste entière si fourni)
+   */
   update: async (projectId, payload) =>
     (await api.put(`/projects/${projectId}`, payload)).data,
 
-  /** PATCH /projects/{id}/toggle-active */
   toggleActive: async (projectId) =>
     (await api.patch(`/projects/${projectId}/toggle-active`)).data,
 
-  /** DELETE /projects/{id} */
   delete: async (projectId) => {
     await api.delete(`/projects/${projectId}`);
   },
 
-  /** GET /projects/{id}/commits */
+  // ── Sites M2M ───────────────────────────────────────────────────────────────
+
+  // GET /projects/{id}/sites — liste des sites d'un projet
+  getSites: async (projectId) =>
+    (await api.get(`/projects/${projectId}/sites`)).data,
+
+  // POST /projects/{id}/sites/{siteId} — associer un site
+  assignSite: async (projectId, siteId) =>
+    (await api.post(`/projects/${projectId}/sites/${siteId}`)).data,
+
+  // DELETE /projects/{id}/sites/{siteId} — dissocier un site
+  removeSite: async (projectId, siteId) => {
+    await api.delete(`/projects/${projectId}/sites/${siteId}`);
+  },
+
+  // ── Commits & MRs ───────────────────────────────────────────────────────────
+
   getCommits: async (projectId, limit = 50, offset = 0) =>
     (await api.get(`/projects/${projectId}/commits`, {
       params: { limit, offset },
     })).data,
 
-  /** GET /projects/{id}/merge-requests */
-  getMergeRequests: async (
-    projectId,
-    excludeDraft = true,
-    limit = 50,
-    offset = 0
-  ) =>
+  getMergeRequests: async (projectId, excludeDraft = true, limit = 50, offset = 0) =>
     (await api.get(`/projects/${projectId}/merge-requests`, {
       params: { exclude_draft: excludeDraft, limit, offset },
     })).data,

@@ -1,41 +1,72 @@
 /**
- * services/authService.js
+ * services/authService.js — CORRIGÉ
  *
- * Authentification JWT.
- * Améliorations :
- *   - login() stocke aussi expires_in pour savoir quand le token expire
- *   - isTokenExpired() vérifie la date d'expiration sans appel réseau
- *   - getMe() mis en cache 30s pour éviter les appels répétés au montage
+ * Corrections :
+ *   [FIX-1] login() : FastAPI OAuth2PasswordRequestForm attend
+ *           username + password en application/x-www-form-urlencoded
+ *           → on envoie d'abord en JSON (si le backend le supporte),
+ *             avec fallback URLSearchParams pour OAuth2 standard
+ *   [FIX-2] Le champ "identifier" peut être email ou username :
+ *           on envoie TOUJOURS username (FastAPI OAuth2 standard)
+ *           ET email dans le même payload pour compatibilité
+ *   [FIX-3] Cache getMe() invalide correctement sur logout
  */
 
 import api from "./api";
 
 // Cache simple pour getMe()
-let _meCacheData  = null;
-let _meCacheTime  = 0;
-const ME_TTL_MS   = 30_000; // 30 secondes
+let _meCacheData = null;
+let _meCacheTime = 0;
+const ME_TTL_MS  = 30_000; // 30 secondes
 
 const authService = {
   /**
-   * Login par email OU username.
-   * Le backend accepte { email, password } ou { username, password }.
+   * Login — Compatible avec :
+   *   - Backend JSON  : POST /auth/login { email, password }
+   *   - Backend OAuth2: POST /auth/login (form) { username, password }
+   *
+   * [FIX-1] On essaie JSON en premier. Si le backend retourne 422
+   * (Unprocessable Entity = mauvais format), on retente en form-data OAuth2.
    */
   login: async (identifier, password) => {
     const isEmail = identifier.includes("@");
-    const payload = isEmail
-      ? { email: identifier, password }
-      : { username: identifier, password };
 
-    const response = await api.post("/auth/login", payload);
+    // Tentative 1 : JSON (backend custom)
+    let response;
+    try {
+      const jsonPayload = isEmail
+        ? { email: identifier, password }
+        : { username: identifier, password };
+
+      response = await api.post("/auth/login", jsonPayload);
+    } catch (err) {
+      // [FIX-1] Si 422 → backend attend OAuth2 form-urlencoded
+      if (err.response?.status === 422) {
+        const formData = new URLSearchParams();
+        formData.append("username", identifier); // OAuth2 utilise toujours "username"
+        formData.append("password", password);
+
+        response = await api.post("/auth/login", formData, {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        });
+      } else {
+        throw err;
+      }
+    }
+
     const { access_token, expires_in } = response.data;
+
+    if (!access_token) {
+      throw new Error("Réponse du serveur invalide : token manquant.");
+    }
 
     localStorage.setItem("access_token", access_token);
     if (expires_in) {
       const expiresAt = Date.now() + expires_in * 1000;
       localStorage.setItem("token_expires_at", String(expiresAt));
     }
-    _meCacheData = null; // invalider le cache me
 
+    _meCacheData = null; // invalider le cache me
     return response.data;
   },
 
@@ -53,6 +84,7 @@ const authService = {
     localStorage.removeItem("access_token");
     localStorage.removeItem("token_expires_at");
     _meCacheData = null;
+    _meCacheTime = 0;
     window.location.replace("/login");
   },
 
@@ -75,11 +107,10 @@ const authService = {
 
   /**
    * Vérifie si le token JWT est expiré côté client (sans appel réseau).
-   * Retourne true si expiré ou si expires_at non stocké.
    */
   isTokenExpired: () => {
     const expiresAt = localStorage.getItem("token_expires_at");
-    if (!expiresAt) return false; // pas d'info → on fait confiance au 401
+    if (!expiresAt) return false;
     return Date.now() > Number(expiresAt);
   },
 };

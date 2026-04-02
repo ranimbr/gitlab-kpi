@@ -1,28 +1,56 @@
 <!doctype html>
-<html lang="en" data-layout="vertical" data-layout-style="detached" 
+<html lang="fr" data-layout="vertical" data-layout-style="detached" 
       data-sidebar="light" data-topbar="dark" data-sidebar-size="lg">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GitLab KPI Dashboard</title>
     <link rel="shortcut icon" href="/assets/images/favicon.ico" />
-    <link href="/assets/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="/assets/css/icons.min.css" rel="stylesheet" />
-    <link href="/assets/css/app.min.css" rel="stylesheet" />
-    <link href="/assets/css/custom.min.css" rel="stylesheet" />
+
+    <!-- Bootstrap + Velzon CSS -->
+    <link href="/assets/css/bootstrap.min.css"  rel="stylesheet" />
+    <link href="/assets/css/icons.min.css"       rel="stylesheet" />
+    <link href="/assets/css/app.min.css"         rel="stylesheet" />
+    <link href="/assets/css/custom.min.css"      rel="stylesheet" />
+
+    <!--
+      NOTE [FIX-404] : choices.min.js et flatpickr.min.js ont été retirés.
+      Ces librairies sont chargées par plugins.js côté Velzon uniquement
+      si elles existent dans /assets/libs/. Si vous en avez besoin,
+      copiez-les dans ce dossier depuis node_modules ou npm.
+
+      Pour utiliser flatpickr dans un composant React :
+        npm install flatpickr react-flatpickr
+      Pour choices.js :
+        npm install choices.js
+      Et importez-les directement dans le composant concerné.
+    -->
   </head>
   <body>
     <!-- React monte ici -->
     <div id="root"></div>
 
-    <!-- React en premier -->
+    <!-- React (Vite module) en premier -->
     <script type="module" src="/src/main.jsx"></script>
 
-    <!-- Scripts Velzon APRÈS React -->
+    <!--
+      Scripts Velzon APRÈS React.
+      [FIX-404] plugins.js peut tenter de charger choices.min.js et flatpickr.
+      Si ces fichiers manquent dans /assets/libs/, des erreurs 404 apparaissent.
+      → Solution : soit fournir ces fichiers, soit ne pas utiliser plugins.js.
+      Si vous n'utilisez pas les composants Velzon natifs (selects, datepickers)
+      et utilisez React à la place, vous pouvez supprimer plugins.js.
+    -->
     <script src="/assets/libs/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="/assets/libs/simplebar/simplebar.min.js"></script>
     <script src="/assets/libs/node-waves/waves.min.js"></script>
     <script src="/assets/libs/feather-icons/feather.min.js"></script>
-    <script src="/assets/js/plugins.js"></script>
+
+    <!--
+      [FIX-404] plugins.js chargé en dernier et de façon optionnelle.
+      S'il génère des erreurs 404, commentez cette ligne.
+      Les fonctionnalités React ne dépendent pas de ce fichier.
+    -->
+    <script src="/assets/js/plugins.js" onerror="console.warn('[KPI] plugins.js non disponible — ignoré')"></script>
   </body>
 </html>

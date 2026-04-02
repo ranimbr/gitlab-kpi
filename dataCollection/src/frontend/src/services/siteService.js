@@ -1,19 +1,14 @@
-/**
- * services/siteService.js
- *
- * Gestion des sites + nouveaux endpoints KPI /kpis/sites et /kpis/developers
- * ajoutés au backend dans kpis.py.
- */
-
+// services/siteService.js — CORRIGÉ COMPLET
 import api from "./api";
 
 const siteService = {
+
   // ── CRUD Sites ──────────────────────────────────────────────────────────────
 
-  getAll: async (activeOnly = true) => {
-    const params = activeOnly ? {} : { active_only: false };
-    return (await api.get("/sites/", { params })).data;
-  },
+  getAll: async (activeOnly = true) =>
+    (await api.get("/sites", {
+      params: activeOnly ? {} : { active_only: false },
+    })).data,
 
   getById: async (siteId) =>
     (await api.get(`/sites/${siteId}`)).data,
@@ -28,16 +23,15 @@ const siteService = {
     await api.delete(`/sites/${siteId}`);
   },
 
-  // ── KPI : sites disponibles pour un projet ──────────────────────────────────
+  // ── KPI : sites avec snapshots disponibles ──────────────────────────────────
   // GET /kpis/sites?project_id=X
-  // Retourne uniquement les sites qui ont au moins 1 snapshot KPI.
-  // Utilisé pour peupler le dropdown "Filtrer par site" du dashboard.
   getKpiSites: async (projectId) =>
-    (await api.get("/kpis/sites", { params: { project_id: projectId } })).data,
+    (await api.get("/kpis/sites", {
+      params: { project_id: projectId },
+    })).data,
 
-  // ── KPI : développeurs disponibles pour un projet ───────────────────────────
+  // ── KPI : développeurs validés d'un projet/site ─────────────────────────────
   // GET /kpis/developers?project_id=X&site_id=Y
-  // Retourne les développeurs validés. Utilisé pour "Filtrer par développeur".
   getKpiDevelopers: async (projectId, siteId = null) => {
     const params = { project_id: projectId };
     if (siteId != null) params.site_id = siteId;

@@ -1,4 +1,4 @@
-"""database/session.py — inchangé."""
+"""database/session.py — ."""
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker

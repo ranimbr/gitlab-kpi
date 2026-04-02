@@ -1,7 +1,15 @@
 """
 services/kpi/kpi_aggregator.py
 
-
+CORRECTIONS APPLIQUÉES :
+──────────────────────────────────────────────────────────────────
+1. delta_nb_commits : float() supprimé → type entier cohérent avec le modèle.
+2. Log structuré JSON ajouté après generate_monthly_snapshots().
+3. Toutes les corrections précédentes conservées :
+   - Sites via ProjectSite (M2M)
+   - Devs via DeveloperProject (M2M)
+   - Site primaire dev via DeveloperSite (M2M)
+   - score_rank_in_site calculé par site
 """
 import logging
 from datetime import datetime, date
@@ -10,9 +18,10 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.models.developer import Developer
+from app.models.developer_project import DeveloperProject
+from app.models.developer_site import DeveloperSite
 from app.models.kpi_snapshot import KpiSnapshot
-from app.models.project import Project
-from app.repositories.developer_repository import DeveloperGroupRepository
+from app.models.project_site import ProjectSite
 from app.repositories.kpi_snapshot_repository import KpiSnapshotRepository
 from app.repositories.period_repository import PeriodRepository
 from app.services.kpi.kpi_calculator import KpiCalculator
@@ -26,7 +35,6 @@ class KpiAggregator:
         self.db            = db
         self.calculator    = KpiCalculator(db)
         self.snapshot_repo = KpiSnapshotRepository()
-        self.group_repo    = DeveloperGroupRepository()
         self.period_repo   = PeriodRepository()
 
     # =========================================================================
@@ -44,18 +52,14 @@ class KpiAggregator:
         Génère tous les snapshots KPI pour un projet et une période donnée.
 
         Niveaux générés :
-            1. Par site    — snapshot pour le site assigné au projet (Project.site_id)
-                             ✅ FIX v2 : récupère le site depuis Project.site_id
-                             et non depuis les groupes de développeurs
-            2. Global      — agrégat tous sites (site_id=None, developer_id=None)
+            1. Par site    — un snapshot par site associé au projet (ProjectSite M2M)
+            2. Global      — agrégat tous sites confondus
             3. Par dev     — un snapshot par développeur validé
-                             ✅ FIX v1 : utilise calculate_for_developer() pour
-                             des valeurs réellement individuelles
+                             + calcul du score et du classement dans le site
         """
         start_date = datetime(year, month, 1)
         end_date   = (
-            datetime(year + 1, 1, 1)
-            if month == 12
+            datetime(year + 1, 1, 1) if month == 12
             else datetime(year, month + 1, 1)
         )
 
@@ -65,72 +69,55 @@ class KpiAggregator:
 
         snapshots: List[KpiSnapshot] = []
 
-        # ── Récupération du projet et de son site_id ──────────────────────────
-        # ✅ FIX v2 : le site est assigné au PROJET (Project.site_id),
-        # pas aux groupes de développeurs. C'est l'admin qui assigne le site
-        # manuellement via la page "Gestion des Projets".
-        project = self.db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            raise ValueError(f"Project id={project_id} not found")
-
-        project_site_id = project.site_id  # peut être None si pas encore assigné
+        # Sites du projet via ProjectSite (M2M)
+        project_site_ids = self._get_project_site_ids(project_id)
 
         # ── 1. Snapshot par site du projet ────────────────────────────────────
-        if project_site_id is not None:
-            kpis = self.calculator.calculate_for_site(
-                project_id, project_site_id, start_date, end_date
-            )
-            # S'assurer que site_id est bien dans le dict avant l'upsert
-            kpis["site_id"] = project_site_id
-
-            snapshot = self._upsert_with_deltas(
-                kpis      = kpis,
-                period_id = period.id,
-                year      = year,
-                month     = month,
-                lot_id    = lot_id,
-            )
-            snapshots.append(snapshot)
-            logger.info(
-                f"Snapshot site — project={project_id} site={project_site_id} "
-                f"mr_rate={kpis.get('mr_rate_per_site', 0):.2f} "
-                f"nb_devs={kpis.get('nb_developers', 0)} "
-                f"commits={kpis.get('nb_commits_per_project', 0)}"
-            )
+        if project_site_ids:
+            for site_id in project_site_ids:
+                kpis = self.calculator.calculate_for_site(
+                    project_id, site_id, start_date, end_date
+                )
+                kpis["site_id"] = site_id
+                snapshot = self._upsert_with_deltas(
+                    kpis=kpis, period_id=period.id,
+                    year=year, month=month, lot_id=lot_id,
+                )
+                snapshots.append(snapshot)
+                logger.info(
+                    "Snapshot site — project=%d site=%d mr_rate=%.2f nb_devs=%d",
+                    project_id, site_id,
+                    kpis.get("mr_rate_per_site", 0),
+                    kpis.get("nb_developers", 0),
+                )
         else:
             logger.warning(
-                f"Project id={project_id} has no site_id assigned — "
-                f"skipping site-level snapshot. "
-                f"Assign a site in Admin → Projets."
+                "Project id=%d has no sites assigned — "
+                "skipping site-level snapshots. Assign sites in Admin → Projets.",
+                project_id,
             )
 
-        # ── 2. Snapshot global (tous sites confondus) ─────────────────────────
-        global_kpis = self.calculator.calculate_global(
-            project_id, start_date, end_date
-        )
-        # Le snapshot global n'a pas de site_id ni developer_id
+        # ── 2. Snapshot global ────────────────────────────────────────────────
+        global_kpis = self.calculator.calculate_global(project_id, start_date, end_date)
         global_kpis["site_id"]      = None
         global_kpis["developer_id"] = None
 
         global_snapshot = self._upsert_with_deltas(
-            kpis      = global_kpis,
-            period_id = period.id,
-            year      = year,
-            month     = month,
-            lot_id    = lot_id,
+            kpis=global_kpis, period_id=period.id,
+            year=year, month=month, lot_id=lot_id,
         )
         snapshots.append(global_snapshot)
-        logger.info(
-            f"Snapshot global — project={project_id} "
-            f"commits={global_kpis.get('nb_commits_per_project', 0)} "
-            f"nb_devs={global_kpis.get('nb_developers', 0)}"
-        )
 
         # ── 3. Snapshots par développeur individuel ───────────────────────────
         developers = (
             self.db.query(Developer)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == Developer.id) &
+                (DeveloperProject.project_id   == project_id)   &
+                (DeveloperProject.is_active.is_(True)),
+            )
             .filter(
-                Developer.project_id    == project_id,
                 Developer.is_validated.is_(True),
                 Developer.is_bot.is_(False),
                 Developer.is_active.is_(True),
@@ -138,50 +125,97 @@ class KpiAggregator:
             .all()
         )
 
+        # Collecter les snapshots individuels pour le classement par site
+        dev_snapshots_by_site: dict = {}  # site_id → [(score, snapshot)]
+
         for developer in developers:
-            # ✅ FIX v1 : calculate_for_developer filtre réellement sur developer.id
-            # Les valeurs reflètent l'activité INDIVIDUELLE du développeur
             dev_kpis = self.calculator.calculate_for_developer(
-                project_id   = project_id,
-                developer_id = developer.id,
-                start_date   = start_date,
-                end_date     = end_date,
+                project_id=project_id, developer_id=developer.id,
+                start_date=start_date, end_date=end_date,
             )
-            # Propager le site_id du développeur dans le snapshot individuel
-            # (peut différer du site_id du projet si le dev a changé de site)
-            dev_kpis["site_id"]      = developer.site_id
+
+            primary_site_id = self._get_primary_site_for_developer(developer.id)
+            dev_kpis["site_id"]      = primary_site_id
             dev_kpis["developer_id"] = developer.id
 
             snapshot = self._upsert_with_deltas(
-                kpis         = dev_kpis,
-                period_id    = period.id,
-                year         = year,
-                month        = month,
-                lot_id       = lot_id,
-                developer_id = developer.id,
+                kpis=dev_kpis, period_id=period.id,
+                year=year, month=month, lot_id=lot_id,
+                developer_id=developer.id,
             )
             snapshots.append(snapshot)
-            logger.debug(
-                f"Snapshot dev — project={project_id} dev={developer.id} "
-                f"site={developer.site_id} "
-                f"mr_rate={dev_kpis.get('mr_rate_per_site', 0):.2f}"
-            )
+
+            score = dev_kpis.get("developer_score", 0.0) or 0.0
+            if primary_site_id is not None:
+                dev_snapshots_by_site.setdefault(primary_site_id, []).append(
+                    (score, snapshot)
+                )
+
+        # ── Calcul du classement dans chaque site ────────────────────────────
+        for site_id, score_snapshot_list in dev_snapshots_by_site.items():
+            sorted_list = sorted(score_snapshot_list, key=lambda x: x[0], reverse=True)
+            for rank, (_, snap) in enumerate(sorted_list, start=1):
+                snap.score_rank_in_site = rank
 
         if developers:
             logger.info(
-                f"Snapshots developers — project={project_id} "
-                f"count={len(developers)}"
+                "Snapshots developers — project=%d count=%d",
+                project_id, len(developers),
             )
 
         self.db.flush()
+
+        # ── Log structuré final ───────────────────────────────────────────────
         logger.info(
-            f"generate_monthly_snapshots done — project={project_id} "
-            f"{year}/{month:02d} total={len(snapshots)} snapshots"
+            "KPI_GENERATION_DONE",
+            extra={
+                "project_id":      project_id,
+                "period":          f"{year}/{month:02d}",
+                "sites_count":     len(project_site_ids),
+                "devs_count":      len(developers),
+                "snapshots_total": len(snapshots),
+            },
         )
         return snapshots
 
     # =========================================================================
-    # UPSERT + CALCUL DELTAS
+    # HELPERS PRIVÉS
+    # =========================================================================
+
+    def _get_project_site_ids(self, project_id: int) -> List[int]:
+        """Récupère les site_ids associés à un projet via ProjectSite (M2M)."""
+        rows = (
+            self.db.query(ProjectSite.site_id)
+            .filter(ProjectSite.project_id == project_id)
+            .all()
+        )
+        return [r.site_id for r in rows]
+
+    def _get_primary_site_for_developer(self, developer_id: int) -> Optional[int]:
+        """
+        Récupère le site primaire d'un développeur via DeveloperSite (M2M).
+        Fallback : premier site trouvé si aucun site primaire défini.
+        """
+        row = (
+            self.db.query(DeveloperSite.site_id)
+            .filter(
+                DeveloperSite.developer_id == developer_id,
+                DeveloperSite.is_primary.is_(True),
+            )
+            .first()
+        )
+        if row:
+            return row.site_id
+        # Fallback
+        row = (
+            self.db.query(DeveloperSite.site_id)
+            .filter(DeveloperSite.developer_id == developer_id)
+            .first()
+        )
+        return row.site_id if row else None
+
+    # =========================================================================
+    # UPSERT + DELTAS
     # =========================================================================
 
     def _upsert_with_deltas(
@@ -193,66 +227,36 @@ class KpiAggregator:
         lot_id:       Optional[int] = None,
         developer_id: Optional[int] = None,
     ) -> KpiSnapshot:
-        """
-        Upsert le snapshot puis calcule les deltas vs mois précédent.
+        snapshot = self._upsert_snapshot(kpis, period_id, year, month, lot_id, developer_id)
 
-        Les 6 deltas sont calculés pour les trend indicators du dashboard :
-        delta_X = valeur_mois_actuel - valeur_mois_précédent
-            Positif = hausse | Négatif = baisse | NULL = pas de snapshot précédent
-        L'interprétation (bon/mauvais) dépend du KPI — gérée côté frontend.
-        """
-        # ── Upsert du snapshot courant ────────────────────────────────────────
-        snapshot = self._upsert_snapshot(
-            kpis         = kpis,
-            period_id    = period_id,
-            year         = year,
-            month        = month,
-            lot_id       = lot_id,
-            developer_id = developer_id,
-        )
-
-        # ── Calcul des deltas vs mois précédent ───────────────────────────────
         prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
         prev_period = self.period_repo.get_by_year_month(self.db, prev_year, prev_month)
 
         if prev_period:
             prev_snapshot = self.snapshot_repo.get_for_period(
-                db           = self.db,
-                project_id   = kpis.get("project_id"),
-                period_id    = prev_period.id,
-                site_id      = kpis.get("site_id"),
-                group_id     = kpis.get("group_id"),
-                developer_id = developer_id,
+                db=self.db,
+                project_id=kpis.get("project_id"),
+                period_id=prev_period.id,
+                site_id=kpis.get("site_id"),
+                group_id=kpis.get("group_id"),
+                developer_id=developer_id,
             )
-
             if prev_snapshot:
                 snapshot.delta_mr_rate          = round(
-                    snapshot.mr_rate_per_site     - prev_snapshot.mr_rate_per_site, 4
-                )
+                    snapshot.mr_rate_per_site     - prev_snapshot.mr_rate_per_site,     4)
                 snapshot.delta_approved_mr_rate = round(
-                    snapshot.approved_mr_rate     - prev_snapshot.approved_mr_rate, 4
-                )
+                    snapshot.approved_mr_rate     - prev_snapshot.approved_mr_rate,     4)
                 snapshot.delta_merged_mr_rate   = round(
-                    snapshot.merged_mr_rate       - prev_snapshot.merged_mr_rate, 4
-                )
+                    snapshot.merged_mr_rate       - prev_snapshot.merged_mr_rate,       4)
                 snapshot.delta_commit_rate      = round(
-                    snapshot.commit_rate_per_site - prev_snapshot.commit_rate_per_site, 4
-                )
-                snapshot.delta_nb_commits       = float(
+                    snapshot.commit_rate_per_site - prev_snapshot.commit_rate_per_site, 4)
+                # ✅ FIX : suppression du float() inutile — nb_commits_per_project est Integer
+                snapshot.delta_nb_commits       = (
                     snapshot.nb_commits_per_project - prev_snapshot.nb_commits_per_project
                 )
                 snapshot.delta_avg_review_time  = round(
-                    snapshot.avg_review_time_hours - prev_snapshot.avg_review_time_hours, 2
-                )
-                logger.debug(
-                    f"Deltas — project={kpis.get('project_id')} "
-                    f"site={kpis.get('site_id')} dev={developer_id} "
-                    f"Δmr={snapshot.delta_mr_rate:+.4f} "
-                    f"Δcommits={snapshot.delta_nb_commits:+.0f} "
-                    f"Δreview={snapshot.delta_avg_review_time:+.2f}h"
-                )
+                    snapshot.avg_review_time_hours - prev_snapshot.avg_review_time_hours, 2)
             else:
-                # Premier mois disponible → deltas NULL
                 snapshot.delta_mr_rate          = None
                 snapshot.delta_approved_mr_rate = None
                 snapshot.delta_merged_mr_rate   = None
@@ -269,21 +273,15 @@ class KpiAggregator:
         period_id:    int,
         year:         int,
         month:        int,
-        lot_id:       Optional[int] = None,
-        developer_id: Optional[int] = None,
+        lot_id:       Optional[int],
+        developer_id: Optional[int],
     ) -> KpiSnapshot:
-        """Prépare le dict et délègue au repository pour l'upsert."""
         excluded = {"period_start", "period_end"}
         data = {k: v for k, v in kpis.items() if k not in excluded}
-
         data["period_id"]     = period_id
         data["snapshot_date"] = date(year, month, 1)
-
         if lot_id is not None:
             data["lot_id"] = lot_id
-
-        # developer_id explicite écrase celui éventuel dans kpis
         if developer_id is not None:
             data["developer_id"] = developer_id
-
         return self.snapshot_repo.upsert(self.db, data)

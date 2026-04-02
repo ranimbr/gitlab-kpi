@@ -27,7 +27,7 @@ class GitLabConfig(Base):
 
     id          = Column(Integer, primary_key=True)
     name        = Column(String(100), nullable=False)
-    domain      = Column(String(255), unique=True, nullable=False)
+    domain      = Column(String(255), nullable=False)
     # Token chiffré (AES-256-GCM via services/security.py)
     # NE JAMAIS logger ce champ ni l'inclure dans les réponses API
     token       = Column(String(512), nullable=False)

@@ -26,6 +26,7 @@ export { default as adminService }         from "./adminService";
 export { default as alertService }         from "./alertService";
 export { default as dashboardService }     from "./dashboardService";
 export { default as developerService }     from "./developerService";
+export { default as exportService }        from "./exportService";
 export { default as extractionLotService } from "./extractionLotService";
 export { default as gitlabConfigService }  from "./gitlabConfigService";
 export { default as kpiDefinitionService } from "./kpiDefinitionService";

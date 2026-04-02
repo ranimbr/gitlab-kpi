@@ -39,7 +39,6 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: "60"
       ENCRYPTION_KEY: "Kjmdv6TEIBxn2C81WqXPkYYU5UIx_9lWK6OIW8e4MvU="
       GITLAB_BASE_URL: "https://gitlab.com/api/v4"
-      GITLAB_TOKEN: "glpat-zlnZF48jYizq-SucVMZd_W86MQp1Omp2eGR0Cw.01.121mkqvci"
       ALLOWED_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
       SCHEDULER_ENABLED: "False"
       ADMIN_EMAIL: "admin@test.com"

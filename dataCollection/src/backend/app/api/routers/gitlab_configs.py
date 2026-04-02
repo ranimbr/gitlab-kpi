@@ -1,4 +1,4 @@
-"""api/routers/gitlab_configs.py — inchangé."""
+"""api/routers/gitlab_configs.py """
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -26,8 +26,6 @@ def list_configs(db: Session = Depends(get_db), current_admin: AppUser = Depends
 
 @router.post("/", response_model=GitLabConfigResponse, status_code=201)
 def create_config(request: GitLabConfigCreate, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
-    if repo.domain_exists(db, request.domain):
-        raise HTTPException(status_code=409, detail=f"Domain '{request.domain}' already configured")
     try:
         encrypted = encrypt_token(request.token)
     except ValueError as e:

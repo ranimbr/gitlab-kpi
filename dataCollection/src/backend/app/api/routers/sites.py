@@ -1,4 +1,4 @@
-"""api/routers/sites.py — inchangé."""
+"""api/routers/sites.py """
 import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -13,7 +13,8 @@ logger  = logging.getLogger(__name__)
 router  = APIRouter(prefix="/sites", tags=["Sites"])
 service = SiteService()
 
-@router.get("/", response_model=List[SiteResponse])
+
+@router.get("", response_model=List[SiteResponse])
 def list_sites(db: Session = Depends(get_db), current_user: AppUser = Depends(get_current_user), active_only: bool = True):
     return service.get_all_sites(db, active_only)
 

@@ -2,21 +2,14 @@
  * pages/AlertsPage.jsx
  *
  * CORRECTIONS :
- *   - alert.kpi_label || alert.kpi_name || alert.kpi_code : fallback complet
+ *   - isAdmin : role === "super_admin" (remplace "admin")
  *   - alert.level lowercase normalisé (backend peut renvoyer WARNING ou warning)
- *   - showToast → useCallback ✅ (déjà correct, conservé)
  *   - AlertCard : affichage kpi_value avec toFixed safe
- *
- * AMÉLIORATIONS DESIGN :
- *   - Cards avec border-left coloré selon niveau
- *   - Timeline view : badge niveau bien visible
- *   - Summary cards cliquables avec animation
- *   - Banner critique en haut quand alertes critiques actives
- *   - Empty state différencié selon filtres actifs vs aucune alerte
+ *   - developer_id dans les filtres alertService.getAll()
  */
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth, ROLES } from "../context/AuthContext";
 import alertService   from "../services/alertService";
 import projectService from "../services/projectService";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -25,8 +18,8 @@ import Pagination     from "../components/common/Pagination";
 
 // ── Config niveaux — normalise majuscules/minuscules du backend ───────────────
 const LEVEL_CFG = {
-  WARNING:  { color: "warning", bg: "#fffbeb", border: "#fcd34d", icon: "ri-alert-line",        label: "Warning"  },
-  CRITICAL: { color: "danger",  bg: "#fff1f0", border: "#fecaca", icon: "ri-close-circle-line",  label: "Critical" },
+  WARNING:  { color: "warning", bg: "#fffbeb", border: "#fcd34d", icon: "ri-alert-line",       label: "Warning"  },
+  CRITICAL: { color: "danger",  bg: "#fff1f0", border: "#fecaca", icon: "ri-close-circle-line", label: "Critical" },
 };
 const getLevelCfg = (level) => LEVEL_CFG[String(level || "").toUpperCase()] || LEVEL_CFG.WARNING;
 
@@ -47,7 +40,6 @@ function timeAgo(d) {
   return `${Math.floor(diff / 86400)}j`;
 }
 
-// ✅ FIX : fallback complet pour le nom du KPI
 function getKpiLabel(alert) {
   return alert.kpi_label || alert.kpi_name || alert.kpi_code || "KPI inconnu";
 }
@@ -69,7 +61,7 @@ function AlertCard({ alert, isAdmin, onAck, onResolve }) {
   const isAcked    = !!alert.acknowledged_at;
   const isResolved = !!alert.resolved_at;
 
-  // ✅ FIX : toFixed safe — kpi_value peut être null ou string
+  // toFixed safe — kpi_value peut être null ou string
   const valueDisplay = alert.kpi_value != null && !isNaN(Number(alert.kpi_value))
     ? Number(alert.kpi_value).toFixed(2)
     : "—";
@@ -109,6 +101,12 @@ function AlertCard({ alert, isAdmin, onAck, onResolve }) {
               {!isResolved && isAcked && (
                 <span className="badge fs-11" style={{ background: "#e0f2fe", color: "#0369a1" }}>
                   <i className="ri-eye-line me-1"></i>Acquitté
+                </span>
+              )}
+              {/* ✅ Badge développeur si alerte individuelle */}
+              {alert.developer_id && (
+                <span className="badge fs-11" style={{ background: "#f3e8ff", color: "#7c3aed" }}>
+                  <i className="ri-user-line me-1"></i>Dev #{alert.developer_id}
                 </span>
               )}
             </div>
@@ -157,6 +155,7 @@ function AlertCard({ alert, isAdmin, onAck, onResolve }) {
                   <i className="ri-eye-line me-1"></i>Acquitter
                 </button>
               )}
+              {/* ✅ FIX : super_admin au lieu de admin */}
               {isAdmin && (
                 <button className="btn btn-sm btn-soft-success" onClick={() => onResolve(alert.id)}>
                   <i className="ri-checkbox-circle-line me-1"></i>Résoudre
@@ -172,9 +171,10 @@ function AlertCard({ alert, isAdmin, onAck, onResolve }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AlertsPage() {
-  const navigate   = useNavigate();
-  const { user }   = useAuth();
-  const isAdmin    = user?.role === "admin";
+  const navigate = useNavigate();
+  // ✅ FIX : isAdmin utilise ROLES.SUPER_ADMIN
+  const { user } = useAuth();
+  const isAdmin  = user?.role === ROLES.SUPER_ADMIN;
 
   const [alerts,        setAlerts]        = useState([]);
   const [summary,       setSummary]       = useState(null);
@@ -224,8 +224,8 @@ export default function AlertsPage() {
   }, [load, showToast]);
 
   const filtered = useMemo(() => alerts.filter(a => {
-    // ✅ FIX : normalise les niveaux pour la comparaison
-    const level = String(a.level || "").toUpperCase();
+    // ✅ Normalise les niveaux pour la comparaison
+    const level   = String(a.level || "").toUpperCase();
     const mLevel   = levelFilter === "all" || level === levelFilter;
     const mProject = projectFilter === "all" || String(a.project_id) === projectFilter;
     return mLevel && mProject;
@@ -295,10 +295,10 @@ export default function AlertsPage() {
         {summary && (
           <div className="row g-3 mb-4">
             {[
-              { label: "Alertes actives",  value: summary.total_active   || 0, color: "#3577f1", bg: "#eff6ff", icon: "ri-alarm-warning-line",   fn: () => { setLevelFilter("all");      setShowResolved(false); } },
-              { label: "Critical",         value: summary.total_critical || 0, color: "#b91c1c", bg: "#fff1f0", icon: "ri-close-circle-line",     fn: () => { setLevelFilter("CRITICAL"); setShowResolved(false); } },
-              { label: "Warning",          value: summary.total_warning  || 0, color: "#a16207", bg: "#fffbeb", icon: "ri-alert-line",            fn: () => { setLevelFilter("WARNING");  setShowResolved(false); } },
-              { label: "Résolues",         value: summary.total_resolved || 0, color: "#15803d", bg: "#f0fdf4", icon: "ri-checkbox-circle-line",  fn: () => { setShowResolved(true);  setLevelFilter("all"); } },
+              { label: "Alertes actives", value: summary.total_active   || 0, color: "#3577f1", bg: "#eff6ff", icon: "ri-alarm-warning-line",  fn: () => { setLevelFilter("all");      setShowResolved(false); } },
+              { label: "Critical",        value: summary.total_critical || 0, color: "#b91c1c", bg: "#fff1f0", icon: "ri-close-circle-line",    fn: () => { setLevelFilter("CRITICAL"); setShowResolved(false); } },
+              { label: "Warning",         value: summary.total_warning  || 0, color: "#a16207", bg: "#fffbeb", icon: "ri-alert-line",           fn: () => { setLevelFilter("WARNING");  setShowResolved(false); } },
+              { label: "Résolues",        value: summary.total_resolved || 0, color: "#15803d", bg: "#f0fdf4", icon: "ri-checkbox-circle-line", fn: () => { setShowResolved(true);      setLevelFilter("all"); } },
             ].map((s, i) => (
               <div key={i} className="col-xl-3 col-sm-6">
                 <div className="card border-0 h-100" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)", cursor: "pointer" }}
@@ -379,9 +379,10 @@ export default function AlertsPage() {
                 </span>
               )}
             </h6>
+            {/* ✅ FIX : super_admin */}
             {isAdmin && (
               <span className="text-muted fs-12">
-                <i className="ri-shield-user-line me-1"></i>Admin : vous pouvez résoudre les alertes
+                <i className="ri-shield-user-line me-1"></i>Super Admin : vous pouvez résoudre les alertes
               </span>
             )}
           </div>
@@ -415,7 +416,7 @@ export default function AlertsPage() {
           </div>
         </div>
 
-        {/* CTA Thresholds */}
+        {/* CTA Thresholds — super_admin uniquement */}
         {isAdmin && (
           <div className="rounded-3 p-4 mt-3 d-flex align-items-center justify-content-between"
             style={{ background: "linear-gradient(135deg, #405189 0%, #3577f1 100%)" }}>

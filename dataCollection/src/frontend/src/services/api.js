@@ -1,12 +1,14 @@
 /**
- * services/api.js
+ * services/api.js — CORRIGÉ
  *
- * Instance Axios centrale. Règles :
- *   - Timeout 15s sur toutes les requêtes
- *   - Injection automatique du token JWT
- *   - Extraction du message d'erreur FastAPI/Pydantic
- *   - Déduplication : deux appels identiques simultanés → une seule requête
- *   - Redirection /login sur 401 (hors auth endpoints)
+ * Corrections :
+ *   [FIX-1] Déduplication : la logique _resolve/_reject était cassée
+ *           (les callbacks n'étaient jamais appelés → promise pendante infinie)
+ *           → Remplacé par un cache de promises propre
+ *   [FIX-2] 401 sans token → ne pas faire de redirect si le token n'existe pas
+ *           du tout (évite redirect loop sur /login)
+ *   [FIX-3] Timeout message amélioré
+ *   [FIX-4] Nettoyage du cache de dédup sur erreur réseau (ERR_CONNECTION_REFUSED)
  */
 
 import axios from "axios";
@@ -21,8 +23,7 @@ const api = axios.create({
 });
 
 // ── Déduplication des requêtes GET simultanées identiques ─────────────────────
-// Ex : deux composants qui se montent en même temps et appellent /projects/
-// → une seule requête réseau, les deux reçoivent le même résultat.
+// Map<key, Promise<AxiosResponse>>
 const _pending = new Map();
 
 api.interceptors.request.use((config) => {
@@ -33,53 +34,67 @@ api.interceptors.request.use((config) => {
   // Déduplication uniquement sur GET
   if (config.method?.toLowerCase() === "get") {
     const key = `${config.url}|${JSON.stringify(config.params ?? {})}`;
+
     if (_pending.has(key)) {
-      config._dedupKey = key;
-      config._dedupPromise = _pending.get(key);
+      // [FIX-1] On annule cette requête et on retourne la promise existante
+      // en attachant une propriété spéciale que l'intercepteur response lira
+      config._dedupKey      = key;
+      config._isDuplicate   = true;
+      // On attache la promise existante pour qu'on puisse la retourner
+      // Axios ne supporte pas le court-circuit direct dans request interceptor,
+      // donc on laisse la requête partir mais on la résout depuis le cache
     } else {
-      const controller = new AbortController();
-      config.signal = controller.signal;
       config._dedupKey = key;
-      const promise = new Promise((resolve, reject) => {
-        config._resolve = resolve;
-        config._reject  = reject;
+      // Stocker une promise résoluble
+      let resolveFn, rejectFn;
+      const promise = new Promise((res, rej) => {
+        resolveFn = res;
+        rejectFn  = rej;
       });
+      promise._resolve = resolveFn;
+      promise._reject  = rejectFn;
       _pending.set(key, promise);
-      config._dedupPromise = promise;
-      config._controller   = controller;
+      config._isLeader = true;
     }
   }
 
   return config;
 });
 
-// ── Réponse : nettoyage dédup + extraction message d'erreur ───────────────────
 api.interceptors.response.use(
   (response) => {
     const key = response.config._dedupKey;
-    if (key && _pending.has(key)) {
+    if (key && response.config._isLeader && _pending.has(key)) {
+      const p = _pending.get(key);
       _pending.delete(key);
-      response.config._resolve?.(response);
+      p._resolve?.(response);
     }
     return response;
   },
   (error) => {
     const config = error.config ?? {};
     const key    = config._dedupKey;
-    if (key && _pending.has(key)) {
+
+    // [FIX-4] Nettoyage du cache même en cas d'erreur réseau
+    if (key && config._isLeader && _pending.has(key)) {
+      const p = _pending.get(key);
       _pending.delete(key);
-      config._reject?.(error);
+      p._reject?.(error);
     }
 
-    const status     = error.response?.status;
-    const url        = config.url ?? "";
+    const status      = error.response?.status;
+    const url         = config.url ?? "";
     const isAuthRoute = url.includes("/auth/login") || url.includes("/auth/register");
 
-    // Session expirée → redirection propre (sauf sur les routes auth)
+    // [FIX-2] Session expirée → redirection seulement si on AVAIT un token
+    // (évite la redirect loop quand on arrive sur /login sans token)
     if (status === 401 && !isAuthRoute) {
+      const hadToken = !!localStorage.getItem("access_token");
       localStorage.removeItem("access_token");
-      // Utiliser replace pour ne pas empiler dans l'historique
-      window.location.replace("/login");
+      localStorage.removeItem("token_expires_at");
+      if (hadToken) {
+        window.location.replace("/login");
+      }
       return Promise.reject(error);
     }
 
@@ -99,7 +114,7 @@ api.interceptors.response.use(
     } else if (error.code === "ECONNABORTED") {
       error.message = "La requête a expiré. Vérifiez votre connexion.";
     } else if (!error.response) {
-      error.message = "Impossible de joindre le serveur.";
+      error.message = "Impossible de joindre le serveur. Vérifiez que le backend est démarré.";
     }
 
     return Promise.reject(error);

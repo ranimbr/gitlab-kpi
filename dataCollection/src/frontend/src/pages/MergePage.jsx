@@ -25,6 +25,36 @@ const timeSince = (d) => {
 const fmtDate=(d)=>d?new Date(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}):"—";
 const getInitials=(name="")=>(name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 
+/**
+ * Calcule le "temps de revue" d'une MR selon la disponibilité des données :
+ *  1. Si time_to_approve est renseigné et >= 0 → valeur exacte ✅
+ *  2. Si MR merged et dates valides et Lead Time > 0 → proxy DORA ✅
+ *  3. Sinon → null (donnée absente ou incohérente → afficher "—")
+ *
+ * Robustesse :
+ *  - NaN sécurisé via isNaN()
+ *  - Lead Time négatif = incohérence de données → on retourne null (jamais de valeur absurde)
+ */
+function reviewTime(mr) {
+  // Cas 1 : donnée exacte du backend (time_to_approve calculé lors de l'extraction)
+  if (mr.time_to_approve != null && !isNaN(mr.time_to_approve) && mr.time_to_approve >= 0) {
+    return { hours: mr.time_to_approve, isExact: true };
+  }
+  // Cas 2 : proxy Lead Time DORA — uniquement si MR mergée avec les 2 dates valides
+  if (mr.state === "merged" && mr.merged_at && mr.created_at_gitlab) {
+    const created = new Date(mr.created_at_gitlab);
+    const merged  = new Date(mr.merged_at);
+    // Sécurité : si l'une des dates est invalide ou le résultat est incohérent → on abandonne
+    if (isNaN(created.getTime()) || isNaN(merged.getTime())) return null;
+    const hours = (merged - created) / 3_600_000;
+    // Lead Time négatif = problème de qualité de données (fuseau horaire, import incorrect)
+    // → On affiche "—", jamais une valeur négative ou absurde
+    if (hours < 0) return null;
+    return { hours: parseFloat(hours.toFixed(1)), isExact: false };
+  }
+  return null;
+}
+
 const AVATAR_PALETTE=[
   {bg:"#e8ecf8",text:"#405189"},{bg:"#d4f5f0",text:"#0a7a6a"},{bg:"#d7edf9",text:"#1a6fa3"},
   {bg:"#fef3dc",text:"#b78a1e"},{bg:"#fde8e8",text:"#9b1c1c"},{bg:"#ede9fb",text:"#5b21b6"},
@@ -84,7 +114,12 @@ function MRDetailModal({ mr, onClose }) {
                 {icon:"ri-folder-2-line",      label:"Projet",  value:mr.project||"Unknown"},
                 {icon:"ri-calendar-event-line",label:"Créée",   value:fmtDate(mr.created_at_gitlab)},
                 {icon:"ri-time-line",          label:"Délai",   value:timeSince(mr.created_at_gitlab)},
-                {icon:"ri-check-double-line",  label:"Temps revue",value:mr.time_to_approve!=null?(mr.time_to_approve===0?"Instant":`${mr.time_to_approve.toFixed(1)}h`):"—"},
+                {icon:"ri-check-double-line",  label:"Temps revue", value: (() => {
+                    const rt = reviewTime(mr);
+                    if (!rt) return "—";
+                    const label = rt.hours === 0 ? "Instant" : `${rt.hours.toFixed(1)}h`;
+                    return rt.isExact ? label : `~${label} (Lead Time)`;
+                  })()},
               ].map((item,i)=>(
                 <div key={i} className="col-6">
                   <div className="rounded-3 p-3" style={{background:"#f8f9fc",border:"1px solid #e9ecef"}}>
@@ -351,7 +386,22 @@ function MRTable({ mrs, onDetail }) {
                     <td style={{padding:"14px 16px"}}><span style={{color:"#6c757d",fontSize:13,whiteSpace:"nowrap"}}><i className="ri-folder-3-line me-1" style={{color:"#878a99"}}></i>{mr.project||"Unknown"}</span></td>
                     <td style={{padding:"14px 16px"}}><span style={{background:cfg.bg,color:cfg.color,borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><i className={cfg.icon}></i>{cfg.label}</span></td>
                     <td style={{padding:"14px 16px"}}>{isApproved?<span style={{background:"#d7edf9",color:"#1a6fa3",borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5}}><i className="ri-shield-check-line"></i>Yes</span>:<span style={{color:"#c8cbcf",fontSize:18}}>—</span>}</td>
-                    <td style={{padding:"14px 16px"}}>{mr.time_to_approve!=null?<span style={{fontSize:12,fontWeight:600,color:mr.time_to_approve===0?"#0ab39c":mr.time_to_approve<2?"#0ab39c":mr.time_to_approve<24?"#f7b84b":"#f06548"}}>{mr.time_to_approve===0?"Instant":`${mr.time_to_approve.toFixed(1)}h`}</span>:<span style={{color:"#c8cbcf"}}>—</span>}</td>
+                    {/* Colonne REVUE — exact ou proxy Lead Time (DORA) */}
+                    {(() => {
+                      const rt = reviewTime(mr);
+                      if (!rt) return <td style={{padding:"14px 16px"}}><span style={{color:"#c8cbcf"}}>—</span></td>;
+                      const color = rt.hours === 0 ? "#0ab39c" : rt.hours < 2 ? "#0ab39c" : rt.hours < 24 ? "#f7b84b" : "#f06548";
+                      return (
+                        <td style={{padding:"14px 16px"}}>
+                          <span style={{fontSize:12,fontWeight:600,color}} title={rt.isExact ? "Temps d'approbation exact" : "Lead Time (proxy DORA) : merged_at − created_at"}>
+                            {rt.isExact ? "" : "~"}{rt.hours === 0 ? "Instant" : `${rt.hours}h`}
+                          </span>
+                          {!rt.isExact && (
+                            <span style={{marginLeft:4,fontSize:10,color:"#adb5bd"}} title="Lead Time approximé">ⓘ</span>
+                          )}
+                        </td>
+                      );
+                    })()}
                     <td style={{padding:"14px 16px",whiteSpace:"nowrap"}}><span style={{color:"#878a99",fontSize:12.5}}><i className="ri-time-line me-1"></i>{timeSince(mr.created_at_gitlab)}</span><br/><span style={{color:"#adb5bd",fontSize:11}}>{fmtDate(mr.created_at_gitlab)}</span></td>
                     <td style={{padding:"14px 16px"}}><button onClick={()=>onDetail(mr)} className="btn btn-sm btn-soft-primary" style={{fontSize:11,padding:"3px 10px"}}><i className="ri-eye-line"></i></button></td>
                   </tr>
@@ -396,7 +446,7 @@ export default function MergePage() {
         try {
           const mrRes=await api.get(`/projects/${project.id}/merge-requests`,{params:{exclude_draft:false}});
           const data=Array.isArray(mrRes.data)?mrRes.data:(mrRes.data?.items??[]);
-          data.forEach(mr=>collected.push({...mr,project:project.name,author:mr.developer?.username||mr.author_name||"Unknown"}));
+          data.forEach(mr=>collected.push({...mr,project:project.name,author:mr.developer?.name||mr.developer?.gitlab_username||mr.author_name||"Unknown"}));
         } catch { /* projet sans MRs */ }
       }
       setAllMrs(collected); setError(null);
@@ -428,8 +478,10 @@ export default function MergePage() {
   const kpis=useMemo(()=>{
     const total=filtered.length, merged=filtered.filter(m=>m.state==="merged").length, opened=filtered.filter(m=>m.state==="opened").length, closed=filtered.filter(m=>m.state==="closed").length, approved=filtered.filter(m=>m.approved===true||m.approved===1).length;
     const mergeRate=total>0?Math.round((merged/total)*100):0;
-    const withTime=filtered.filter(m=>m.time_to_approve!=null&&m.time_to_approve>0);
-    const avgReview=withTime.length?(withTime.reduce((s,m)=>s+m.time_to_approve,0)/withTime.length).toFixed(1):null;
+    const withTime = filtered
+      .map(m => reviewTime(m))
+      .filter(rt => rt !== null && rt.hours > 0);
+    const avgReview=withTime.length?(withTime.reduce((s,rt)=>s+rt.hours,0)/withTime.length).toFixed(1):null;
     return{total,merged,opened,closed,approved,mergeRate,avgReview};
   },[filtered]);
 

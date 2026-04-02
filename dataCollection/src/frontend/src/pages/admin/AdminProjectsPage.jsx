@@ -1,18 +1,16 @@
 /**
  * pages/admin/AdminProjectsPage.jsx
  *
- * CORRECTIONS :
- *   - exportCSV : URL.revokeObjectURL ajouté (anti memory-leak)
- *   - filtre archived : retiré du filtrage front (getAllAdmin charge déjà tout)
- *   - ProjectModal : validation cohérente, site_id nullable correct
- *   - Toast : composant extrait, stable reference
- *
- * AMÉLIORATIONS DESIGN :
- *   - Stats cards avec trend indicator
- *   - Table avec hover state soigné
- *   - Modal avec preview avatar dynamique
- *   - Badges améliorés
- *   - Empty state avec illustration
+ * CORRECTIONS M2M (modèles mis à jour) :
+ * ──────────────────────────────────────
+ * 1. p.site_id → p.sites[] (ProjectResponse a maintenant sites: [{site_id, site_name}])
+ * 2. siteFilter compare en cherchant dans p.sites.some(s => s.site_id == id)
+ * 3. exportCSV affiche tous les sites associés (pas juste un)
+ * 4. ProjectModal envoie site_ids: [] (liste M2M) au lieu de site_id unique
+ *    - Création : site_ids dans le payload POST /projects/
+ *    - Mise à jour : site_ids dans PUT /projects/{id} (remplace la liste)
+ * 5. Affichage dans la table : tous les sites du projet (badges multiples)
+ * 6. URL.revokeObjectURL conservé (anti memory-leak)
  */
 import { useEffect, useState, useCallback, useMemo } from "react";
 import projectService      from "../../services/projectService";
@@ -28,32 +26,42 @@ function getInitials(name = "") {
   return (name || "?").split(/[\s._-]/).map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
+// ✅ Helper : premier site d'un projet (pour l'affichage condensé en table)
+function getProjectPrimarysite(project) {
+  if (!project.sites?.length) return null;
+  return project.sites[0];
+}
+
+// ✅ Helper : tous les IDs de sites d'un projet
+function getProjectSiteIds(project) {
+  return (project.sites || []).map(s => s.site_id);
+}
+
 function Toast({ toast }) {
   if (!toast) return null;
   const isSuccess = toast.type === "success";
   return (
-    <div
-      className={`alert alert-${toast.type} d-flex align-items-center gap-2 position-fixed top-0 end-0 m-3`}
-      style={{ zIndex: 9999, minWidth: 320, borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,.12)", border: "none" }}
-    >
+    <div className={`alert alert-${toast.type} d-flex align-items-center gap-2 position-fixed top-0 end-0 m-3`}
+      style={{ zIndex: 9999, minWidth: 320, borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,.12)", border: "none" }}>
       <i className={`${isSuccess ? "ri-checkbox-circle-line" : "ri-error-warning-line"} fs-16`}></i>
       <span className="fs-13 fw-medium">{toast.msg}</span>
     </div>
   );
 }
 
-function exportCSV(projects, configs, sites) {
-  const headers = ["ID", "Nom", "Namespace", "GitLab ID", "Config", "Site", "Commits", "Actif"];
+// ✅ FIX : exportCSV affiche tous les sites associés
+function exportToCSV(projects, configs) {
+  const headers = ["ID", "Nom", "Namespace", "GitLab ID", "Config", "Sites", "Commits", "Actif"];
   const rows = projects.map(p => {
-    const cfg  = configs.find(c => c.id === p.gitlab_config_id);
-    const site = sites.find(s => s.id === p.site_id);
+    const cfg   = configs.find(c => c.id === p.gitlab_config_id);
+    const sites = (p.sites || []).map(s => s.site_name).join("|");
     return [
       p.id,
       `"${(p.name || "").replace(/"/g, '""')}"`,
       p.namespace || p.path || "",
       p.gitlab_project_id,
-      cfg?.name  || "",
-      site?.name || "",
+      cfg?.name || "",
+      `"${sites}"`,
       p.commit_count ?? 0,
       p.is_active ? "Oui" : "Non",
     ];
@@ -64,25 +72,43 @@ function exportCSV(projects, configs, sites) {
   a.href = url;
   a.download = `projets_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
-  URL.revokeObjectURL(url); // ✅ anti memory-leak
+  URL.revokeObjectURL(url);
 }
 
-// ── ProjectModal ───────────────────────────────────────────────────────────────
+// ── ProjectModal ──────────────────────────────────────────────────────────────
+// ✅ FIX MAJEUR : utilise site_ids (liste) au lieu de site_id (unique)
 function ProjectModal({ configs, sites, project, onClose, onSave }) {
   const isEdit = !!project?.id;
+
+  // ✅ FIX : selectedSiteIds est un Set des sites actuellement sélectionnés
+  const initialSiteIds = useMemo(() => {
+    if (!project?.sites?.length) return [];
+    return project.sites.map(s => s.site_id);
+  }, [project]);
+
   const [form, setForm] = useState({
     name:              project?.name              || "",
     gitlab_config_id:  project?.gitlab_config_id  || "",
     gitlab_project_id: project?.gitlab_project_id || "",
-    site_id:           project?.site_id            || "",
     is_active:         project?.is_active          ?? true,
   });
+  // ✅ FIX : sélection multiple des sites
+  const [selectedSiteIds, setSelectedSiteIds] = useState(initialSiteIds);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
 
   const handle = (e) => {
     const { name, value, type, checked } = e.target;
     setForm(f => ({ ...f, [name]: type === "checkbox" ? checked : value }));
+  };
+
+  // Toggle d'un site dans la sélection
+  const toggleSite = (siteId) => {
+    setSelectedSiteIds(prev =>
+      prev.includes(siteId)
+        ? prev.filter(id => id !== siteId)
+        : [...prev, siteId]
+    );
   };
 
   const submit = async () => {
@@ -92,12 +118,13 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
     if (!form.gitlab_project_id)   return setError("L'ID projet GitLab est requis.");
     setLoading(true);
     try {
+      // ✅ FIX : payload avec site_ids (M2M)
       const payload = {
         name:              form.name.trim(),
         gitlab_config_id:  parseInt(form.gitlab_config_id),
         gitlab_project_id: parseInt(form.gitlab_project_id),
-        site_id:           form.site_id ? parseInt(form.site_id) : null,
         is_active:         form.is_active,
+        site_ids:          selectedSiteIds,  // ✅ liste M2M
       };
       if (isEdit) await projectService.update(project.id, payload);
       else        await projectService.create(payload);
@@ -109,21 +136,20 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
     }
   };
 
-  // Fermeture Echap
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape" && !loading) onClose(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [loading, onClose]);
 
-  const initials = getInitials(form.name || (isEdit ? project.name : ""));
-  const selectedConfig = configs.find(c => String(c.id) === String(form.gitlab_config_id));
+  const initials          = getInitials(form.name || (isEdit ? project.name : ""));
+  const selectedConfig    = configs.find(c => String(c.id) === String(form.gitlab_config_id));
 
   return (
     <div className="modal fade show d-block"
       style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
       onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
         <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
 
           {/* Header */}
@@ -135,7 +161,7 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
             <div className="flex-grow-1">
               <h5 className="fw-semibold mb-0 fs-15">{isEdit ? "Modifier le projet" : "Nouveau projet GitLab"}</h5>
               <p className="text-muted fs-12 mb-0">
-                {isEdit ? `#${project.id} · ${project.gitlab_project_id}` : "Connectez un projet depuis GitLab"}
+                {isEdit ? `#${project.id} · GitLab ${project.gitlab_project_id}` : "Connectez un projet depuis GitLab"}
               </p>
             </div>
             <button className="btn-close" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
@@ -148,9 +174,7 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
                 <i className="ri-error-warning-line flex-shrink-0"></i>{error}
               </div>
             )}
-
             <div className="row g-3">
-              {/* Nom */}
               <div className="col-12">
                 <label className="form-label fw-medium fs-13 mb-1">
                   Nom du projet <span className="text-danger">*</span>
@@ -159,8 +183,6 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
                   placeholder="ex: Backend API, Frontend Web…"
                   value={form.name} onChange={handle} />
               </div>
-
-              {/* Config GitLab */}
               <div className="col-12">
                 <label className="form-label fw-medium fs-13 mb-1">
                   Configuration GitLab <span className="text-danger">*</span>
@@ -177,8 +199,6 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
                   </div>
                 )}
               </div>
-
-              {/* GitLab Project ID + Site */}
               <div className="col-md-6">
                 <label className="form-label fw-medium fs-13 mb-1">
                   ID Projet GitLab <span className="text-danger">*</span>
@@ -191,30 +211,15 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
                 </div>
                 {isEdit && <div className="form-text fs-11 mt-1 text-muted">Non modifiable après création</div>}
               </div>
-
               <div className="col-md-6">
-                <label className="form-label fw-medium fs-13 mb-1">Site géographique</label>
-                <select name="site_id" className="form-select" value={form.site_id} onChange={handle}>
-                  <option value="">— Aucun site —</option>
-                  {sites.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}{s.country ? ` (${s.country})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Actif toggle */}
-              <div className="col-12">
-                <div className="d-flex align-items-center justify-content-between rounded-3 p-3"
-                  style={{ background: form.is_active ? "#f0fdf4" : "#f8f9fa", border: `1px solid ${form.is_active ? "#d1fae5" : "#e9ecef"}`, transition: "all .2s" }}>
-                  <div>
-                    <div className={`fw-medium fs-13 ${form.is_active ? "text-success" : "text-muted"}`}>
-                      <i className={`${form.is_active ? "ri-checkbox-circle-line" : "ri-pause-circle-line"} me-1`}></i>
-                      {form.is_active ? "Projet actif" : "Projet inactif"}
-                    </div>
-                    <div className="text-muted fs-12">
-                      {form.is_active ? "Inclus dans les extractions automatiques" : "Exclu des extractions"}
-                    </div>
-                  </div>
+                {/* ✅ FIX : Actif toggle */}
+                <label className="form-label fw-medium fs-13 mb-1">Statut</label>
+                <div className="d-flex align-items-center justify-content-between rounded-3 p-3 h-auto"
+                  style={{ background: form.is_active ? "#f0fdf4" : "#f8f9fa", border: `1px solid ${form.is_active ? "#d1fae5" : "#e9ecef"}` }}>
+                  <span className={`fs-13 fw-medium ${form.is_active ? "text-success" : "text-muted"}`}>
+                    <i className={`${form.is_active ? "ri-checkbox-circle-line" : "ri-pause-circle-line"} me-1`}></i>
+                    {form.is_active ? "Actif" : "Inactif"}
+                  </span>
                   <div className="form-check form-switch mb-0">
                     <input type="checkbox" className="form-check-input" role="switch"
                       name="is_active" checked={form.is_active} onChange={handle}
@@ -222,6 +227,47 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
                   </div>
                 </div>
               </div>
+
+              {/* ✅ FIX MAJEUR : Sélection multiple de sites (M2M) */}
+              {sites.length > 0 && (
+                <div className="col-12">
+                  <label className="form-label fw-medium fs-13 mb-2">
+                    Sites associés
+                    <span className="text-muted fw-normal fs-12 ms-2">
+                      (un projet peut appartenir à plusieurs sites)
+                    </span>
+                  </label>
+                  <div className="d-flex flex-wrap gap-2">
+                    {sites.map(site => {
+                      const selected = selectedSiteIds.includes(site.id);
+                      return (
+                        <button key={site.id} type="button"
+                          onClick={() => toggleSite(site.id)}
+                          className="btn btn-sm"
+                          style={{
+                            borderRadius: 20,
+                            border: `1.5px solid ${selected ? "#3577f1" : "#dee2e6"}`,
+                            background: selected ? "#eff6ff" : "#f8fafc",
+                            color: selected ? "#3577f1" : "#6c757d",
+                            fontWeight: selected ? 600 : 400,
+                            transition: "all .15s",
+                          }}>
+                          {selected && <i className="ri-check-line me-1 fs-12"></i>}
+                          <i className="ri-map-pin-line me-1 fs-12"></i>
+                          {site.name}
+                          {site.country && <span className="ms-1 opacity-60 fs-11">({site.country})</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedSiteIds.length === 0 && (
+                    <p className="text-muted fs-12 mt-1 mb-0">
+                      <i className="ri-information-line me-1"></i>
+                      Aucun site sélectionné — le projet ne sera pas inclus dans les KPIs par site.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -232,8 +278,7 @@ function ProjectModal({ configs, sites, project, onClose, onSave }) {
             <button className="btn btn-sm btn-primary px-4" onClick={submit} disabled={loading}>
               {loading
                 ? <><span className="spinner-border spinner-border-sm me-2"></span>Enregistrement…</>
-                : <><i className="ri-save-line me-1"></i>{isEdit ? "Mettre à jour" : "Créer le projet"}</>
-              }
+                : <><i className="ri-save-line me-1"></i>{isEdit ? "Mettre à jour" : "Créer le projet"}</>}
             </button>
           </div>
         </div>
@@ -258,18 +303,15 @@ export default function AdminProjectsPage() {
   const [loading,   setLoading]   = useState(true);
   const [toast,     setToast]     = useState(null);
 
-  // Modals
   const [modalProject,  setModalProject]  = useState(null);
   const [deleteProject, setDeleteProject] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Filtres
   const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [configFilter, setConfigFilter] = useState("all");
   const [siteFilter,   setSiteFilter]   = useState("all");
 
-  // Sort + pagination
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [page,    setPage]    = useState(1);
@@ -332,14 +374,15 @@ export default function AdminProjectsPage() {
     setPage(1);
   };
 
-  // Filtrage + tri
+  // ✅ FIX : filtrage par site cherche dans p.sites[]
   const filtered = useMemo(() => {
     let result = projects.filter(p => {
       const q   = search.toLowerCase();
       const ms  = !q || (p.name || "").toLowerCase().includes(q) || String(p.gitlab_project_id).includes(q) || (p.namespace || "").toLowerCase().includes(q);
       const mst = statusFilter === "all" || (statusFilter === "active" ? p.is_active : !p.is_active);
       const mc  = configFilter === "all" || String(p.gitlab_config_id) === configFilter;
-      const msi = siteFilter   === "all" || String(p.site_id) === siteFilter;
+      // ✅ FIX M2M : vérifier dans p.sites[] au lieu de p.site_id
+      const msi = siteFilter === "all" || (p.sites || []).some(s => String(s.site_id) === siteFilter);
       return ms && mst && mc && msi;
     });
 
@@ -352,7 +395,6 @@ export default function AdminProjectsPage() {
           : String(vb).localeCompare(String(va));
       });
     }
-
     return result;
   }, [projects, search, statusFilter, configFilter, siteFilter, sortKey, sortDir]);
 
@@ -370,7 +412,7 @@ export default function AdminProjectsPage() {
       <div className="container-fluid">
         <Toast toast={toast} />
 
-        {/* Breadcrumb */}
+        {/* Header */}
         <div className="row mb-4">
           <div className="col-12">
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
@@ -394,10 +436,10 @@ export default function AdminProjectsPage() {
         {/* Stats */}
         <div className="row g-3 mb-4">
           {[
-            { label: "Total projets",  value: projects.length,                sub: "tous projets",     color: "primary", icon: "ri-folder-2-line"       },
-            { label: "Actifs",         value: activeCount,                    sub: "en extraction",    color: "success", icon: "ri-checkbox-circle-line" },
-            { label: "Inactifs",       value: inactiveCount,                  sub: "suspendus",        color: "warning", icon: "ri-pause-circle-line"    },
-            { label: "Commits total",  value: totalCommits.toLocaleString(),  sub: "tous projets",     color: "info",    icon: "ri-git-commit-line"       },
+            { label: "Total projets", value: projects.length,               sub: "tous projets",  color: "primary", icon: "ri-folder-2-line"       },
+            { label: "Actifs",        value: activeCount,                   sub: "en extraction", color: "success", icon: "ri-checkbox-circle-line" },
+            { label: "Inactifs",      value: inactiveCount,                 sub: "suspendus",     color: "warning", icon: "ri-pause-circle-line"    },
+            { label: "Commits total", value: totalCommits.toLocaleString(), sub: "tous projets",  color: "info",    icon: "ri-git-commit-line"       },
           ].map((s, i) => (
             <div key={i} className="col-xl-3 col-sm-6">
               <div className="card card-animate border-0 h-100" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
@@ -409,7 +451,7 @@ export default function AdminProjectsPage() {
                       </span>
                     </div>
                     <div className="flex-grow-1 ms-3">
-                      <p className="text-uppercase fw-medium text-muted mb-1 fs-11 letter-spacing-1">{s.label}</p>
+                      <p className="text-uppercase fw-medium text-muted mb-1 fs-11">{s.label}</p>
                       <h3 className={`mb-0 fw-bold text-${s.color}`}>{s.value}</h3>
                       <p className="text-muted mb-0 fs-11 mt-1">{s.sub}</p>
                     </div>
@@ -467,7 +509,7 @@ export default function AdminProjectsPage() {
               )}
               <div className="col-md-auto ms-auto d-flex gap-2">
                 {filtered.length > 0 && (
-                  <button className="btn btn-sm btn-soft-success" onClick={() => exportCSV(filtered, configs, sites)}>
+                  <button className="btn btn-sm btn-soft-success" onClick={() => exportToCSV(filtered, configs)}>
                     <i className="ri-download-2-line me-1"></i>CSV
                   </button>
                 )}
@@ -486,7 +528,7 @@ export default function AdminProjectsPage() {
               <EmptyState
                 icon="ri-folder-2-line"
                 title={hasFilters ? "Aucun résultat" : "Aucun projet"}
-                description={hasFilters ? "Modifiez vos filtres pour voir des résultats." : "Créez votre premier projet GitLab."}
+                description={hasFilters ? "Modifiez vos filtres." : "Créez votre premier projet GitLab."}
                 actionLabel={!hasFilters ? "Nouveau projet" : undefined}
                 onAction={!hasFilters ? () => setModalProject({}) : undefined}
                 compact
@@ -503,7 +545,8 @@ export default function AdminProjectsPage() {
                           Projet <SortIcon sortKey="name" currentKey={sortKey} dir={sortDir} />
                         </th>
                         <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Config GitLab</th>
-                        <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Site</th>
+                        {/* ✅ FIX : "Sites" au pluriel */}
+                        <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Sites</th>
                         <th className="py-3 text-muted fs-11 fw-semibold text-uppercase"
                           style={{ cursor: "pointer", letterSpacing: ".05em" }}
                           onClick={() => handleSort("gitlab_project_id")}>
@@ -520,8 +563,10 @@ export default function AdminProjectsPage() {
                     </thead>
                     <tbody>
                       {paginated.map(p => {
-                        const config = configs.find(c => c.id === p.gitlab_config_id);
-                        const site   = sites.find(s => s.id === p.site_id);
+                        const config       = configs.find(c => c.id === p.gitlab_config_id);
+                        // ✅ FIX : p.sites[] au lieu de p.site_id
+                        const projectSites = p.sites || [];
+
                         return (
                           <tr key={p.id} className={!p.is_active ? "opacity-65" : ""}>
                             <td className="ps-4 py-3">
@@ -541,16 +586,24 @@ export default function AdminProjectsPage() {
                                 ? <span className="badge bg-light text-dark border fs-11">
                                     <i className="ri-git-repository-line me-1 text-muted"></i>{config.name}
                                   </span>
-                                : <span className="text-muted fs-12">—</span>
-                              }
+                                : <span className="text-muted fs-12">—</span>}
                             </td>
+                            {/* ✅ FIX : badges multiples pour tous les sites */}
                             <td>
-                              {site
-                                ? <span className="badge fs-11" style={{ background: "#e0f2fe", color: "#0369a1" }}>
-                                    <i className="ri-map-pin-line me-1"></i>{site.name}
-                                  </span>
-                                : <span className="text-muted fs-12">—</span>
-                              }
+                              {projectSites.length > 0 ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {projectSites.slice(0, 3).map(s => (
+                                    <span key={s.site_id} className="badge fs-11" style={{ background: "#e0f2fe", color: "#0369a1" }}>
+                                      <i className="ri-map-pin-line me-1"></i>{s.site_name || `#${s.site_id}`}
+                                    </span>
+                                  ))}
+                                  {projectSites.length > 3 && (
+                                    <span className="badge fs-11 bg-light text-muted">+{projectSites.length - 3}</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted fs-12">—</span>
+                              )}
                             </td>
                             <td>
                               <code className="fs-12 text-muted px-2 py-1 rounded-2" style={{ background: "#f4f6fa" }}>
@@ -568,8 +621,7 @@ export default function AdminProjectsPage() {
                                   </span>
                                 : <span className="badge fs-11" style={{ background: "#fef9c3", color: "#a16207" }}>
                                     <i className="ri-pause-circle-line me-1"></i>Inactif
-                                  </span>
-                              }
+                                  </span>}
                             </td>
                             <td className="pe-4 text-center">
                               <div className="d-flex gap-1 justify-content-center">
@@ -595,15 +647,8 @@ export default function AdminProjectsPage() {
                     </tbody>
                   </table>
                 </div>
-
                 <div className="px-4 py-2" style={{ borderTop: "1px solid #f0f2f5" }}>
-                  <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    totalItems={filtered.length}
-                    perPage={perPage}
-                    onPageChange={setPage}
-                  />
+                  <Pagination page={page} totalPages={totalPages} totalItems={filtered.length} perPage={perPage} onPageChange={setPage} />
                 </div>
               </>
             )}
@@ -629,7 +674,9 @@ export default function AdminProjectsPage() {
       <ConfirmModal
         show={!!deleteProject}
         title="Supprimer ce projet ?"
-        message={deleteProject ? `Supprimer "${deleteProject.name}" ? Cette action supprimera aussi tous les commits, MRs et snapshots KPI associés.` : ""}
+        message={deleteProject
+          ? `Supprimer "${deleteProject.name}" ? Cette action supprimera aussi tous les commits, MRs et snapshots KPI associés.`
+          : ""}
         confirmLabel="Supprimer définitivement"
         confirmColor="danger"
         loading={deleteLoading}

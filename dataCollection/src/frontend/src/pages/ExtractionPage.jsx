@@ -355,26 +355,45 @@ export default function ExtractionPage() {
     return () => clearInterval(timerRef.current);
   },[loading]);
 
-  // Animation étapes + logs
+  // Animation étapes + logs (DÉSORMAIS PASSÉ EN POLLING RÉEL)
   useEffect(()=>{
-    if (loading) {
-      setCurrentStep(0); setLogs([]);
-      if (isBackfill) {
-        addLog("[BACKFILL] Démarrage du recalcul KPI historique…", "backfill");
-      } else {
-        addLog("Démarrage de l'extraction…", "info");
-      }
-      let step = 0;
-      stepTimerRef.current = setInterval(()=>{
-        step++;
-        if (step < STEPS.length) { setCurrentStep(step); addLog(STEPS[step].label + "…", isBackfill?"backfill":"info"); }
-        else { clearInterval(stepTimerRef.current); }
-      }, 2500);
-    } else {
-      clearInterval(stepTimerRef.current);
+    if (loading && result?.lot_id) {
+      // Démarrage du polling
+      const poll = async () => {
+        try {
+          const res = await api.get(`/extraction/jobs/${result.lot_id}`);
+          const job = res.data;
+          
+          if (job.step_label) {
+            addLog(job.step_label, isBackfill ? "backfill" : "info");
+          }
+          
+          if (job.step_index !== undefined) {
+            setCurrentStep(job.step_index);
+          }
+
+          if (job.status === "completed") {
+            addLog("Extraction terminée avec succès ✓", "success");
+            setResult(job);
+            setLoading(false);
+            clearInterval(stepTimerRef.current);
+          } else if (job.status === "failed") {
+            const msg = job.error_message || "L'extraction a échoué.";
+            setError(msg);
+            addLog(`Erreur : ${msg}`, "error");
+            setLoading(false);
+            clearInterval(stepTimerRef.current);
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+      };
+
+      stepTimerRef.current = setInterval(poll, 2000);
+      poll(); // Premier appel immédiat
     }
     return () => clearInterval(stepTimerRef.current);
-  },[loading, addLog, isBackfill]);
+  }, [loading, result?.lot_id, addLog, isBackfill]);
 
   const isProjectValid = !!selectedProject;
   const isPeriodValid  = extractionType !== "MONTHLY" || !!selectedPeriod;
@@ -391,30 +410,25 @@ export default function ExtractionPage() {
       };
 
       if (isBackfill) {
+        addLog("[BACKFILL] Démarrage du recalcul KPI historique…", "backfill");
         addLog(`[BACKFILL] Période cible : #${selectedPeriod}`, "backfill");
-        addLog("[BACKFILL] Recalcul des snapshots KPI en cours…", "backfill");
-      }
-
-      const res = await api.post("/extraction/run", payload);
-      setResult(res.data);
-
-      if (isBackfill) {
-        addLog("[BACKFILL] Recalcul terminé ✓ — snapshots KPI mis à jour", "success");
       } else {
-        addLog("Extraction terminée avec succès ✓", "success");
+        addLog("Démarrage de l'extraction (Arrière-plan)…", "info");
       }
-      setCurrentStep(STEPS.length);
+
+      // Le backend répond 202 avec le lot_id immédiatement
+      const res = await api.post("/extraction/run", payload);
+      setResult(res.data); // Contient le lot_id pour le useEffect de polling
+      
     } catch(err) {
-      let msg = "L'extraction a échoué. Vérifiez la configuration GitLab.";
+      let msg = "Impossible de lancer l'extraction. Vérifiez la connexion au serveur.";
       if (typeof err.response?.data?.detail === "string")   msg = err.response.data.detail;
       else if (Array.isArray(err.response?.data?.detail))   msg = err.response.data.detail[0]?.msg || msg;
       setError(msg);
-      addLog(`Erreur : ${msg}`, "error");
-      setCurrentStep(-1);
-    } finally {
+      addLog(`Erreur au lancement : ${msg}`, "error");
       setLoading(false);
     }
-  },[selectedProject, selectedPeriod, extractionType, isBackfill, addLog]);
+  }, [selectedProject, selectedPeriod, extractionType, isBackfill, addLog]);
 
   // ✅ FIX CRITIQUE : doExtract dans les deps → stale closure corrigée
   const handleRunExtraction = useCallback(async () => {

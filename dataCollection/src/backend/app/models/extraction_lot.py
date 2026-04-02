@@ -94,7 +94,17 @@ class ExtractionLot(Base):
     project_id = Column(
         Integer,
         ForeignKey("project.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+    )
+    developer_id = Column(
+        Integer,
+        ForeignKey("developer.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    gitlab_config_id = Column(
+        Integer,
+        ForeignKey("gitlab_config.id", ondelete="SET NULL"),
+        nullable=True,
     )
     triggered_by = Column(
         Integer,
@@ -110,6 +120,8 @@ class ExtractionLot(Base):
         back_populates="extraction_lots",
         foreign_keys=[triggered_by],
     )
+    developer = relationship("Developer", back_populates="extraction_lots")
+    gitlab_config = relationship("GitLabConfig")
     commits = relationship(
         "Commit",
         back_populates="extraction_lot",
@@ -139,6 +151,10 @@ class ExtractionLot(Base):
         Index("idx_lot_completed_at",     "completed_at"),
         # Index composite pour le scheduler : lots pending d'un projet
         Index("idx_lot_project_status",   "project_id", "status"),
+        # ✅ AJOUT : Index pour l'extraction par développeur
+        Index("idx_lot_developer_period",  "developer_id", "period_id"),
+        # ✅ AJOUT : Index pour la config GitLab
+        Index("idx_lot_gitlab_config",     "gitlab_config_id"),
 
         # ✅ AJOUT : contrainte métier
         # completed_at ne peut être renseigné que si le lot est terminé ou en erreur

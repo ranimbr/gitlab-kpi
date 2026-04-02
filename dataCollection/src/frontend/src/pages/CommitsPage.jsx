@@ -61,7 +61,7 @@ function getCardBgColor(index) {
   ][index % 6];
 }
 function getAuthor(commit) {
-  return commit.developer?.username || commit.author_name || "Unknown";
+  return commit.developer?.name || commit.developer?.gitlab_username || commit.author_name || "Unknown";
 }
 function getSite(commit) {
   return commit.developer?.site || null;
@@ -107,8 +107,14 @@ function exportCommitsCSV(commits, projectName) {
   URL.revokeObjectURL(url); // [FIX] libère la mémoire immédiatement
 }
 
+// ── Constantes de lisibilité ─────────────────────────────────────────────────
+// Au-delà de ces seuils, le graphique devient illisible (trop de tranches).
+// On affiche toujours le TOTAL réel dans le badge pour la transparence.
+const TOP_PIE   = 7;   // Pie chart : top 7 contributeurs par commits
+const TOP_POLAR = 6;   // Polar chart : top 6 contributeurs par additions
+
 // ─── Pie Chart — Commits par développeur ─────────────────────────────────────
-function ContributorsPieChart({ commits }) {
+function ContributorsPieChart({ commits, onMeta }) {
   const ref      = useRef(null);
   const chartRef = useRef(null);
 
@@ -118,7 +124,11 @@ function ContributorsPieChart({ commits }) {
 
     const authorMap = {};
     commits.forEach((c) => { const a = getAuthor(c); authorMap[a] = (authorMap[a] || 0) + 1; });
-    const sorted = Object.entries(authorMap).sort((a, b) => b[1] - a[1]).slice(0, 7);
+    const all    = Object.entries(authorMap).sort((a, b) => b[1] - a[1]);
+    const sorted = all.slice(0, TOP_PIE);
+    // Remonte les métadonnées au parent pour affichage dans le header
+    onMeta?.({ shown: sorted.length, total: all.length });
+
     const COLORS = [
       getCssVar("--vz-primary")   || "#405189",
       getCssVar("--vz-success")   || "#0ab39c",
@@ -144,13 +154,13 @@ function ContributorsPieChart({ commits }) {
       },
     });
     return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [commits]);
+  }, [commits, onMeta]);
 
   return <canvas ref={ref} style={{ maxHeight: 260 }} />;
 }
 
 // ─── Polar Chart — Volume d'additions par développeur ────────────────────────
-function AdditionsPolarChart({ commits }) {
+function AdditionsPolarChart({ commits, onMeta }) {
   const ref      = useRef(null);
   const chartRef = useRef(null);
 
@@ -164,7 +174,10 @@ function AdditionsPolarChart({ commits }) {
       if (!authorMap[a]) authorMap[a] = { additions: 0 };
       authorMap[a].additions += c.additions || 0;
     });
-    const sorted = Object.entries(authorMap).sort((a, b) => b[1].additions - a[1].additions).slice(0, 6);
+    const all    = Object.entries(authorMap).sort((a, b) => b[1].additions - a[1].additions);
+    const sorted = all.slice(0, TOP_POLAR);
+    // Remonte les métadonnées au parent
+    onMeta?.({ shown: sorted.length, total: all.length });
 
     chartRef.current = new Chart(ref.current, {
       type: "polarArea",
@@ -195,9 +208,77 @@ function AdditionsPolarChart({ commits }) {
       },
     });
     return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [commits]);
+  }, [commits, onMeta]);
 
   return <canvas ref={ref} style={{ maxHeight: 260 }} />;
+}
+
+
+// ─── ChartSection — Conteneur des 2 graphiques avec sous-titres dynamiques ───
+// Collecte les métadonnées (shown/total) remontées par chaque chart via onMeta
+// et affiche un sous-titre transparent "Top N sur X développeurs".
+function ChartSection({ commits, stats }) {
+  const [pieMeta,   setPieMeta]   = useState(null);   // { shown, total }
+  const [polarMeta, setPolarMeta] = useState(null);   // { shown, total }
+
+  // Libellé dynamique : "Top 7 sur 11 développeurs" ou "Tous les 3 développeurs"
+  const pieSubtitle = pieMeta
+    ? pieMeta.shown < pieMeta.total
+      ? `Top ${pieMeta.shown} sur ${pieMeta.total} développeurs`
+      : `Tous les ${pieMeta.total} développeurs`
+    : "Distribution par membre de l'équipe";
+
+  const polarSubtitle = polarMeta
+    ? polarMeta.shown < polarMeta.total
+      ? `Top ${polarMeta.shown} sur ${polarMeta.total} développeurs`
+      : `Tous les ${polarMeta.total} développeurs`
+    : "Volume d'additions de code";
+
+  return (
+    <div className="row mb-4">
+      {/* Pie — Commits par développeur */}
+      <div className="col-xl-6">
+        <div className="card h-100">
+          <div className="card-header d-flex align-items-center border-bottom-dashed">
+            <div className="flex-grow-1">
+              <h4 className="card-title mb-1">
+                <i className="ri-pie-chart-line me-2 text-info"></i>Commits par développeur
+              </h4>
+              <p className="text-muted mb-0 fs-12">{pieSubtitle}</p>
+            </div>
+            <span className="badge bg-info-subtle text-info fs-12">{stats.uniqueAuthors} devs</span>
+          </div>
+          <div className="card-body">
+            <div style={{ height: 260 }}>
+              <ContributorsPieChart commits={commits} onMeta={setPieMeta} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Polar — Volume d'additions */}
+      <div className="col-xl-6">
+        <div className="card h-100">
+          <div className="card-header d-flex align-items-center border-bottom-dashed">
+            <div className="flex-grow-1">
+              <h4 className="card-title mb-1">
+                <i className="ri-donut-chart-line me-2 text-danger"></i>Volume de contribution
+              </h4>
+              <p className="text-muted mb-0 fs-12">{polarSubtitle}</p>
+            </div>
+            <span className="badge bg-danger-subtle text-danger fs-12">
+              +{stats.totalAdditions.toLocaleString("fr-FR")} lignes
+            </span>
+          </div>
+          <div className="card-body">
+            <div style={{ height: 260 }}>
+              <AdditionsPolarChart commits={commits} onMeta={setPolarMeta} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Modal détail commit ──────────────────────────────────────────────────────
@@ -747,38 +828,10 @@ export default function CommitsPage() {
           </div>
         )}
 
-        {/* Charts */}
+
+        {/* Charts — Sous-titres dynamiques via ChartSection (Top N sur Total) */}
         {commits.length > 0 && (
-          <div className="row mb-4">
-            <div className="col-xl-6">
-              <div className="card h-100">
-                <div className="card-header d-flex align-items-center border-bottom-dashed">
-                  <div className="flex-grow-1">
-                    <h4 className="card-title mb-1"><i className="ri-pie-chart-line me-2 text-info"></i>Commits par développeur</h4>
-                    <p className="text-muted mb-0 fs-12">Distribution par membre de l'équipe</p>
-                  </div>
-                  <span className="badge bg-info-subtle text-info fs-12">{stats.uniqueAuthors} devs</span>
-                </div>
-                <div className="card-body">
-                  <div style={{ height: 260 }}><ContributorsPieChart commits={commits} /></div>
-                </div>
-              </div>
-            </div>
-            <div className="col-xl-6">
-              <div className="card h-100">
-                <div className="card-header d-flex align-items-center border-bottom-dashed">
-                  <div className="flex-grow-1">
-                    <h4 className="card-title mb-1"><i className="ri-donut-chart-line me-2 text-danger"></i>Volume de contribution</h4>
-                    <p className="text-muted mb-0 fs-12">Lignes ajoutées — top 6 développeurs</p>
-                  </div>
-                  <span className="badge bg-danger-subtle text-danger fs-12">+{stats.totalAdditions.toLocaleString("fr-FR")} lignes</span>
-                </div>
-                <div className="card-body">
-                  <div style={{ height: 260 }}><AdditionsPolarChart commits={commits} /></div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ChartSection commits={commits} stats={stats} />
         )}
 
         {loading && <LoadingSpinner text="Chargement des commits..." />}

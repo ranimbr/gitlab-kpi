@@ -1,10 +1,13 @@
 """
 api/routers/analytics.py
 
+AJOUTS :
+    - GET /analytics/developer/{developer_id}/heatmap
+      Activité jour par jour (GitHub-style) — amélioration Heatmap.
 """
 import logging
-from datetime import date
-from typing import Optional
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -12,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_admin, get_current_user
 from app.database.session import get_db
 from app.models.app_user import AppUser
+from app.repositories.commit_repository import CommitRepository
 from app.schemas.kpi import (
     DashboardSummaryResponse,
     KpiHistoryResponse,
@@ -21,9 +25,12 @@ from app.schemas.kpi import (
 from app.services.kpi.analytics_service import AnalyticsService
 from app.services.kpi.kpi_aggregator import KpiAggregator
 
-logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/analytics", tags=["Analytics"])
+logger      = logging.getLogger(__name__)
+router      = APIRouter(prefix="/analytics", tags=["Analytics"])
+commit_repo = CommitRepository()
 
+
+# ── Latest KPIs ───────────────────────────────────────────────────────────────
 
 @router.get("/{project_id}/latest", response_model=KpiSnapshotResponse)
 def get_latest_kpis(
@@ -45,6 +52,8 @@ def get_latest_kpis(
     return result
 
 
+# ── History ───────────────────────────────────────────────────────────────────
+
 @router.get("/{project_id}/history", response_model=KpiHistoryResponse)
 def get_kpi_history(
     project_id:   int,
@@ -64,13 +73,14 @@ def get_kpi_history(
         project_id, site_id, group_id, developer_id, start_date, end_date
     )
 
-    # ✅ FIX : utilise le factory method qui renseigne project_id, site_id, total
     return KpiHistoryResponse.from_snapshots(
         snapshots  = snapshots,
         project_id = project_id,
         site_id    = site_id,
     )
 
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
 
 @router.get("/{project_id}/dashboard", response_model=DashboardSummaryResponse)
 def get_dashboard(
@@ -84,11 +94,12 @@ def get_dashboard(
     summary = AnalyticsService(db).get_dashboard_summary(
         project_id, site_id, group_id, developer_id
     )
-    # Enrichir avec les métadonnées requises par DashboardSummaryResponse
-    summary["project_id"]   = project_id
-    summary["site_id"]      = site_id
+    summary["project_id"] = project_id
+    summary["site_id"]    = site_id
     return summary
 
+
+# ── Generate Snapshot (Admin) ─────────────────────────────────────────────────
 
 @router.post("/{project_id}/generate-snapshot", response_model=SnapshotGeneratedResponse)
 def generate_snapshot(
@@ -106,7 +117,6 @@ def generate_snapshot(
     if not snapshots:
         raise HTTPException(status_code=404, detail="No snapshots generated")
 
-    # Filtre par site_id si fourni, sinon premier snapshot
     target = next(
         (s for s in snapshots if s.site_id == site_id),
         snapshots[0],
@@ -121,3 +131,61 @@ def generate_snapshot(
         mr_rate_per_site      = target.mr_rate_per_site,
         avg_review_time_hours = target.avg_review_time_hours,
     )
+
+
+# ── Heatmap d'activité développeur ───────────────────────────────────────────
+
+@router.get("/developer/{developer_id}/heatmap")
+def get_developer_heatmap(
+    developer_id: int,
+    months:       int     = Query(default=12, ge=1, le=24,
+                                  description="Nombre de mois à remonter (1–24)"),
+    db:           Session = Depends(get_db),
+    _:            AppUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Activité jour par jour d'un développeur — heatmap GitHub-style.
+
+    Retourne uniquement les jours avec activité :
+      { "date": "2025-03-15", "count": 4 }
+
+    Le frontend remplit les jours sans activité avec count=0
+    pour construire la grille calendrier complète.
+
+    Paramètres :
+      developer_id : ID du développeur
+      months       : fenêtre temporelle (défaut 12 mois)
+
+    Réponse :
+      {
+        "developer_id"     : 42,
+        "start_date"       : "2024-04-01",
+        "end_date"         : "2025-03-30",
+        "total_days_active": 87,
+        "total_commits"    : 312,
+        "max_day_count"    : 15,
+        "activity"         : [ { "date": "...", "count": N }, ... ]
+      }
+    """
+    end_date   = datetime.now()
+    start_date = end_date - timedelta(days=months * 30)
+
+    activity = commit_repo.get_daily_activity(
+        db,
+        developer_id = developer_id,
+        start_date   = start_date,
+        end_date     = end_date,
+    )
+
+    total_commits    = sum(d["count"] for d in activity)
+    max_day_count    = max((d["count"] for d in activity), default=0)
+
+    return {
+        "developer_id":      developer_id,
+        "start_date":        start_date.date().isoformat(),
+        "end_date":          end_date.date().isoformat(),
+        "total_days_active": len(activity),
+        "total_commits":     total_commits,
+        "max_day_count":     max_day_count,
+        "activity":          activity,
+    }

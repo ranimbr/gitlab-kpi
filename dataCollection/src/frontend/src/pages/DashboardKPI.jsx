@@ -27,15 +27,15 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { kpiService }        from "../services/kpiService";
-import projectService        from "../services/projectService";   // ✅ FIX : source correcte
-import analyticsService      from "../services/analyticsService"; // ✅ pour getMultiPeriod + getTrend
-import siteService           from "../services/siteService";
-import periodService         from "../services/periodService";
-import ReactApexChart        from "react-apexcharts";
-import Chart                 from "chart.js/auto";
-import LoadingSpinner        from "../components/common/LoadingSpinner";
-import EmptyState            from "../components/common/EmptyState";
+import { kpiService } from "../services/kpiService";
+import projectService from "../services/projectService";   // ✅ FIX : source correcte
+import analyticsService from "../services/analyticsService"; // ✅ pour getMultiPeriod + getTrend
+import siteService from "../services/siteService";
+import periodService from "../services/periodService";
+import ReactApexChart from "react-apexcharts";
+import Chart from "chart.js/auto";
+import LoadingSpinner from "../components/common/LoadingSpinner";
+import EmptyState from "../components/common/EmptyState";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const CHART_COLORS = {
@@ -61,32 +61,32 @@ function delta(current, previous) {
   const pct = ((current - previous) / Math.abs(previous)) * 100;
   if (Math.abs(pct) < 0.5) return { value: "±0%", color: "secondary", icon: "ri-subtract-line" };
   return pct > 0
-    ? { value: `+${pct.toFixed(1)}%`, color: "success", icon: "ri-arrow-up-line"   }
-    : { value: `${pct.toFixed(1)}%`,  color: "danger",  icon: "ri-arrow-down-line" };
+    ? { value: `+${pct.toFixed(1)}%`, color: "success", icon: "ri-arrow-up-line" }
+    : { value: `${pct.toFixed(1)}%`, color: "danger", icon: "ri-arrow-down-line" };
 }
 
 function getPeriodLabel(snap) {
-  if (snap?.period?.year)  return `${snap.period.year}/${String(snap.period.month).padStart(2, "0")}`;
+  if (snap?.period?.year) return `${snap.period.year}/${String(snap.period.month).padStart(2, "0")}`;
   if (snap?.snapshot_date) return snap.snapshot_date.slice(0, 7);
   return "—";
 }
 
 // Noms des mois en français
 const MOIS_FR = {
-  1:"Jan",2:"Fév",3:"Mar",4:"Avr",5:"Mai",6:"Jun",
-  7:"Jul",8:"Aoû",9:"Sep",10:"Oct",11:"Nov",12:"Déc",
+  1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Jun",
+  7: "Jul", 8: "Aoû", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc",
 };
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
 const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaInfo }) => {
   const [showTip, setShowTip] = useState(false);
   const colorMap = {
-    primary:  { bg: "bg-primary-subtle",   text: "text-primary"   },
-    success:  { bg: "bg-success-subtle",   text: "text-success"   },
-    info:     { bg: "bg-info-subtle",      text: "text-info"      },
-    warning:  { bg: "bg-warning-subtle",   text: "text-warning"   },
-    danger:   { bg: "bg-danger-subtle",    text: "text-danger"    },
-    secondary:{ bg: "bg-secondary-subtle", text: "text-secondary" },
+    primary: { bg: "bg-primary-subtle", text: "text-primary" },
+    success: { bg: "bg-success-subtle", text: "text-success" },
+    info: { bg: "bg-info-subtle", text: "text-info" },
+    warning: { bg: "bg-warning-subtle", text: "text-warning" },
+    danger: { bg: "bg-danger-subtle", text: "text-danger" },
+    secondary: { bg: "bg-secondary-subtle", text: "text-secondary" },
   };
   const classes = colorMap[color] || colorMap.primary;
   return (
@@ -118,9 +118,11 @@ const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaI
                         boxShadow: "0 4px 12px rgba(0,0,0,.2)", pointerEvents: "none",
                       }}>
                         {tooltip}
-                        <div style={{ position: "absolute", top: "100%", left: "50%",
+                        <div style={{
+                          position: "absolute", top: "100%", left: "50%",
                           transform: "translateX(-50%)", border: "5px solid transparent",
-                          borderTopColor: "#1e2a3b" }} />
+                          borderTopColor: "#1e2a3b"
+                        }} />
                       </div>
                     )}
                   </div>
@@ -148,39 +150,47 @@ const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaI
 
 // ── Radar Chart ───────────────────────────────────────────────────────────────
 const KpiRadarChart = ({ latest }) => {
-  const chartRef    = useRef(null);
+  const chartRef = useRef(null);
   const instanceRef = useRef(null);
   useEffect(() => {
     if (!chartRef.current || !latest) return;
     if (instanceRef.current) { instanceRef.current.destroy(); instanceRef.current = null; }
     const scores = {
-      mrRateSite:    Math.min(Number(((latest.mr_rate_per_site     || 0) * 20 ).toFixed(1)), 100),
-      approvedMR:    Number(((latest.approved_mr_rate              || 0) * 100).toFixed(1)),
-      mergedMR:      Number(((latest.merged_mr_rate                || 0) * 100).toFixed(1)),
-      commitRateSite:Math.min(Number(((latest.commit_rate_per_site || 0) * 10 ).toFixed(1)), 100),
-      nbCommits:     Math.min(Number(((latest.nb_commits_per_project || 0) / 10).toFixed(1)), 100),
-      reviewTime:    Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))),
-      nbDevs:        Math.min((latest.nb_developers || 0) * 5, 100),
+      mrRateSite: Math.min(Number(((latest.mr_rate_per_site || 0) * 20).toFixed(1)), 100),
+      approvedMR: Number(((latest.approved_mr_rate || 0) * 100).toFixed(1)),
+      mergedMR: Number(((latest.merged_mr_rate || 0) * 100).toFixed(1)),
+      commitRateSite: Math.min(Number(((latest.commit_rate_per_site || 0) * 10).toFixed(1)), 100),
+      nbCommits: Math.min(Number(((latest.nb_commits_per_project || 0) / 10).toFixed(1)), 100),
+      reviewTime: Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))),
+      nbDevs: Math.min((latest.nb_developers || 0) * 5, 100),
     };
     instanceRef.current = new Chart(chartRef.current, {
       type: "radar",
       data: {
-        labels: ["Taux MR/site","MR Approuvés","MR Fusionnés","Taux commit/site","NB Commits","Rapidité revue","NB Développeurs"],
+        labels: ["Taux MR/site", "MR Approuvés", "MR Fusionnés", "Taux commit/site", "NB Commits", "Rapidité revue", "NB Développeurs"],
         datasets: [
-          { label: "Performance actuelle", backgroundColor: rgba("--vz-primary-rgb", 0.18),
+          {
+            label: "Performance actuelle", backgroundColor: rgba("--vz-primary-rgb", 0.18),
             borderColor: getCssVar("--vz-primary") || CHART_COLORS.primary, borderWidth: 2,
             pointBackgroundColor: getCssVar("--vz-primary") || CHART_COLORS.primary,
-            pointBorderColor: "#fff", pointRadius: 4, data: Object.values(scores) },
-          { label: "Objectif (100)", backgroundColor: rgba("--vz-info-rgb", 0.07),
+            pointBorderColor: "#fff", pointRadius: 4, data: Object.values(scores)
+          },
+          {
+            label: "Objectif (100)", backgroundColor: rgba("--vz-info-rgb", 0.07),
             borderColor: getCssVar("--vz-info") || CHART_COLORS.info, borderWidth: 1.5,
-            borderDash: [5, 4], pointRadius: 3, data: [100,100,100,100,100,100,100] },
+            borderDash: [5, 4], pointRadius: 3, data: [100, 100, 100, 100, 100, 100, 100]
+          },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: "top", align: "end", labels: { font: { size: 12 }, usePointStyle: true, padding: 16 } } },
-        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, font: { size: 10 }, backdropColor: "transparent" },
-          pointLabels: { font: { size: 11 } }, grid: { color: "rgba(133,141,152,0.15)" }, angleLines: { color: "rgba(133,141,152,0.15)" } } },
+        scales: {
+          r: {
+            min: 0, max: 100, ticks: { stepSize: 20, font: { size: 10 }, backdropColor: "transparent" },
+            pointLabels: { font: { size: 11 } }, grid: { color: "rgba(133,141,152,0.15)" }, angleLines: { color: "rgba(133,141,152,0.15)" }
+          }
+        },
       },
     });
     return () => { if (instanceRef.current) { instanceRef.current.destroy(); instanceRef.current = null; } };
@@ -191,21 +201,21 @@ const KpiRadarChart = ({ latest }) => {
 // ── Graphique de tendance (ligne) ─────────────────────────────────────────────
 const KpiHistoryChart = ({ history }) => {
   if (!history?.length) return null;
-  const labels  = history.map(getPeriodLabel);
-  const series  = useMemo(() => [
+  const labels = history.map(getPeriodLabel);
+  const series = useMemo(() => [
     { name: "Taux commit/site", data: history.map(s => Number((s.commit_rate_per_site || 0).toFixed(3))) },
-    { name: "Taux MR/site",     data: history.map(s => Number((s.mr_rate_per_site     || 0).toFixed(3))) },
+    { name: "Taux MR/site", data: history.map(s => Number((s.mr_rate_per_site || 0).toFixed(3))) },
   ], [history]);
   const options = useMemo(() => ({
     chart: { type: "area", height: 280, toolbar: { show: false } },
     colors: [CHART_COLORS.primary, CHART_COLORS.success],
     stroke: { curve: "smooth", width: 2 },
-    fill:   { type: "gradient", gradient: { opacityFrom: 0.3, opacityTo: 0.05 } },
-    xaxis:  { categories: labels, labels: { style: { fontSize: "11px" } }, axisBorder: { show: false } },
-    yaxis:  { labels: { style: { fontSize: "11px" } } },
-    grid:   { borderColor: "#e9ebec", strokeDashArray: 4 },
+    fill: { type: "gradient", gradient: { opacityFrom: 0.3, opacityTo: 0.05 } },
+    xaxis: { categories: labels, labels: { style: { fontSize: "11px" } }, axisBorder: { show: false } },
+    yaxis: { labels: { style: { fontSize: "11px" } } },
+    grid: { borderColor: "#e9ebec", strokeDashArray: 4 },
     legend: { position: "top", horizontalAlign: "right", fontSize: "12px" },
-    tooltip:{ shared: true, intersect: false },
+    tooltip: { shared: true, intersect: false },
     dataLabels: { enabled: false },
   }), [labels]);
   return (
@@ -222,21 +232,21 @@ const KpiHistoryChart = ({ history }) => {
 
 const MrRatesChart = ({ history }) => {
   if (!history?.length) return null;
-  const labels  = history.map(getPeriodLabel);
-  const series  = useMemo(() => [
+  const labels = history.map(getPeriodLabel);
+  const series = useMemo(() => [
     { name: "Taux approbation", data: history.map(s => Number(((s.approved_mr_rate || 0) * 100).toFixed(1))) },
-    { name: "Taux fusion",      data: history.map(s => Number(((s.merged_mr_rate   || 0) * 100).toFixed(1))) },
+    { name: "Taux fusion", data: history.map(s => Number(((s.merged_mr_rate || 0) * 100).toFixed(1))) },
   ], [history]);
   const options = useMemo(() => ({
-    chart:       { type: "bar", height: 280, toolbar: { show: false } },
-    colors:      [CHART_COLORS.info, CHART_COLORS.warning],
+    chart: { type: "bar", height: 280, toolbar: { show: false } },
+    colors: [CHART_COLORS.info, CHART_COLORS.warning],
     plotOptions: { bar: { columnWidth: "40%", borderRadius: 4, borderRadiusApplication: "end" } },
-    xaxis:       { categories: labels, labels: { style: { fontSize: "11px" } } },
-    yaxis:       { max: 100, labels: { formatter: v => v + "%", style: { fontSize: "11px" } } },
-    grid:        { borderColor: "#e9ebec", strokeDashArray: 4 },
-    legend:      { position: "top", horizontalAlign: "right", fontSize: "12px" },
-    dataLabels:  { enabled: false },
-    tooltip:     { y: { formatter: v => v + "%" }, shared: true, intersect: false },
+    xaxis: { categories: labels, labels: { style: { fontSize: "11px" } } },
+    yaxis: { max: 100, labels: { formatter: v => v + "%", style: { fontSize: "11px" } } },
+    grid: { borderColor: "#e9ebec", strokeDashArray: 4 },
+    legend: { position: "top", horizontalAlign: "right", fontSize: "12px" },
+    dataLabels: { enabled: false },
+    tooltip: { y: { formatter: v => v + "%" }, shared: true, intersect: false },
   }), [labels]);
   return (
     <div className="card border-0" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
@@ -267,7 +277,7 @@ const MultiPeriodTable = ({ multiPeriodData, kpiField, kpiLabel }) => {
 
   // Collecte tous les sites distincts
   const allSites = [];
-  const siteMap  = new Map();
+  const siteMap = new Map();
   multiPeriodData.forEach(period => {
     period.snapshots?.forEach(snap => {
       if (!siteMap.has(snap.site_name)) {
@@ -334,7 +344,7 @@ const MultiPeriodTable = ({ multiPeriodData, kpiField, kpiLabel }) => {
                   <td className="ps-4 py-3 fw-semibold fs-13">{site.name}</td>
                   {multiPeriodData.map(period => {
                     const snap = period.snapshots?.find(s => s.site_name === site.name);
-                    const val  = snap ? Number(snap[kpiField]) : null;
+                    const val = snap ? Number(snap[kpiField]) : null;
                     const colors = getCellColor(val);
                     return (
                       <td key={`${period.period_id}-${site.id}`} colSpan="3" className="py-3">
@@ -375,12 +385,12 @@ const MultiPeriodTable = ({ multiPeriodData, kpiField, kpiLabel }) => {
 // ── Score Badge ────────────────────────────────────────────────────────────────
 const ScoreBadge = ({ label, value, color }) => {
   const cls = {
-    success:  { bg: "bg-success-subtle",  text: "text-success",  bar: "bg-success"   },
-    primary:  { bg: "bg-primary-subtle",  text: "text-primary",  bar: "bg-primary"   },
-    info:     { bg: "bg-info-subtle",     text: "text-info",     bar: "bg-info"      },
-    warning:  { bg: "bg-warning-subtle",  text: "text-warning",  bar: "bg-warning"   },
-    danger:   { bg: "bg-danger-subtle",   text: "text-danger",   bar: "bg-danger"    },
-    secondary:{ bg: "bg-secondary-subtle",text: "text-secondary",bar: "bg-secondary" },
+    success: { bg: "bg-success-subtle", text: "text-success", bar: "bg-success" },
+    primary: { bg: "bg-primary-subtle", text: "text-primary", bar: "bg-primary" },
+    info: { bg: "bg-info-subtle", text: "text-info", bar: "bg-info" },
+    warning: { bg: "bg-warning-subtle", text: "text-warning", bar: "bg-warning" },
+    danger: { bg: "bg-danger-subtle", text: "text-danger", bar: "bg-danger" },
+    secondary: { bg: "bg-secondary-subtle", text: "text-secondary", bar: "bg-secondary" },
   }[color] || {};
   return (
     <div className="d-flex align-items-center justify-content-between py-2 border-bottom border-dashed">
@@ -416,14 +426,14 @@ const SnapshotsTable = ({ history }) => {
       : <i className="ri-arrow-down-line ms-1 text-primary fs-11" />;
   };
   const COLS = [
-    { key: "snapshot_date",           label: "Date snapshot",    fmt: v => fmtDate(v) },
-    { key: "nb_commits_per_project",  label: "NB Commits",       fmt: v => v ?? "—" },
-    { key: "nb_developers",           label: "NB Devs",          fmt: v => v ?? "—" },
-    { key: "commit_rate_per_site",    label: "Taux commit/site", fmt: v => v != null ? Number(v).toFixed(2) : "—" },
-    { key: "mr_rate_per_site",        label: "Taux MR/site",     fmt: v => v != null ? Number(v).toFixed(2) : "—" },
-    { key: "approved_mr_rate",        label: "MR Approuvés",     fmt: v => v != null ? `${(v*100).toFixed(1)}%` : "—" },
-    { key: "merged_mr_rate",          label: "MR Fusionnés",     fmt: v => v != null ? `${(v*100).toFixed(1)}%` : "—" },
-    { key: "avg_review_time_hours",   label: "Revue moy.",       fmt: v => v != null ? `${Number(v).toFixed(1)}h` : "—" },
+    { key: "snapshot_date", label: "Date snapshot", fmt: v => fmtDate(v) },
+    { key: "nb_commits_per_project", label: "NB Commits", fmt: v => v ?? "—" },
+    { key: "nb_developers", label: "NB Devs", fmt: v => v ?? "—" },
+    { key: "commit_rate_per_site", label: "Taux commit/site", fmt: v => v != null ? Number(v).toFixed(2) : "—" },
+    { key: "mr_rate_per_site", label: "Taux MR/site", fmt: v => v != null ? Number(v).toFixed(2) : "—" },
+    { key: "approved_mr_rate", label: "MR Approuvés", fmt: v => v != null ? `${(v * 100).toFixed(1)}%` : "—" },
+    { key: "merged_mr_rate", label: "MR Fusionnés", fmt: v => v != null ? `${(v * 100).toFixed(1)}%` : "—" },
+    { key: "avg_review_time_hours", label: "Revue moy.", fmt: v => v != null ? `${Number(v).toFixed(1)}h` : "—" },
   ];
   return (
     <div className="card border-0 mt-4" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
@@ -464,18 +474,18 @@ function exportSnapshotCSV(latest, projectName) {
   if (!latest) return;
   const headers = ["KPI", "Valeur", "Unité"];
   const rows = [
-    ["Taux MR/site",      latest.mr_rate_per_site         ?? "—", "MR/dev"],
-    ["MR Approuvés",      ((latest.approved_mr_rate || 0)*100).toFixed(1), "%"],
-    ["MR Fusionnés",      ((latest.merged_mr_rate   || 0)*100).toFixed(1), "%"],
-    ["Taux commit/site",  latest.commit_rate_per_site      ?? "—", "commit/dev"],
-    ["NB Commits/projet", latest.nb_commits_per_project    ?? "—", ""],
+    ["Taux MR/site", latest.mr_rate_per_site ?? "—", "MR/dev"],
+    ["MR Approuvés", ((latest.approved_mr_rate || 0) * 100).toFixed(1), "%"],
+    ["MR Fusionnés", ((latest.merged_mr_rate || 0) * 100).toFixed(1), "%"],
+    ["Taux commit/site", latest.commit_rate_per_site ?? "—", "commit/dev"],
+    ["NB Commits/projet", latest.nb_commits_per_project ?? "—", ""],
     ["Temps revue moyen", latest.avg_review_time_hours != null ? Number(latest.avg_review_time_hours).toFixed(1) : "—", "h"],
-    ["NB Développeurs",   latest.nb_developers             ?? "—", ""],
-    ["Date snapshot",     latest.snapshot_date             ?? "—", ""],
+    ["NB Développeurs", latest.nb_developers ?? "—", ""],
+    ["Date snapshot", latest.snapshot_date ?? "—", ""],
   ];
-  const csv  = [headers, ...rows].map(r => r.join(";")).join("\n");
-  const url  = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
-  const a    = document.createElement("a");
+  const csv = [headers, ...rows].map(r => r.join(";")).join("\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
+  const a = document.createElement("a");
   a.href = url;
   a.download = `kpi_${projectName || "project"}_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(a);
@@ -493,10 +503,10 @@ function exportSnapshotPDF(projectName) {
 
 // ── KPI pour le tableau multi-mois ────────────────────────────────────────────
 const MULTI_PERIOD_KPIS = [
-  { field: "mr_rate_per_site",      label: "MR Rate"      },
-  { field: "approved_mr_rate",      label: "Approved MR Rate" },
-  { field: "merged_mr_rate",        label: "Merged MR Rate"   },
-  { field: "commit_rate_per_site",  label: "Commit Rate"  },
+  { field: "mr_rate_per_site", label: "MR Rate" },
+  { field: "approved_mr_rate", label: "Approved MR Rate" },
+  { field: "merged_mr_rate", label: "Merged MR Rate" },
+  { field: "commit_rate_per_site", label: "Commit Rate" },
   { field: "avg_review_time_hours", label: "Revue moy. (h)" },
 ];
 
@@ -505,19 +515,19 @@ export default function DashboardKPI() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [projects,          setProjects]          = useState([]);
+  const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
-  const [selectedSiteId,    setSelectedSiteId]    = useState(null);
-  const [sites,             setSites]             = useState([]);
-  const [currentPeriod,     setCurrentPeriod]     = useState(null);
-  const [kpiData,           setKpiData]           = useState(null);
-  const [multiPeriodData,   setMultiPeriodData]   = useState([]);
-  const [activeMultiKpi,    setActiveMultiKpi]    = useState("mr_rate_per_site");
+  const [selectedSiteId, setSelectedSiteId] = useState(null);
+  const [sites, setSites] = useState([]);
+  const [currentPeriod, setCurrentPeriod] = useState(null);
+  const [kpiData, setKpiData] = useState(null);
+  const [multiPeriodData, setMultiPeriodData] = useState([]);
+  const [activeMultiKpi, setActiveMultiKpi] = useState("mr_rate_per_site");
   // ✅ NOUVEAU : index du snapshot sélectionné (0 = dernier en date)
   const [selectedSnapIndex, setSelectedSnapIndex] = useState(0);
-  const [loading,           setLoading]           = useState(false);
-  const [refreshing,        setRefreshing]        = useState(false);
-  const [error,             setError]             = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
   // Chargement initial
   useEffect(() => {
@@ -551,7 +561,7 @@ export default function DashboardKPI() {
       // KPIs principaux
       kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam }),
       // ✅ NOUVEAU : tableau multi-périodes (PDF encadrant)
-      analyticsService.getMultiPeriod(selectedProjectId, { months: 24, siteId: siteIdParam })
+      analyticsService.getMultiPeriod(selectedProjectId, { months: 12, siteId: siteIdParam })
         .catch(() => []),
     ]).then(([data, multiData]) => {
       if (!mounted) return;
@@ -573,7 +583,7 @@ export default function DashboardKPI() {
       const siteIdParam = selectedSiteId != null ? parseInt(selectedSiteId) : null;
       const [data, multiData] = await Promise.all([
         kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam }),
-        analyticsService.getMultiPeriod(selectedProjectId, { months: 24, siteId: siteIdParam }).catch(() => []),
+        analyticsService.getMultiPeriod(selectedProjectId, { months: 12, siteId: siteIdParam }).catch(() => []),
       ]);
       setKpiData(data);
       setMultiPeriodData(Array.isArray(multiData) ? multiData : []);
@@ -592,33 +602,33 @@ export default function DashboardKPI() {
     setSearchParams({ project_id: projectId });
   }, [setSearchParams]);
 
-  const history      = kpiData?.history || [];
+  const history = kpiData?.history || [];
 
   // ✅ NOUVEAU : snapshot sélectionné par l'utilisateur
   // historyDesc[0] = plus récent, historyDesc[N] = plus ancien
-  const historyDesc  = [...history].reverse();
-  const latest       = historyDesc[selectedSnapIndex] || kpiData?.latest_metrics || null;
-  const previous     = historyDesc[selectedSnapIndex + 1] || null;
+  const historyDesc = [...history].reverse();
+  const latest = historyDesc[selectedSnapIndex] || kpiData?.latest_metrics || null;
+  const previous = historyDesc[selectedSnapIndex + 1] || null;
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
-  const selectedSite    = sites.find(s => s.id === selectedSiteId);
+  const selectedSite = sites.find(s => s.id === selectedSiteId);
 
   const radarScores = useMemo(() => {
     if (!latest) return null;
     return {
-      mrRateSite:    Math.min(Number(((latest.mr_rate_per_site      || 0) * 20 ).toFixed(1)), 100),
-      approvedMR:    Number(((latest.approved_mr_rate               || 0) * 100).toFixed(1)),
-      mergedMR:      Number(((latest.merged_mr_rate                 || 0) * 100).toFixed(1)),
-      commitRateSite:Math.min(Number(((latest.commit_rate_per_site  || 0) * 10 ).toFixed(1)), 100),
-      nbCommits:     Math.min(Number(((latest.nb_commits_per_project|| 0) / 10 ).toFixed(1)), 100),
-      reviewTime:    Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))),
-      nbDevs:        Math.min((latest.nb_developers || 0) * 5, 100),
+      mrRateSite: Math.min(Number(((latest.mr_rate_per_site || 0) * 20).toFixed(1)), 100),
+      approvedMR: Number(((latest.approved_mr_rate || 0) * 100).toFixed(1)),
+      mergedMR: Number(((latest.merged_mr_rate || 0) * 100).toFixed(1)),
+      commitRateSite: Math.min(Number(((latest.commit_rate_per_site || 0) * 10).toFixed(1)), 100),
+      nbCommits: Math.min(Number(((latest.nb_commits_per_project || 0) / 10).toFixed(1)), 100),
+      reviewTime: Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))),
+      nbDevs: Math.min((latest.nb_developers || 0) * 5, 100),
     };
   }, [latest]);
 
-  const globalScore   = useMemo(() => radarScores ? Math.round(Object.values(radarScores).reduce((s, v) => s + v, 0) / 7) : null, [radarScores]);
+  const globalScore = useMemo(() => radarScores ? Math.round(Object.values(radarScores).reduce((s, v) => s + v, 0) / 7) : null, [radarScores]);
   const getScoreColor = (s) => s >= 70 ? "success" : s >= 40 ? "warning" : "danger";
-  const reviewAlert   = latest?.avg_review_time_hours != null && latest.avg_review_time_hours > 24;
+  const reviewAlert = latest?.avg_review_time_hours != null && latest.avg_review_time_hours > 24;
 
   const activeMultiKpiDef = MULTI_PERIOD_KPIS.find(k => k.field === activeMultiKpi) || MULTI_PERIOD_KPIS[0];
 
@@ -742,15 +752,15 @@ export default function DashboardKPI() {
           <>
             {/* KPI Cards */}
             <div className="row g-3 mb-4">
-              <KpiCard title="Taux MR / site"      value={fmt(latest.mr_rate_per_site, 2)} icon="ri-git-pull-request-line" color="primary" unit="MR/dev"     description="NB MRs ÷ NB devs du site" tooltip="Mesure le nombre moyen de MRs créées par développeur." deltaInfo={delta(latest.mr_rate_per_site, previous?.mr_rate_per_site)} />
-              <KpiCard title="MR Approuvés"         value={fmt((latest.approved_mr_rate || 0) * 100, 1)} icon="ri-checkbox-circle-line" color="success" unit="%" description="Taux d'approbation" tooltip="Pourcentage de MRs ayant reçu une approbation." deltaInfo={delta(latest.approved_mr_rate, previous?.approved_mr_rate)} />
-              <KpiCard title="MR Fusionnés"         value={fmt((latest.merged_mr_rate   || 0) * 100, 1)} icon="ri-git-merge-line"        color="info"    unit="%" description="Taux de fusion" tooltip="Pourcentage de MRs fusionnées." deltaInfo={delta(latest.merged_mr_rate, previous?.merged_mr_rate)} />
-              <KpiCard title="Taux commit / site"   value={fmt(latest.commit_rate_per_site, 2)} icon="ri-git-commit-line"     color="warning" unit="commit/dev" description="NB commits ÷ NB devs" tooltip="Productivité moyenne par développeur." deltaInfo={delta(latest.commit_rate_per_site, previous?.commit_rate_per_site)} />
+              <KpiCard title="Taux MR / site" value={fmt(latest.mr_rate_per_site, 2)} icon="ri-git-pull-request-line" color="primary" unit="MR/dev" description="NB MRs ÷ NB devs du site" tooltip="Mesure le nombre moyen de MRs créées par développeur." deltaInfo={delta(latest.mr_rate_per_site, previous?.mr_rate_per_site)} />
+              <KpiCard title="MR Approuvés" value={fmt((latest.approved_mr_rate || 0) * 100, 1)} icon="ri-checkbox-circle-line" color="success" unit="%" description="Taux d'approbation" tooltip="Pourcentage de MRs ayant reçu une approbation." deltaInfo={delta(latest.approved_mr_rate, previous?.approved_mr_rate)} />
+              <KpiCard title="MR Fusionnés" value={fmt((latest.merged_mr_rate || 0) * 100, 1)} icon="ri-git-merge-line" color="info" unit="%" description="Taux de fusion" tooltip="Pourcentage de MRs fusionnées." deltaInfo={delta(latest.merged_mr_rate, previous?.merged_mr_rate)} />
+              <KpiCard title="Taux commit / site" value={fmt(latest.commit_rate_per_site, 2)} icon="ri-git-commit-line" color="warning" unit="commit/dev" description="NB commits ÷ NB devs" tooltip="Productivité moyenne par développeur." deltaInfo={delta(latest.commit_rate_per_site, previous?.commit_rate_per_site)} />
             </div>
             <div className="row g-3 mb-4">
-              <KpiCard title="NB commits / projet"  value={fmt(latest.nb_commits_per_project, 0)} icon="ri-code-s-slash-line" color="primary" description="Total commits" tooltip="Nombre total de commits sur la période." deltaInfo={delta(latest.nb_commits_per_project, previous?.nb_commits_per_project)} />
+              <KpiCard title="NB commits / projet" value={fmt(latest.nb_commits_per_project, 0)} icon="ri-code-s-slash-line" color="primary" description="Total commits" tooltip="Nombre total de commits sur la période." deltaInfo={delta(latest.nb_commits_per_project, previous?.nb_commits_per_project)} />
               <KpiCard title="Temps de revue moyen" value={fmt(latest.avg_review_time_hours, 1)} icon="ri-time-line" color={reviewAlert ? "danger" : "warning"} unit="h" description={reviewAlert ? "⚠ Dépasse 24h" : "Durée moyenne d'approbation"} tooltip="Temps moyen entre création et approbation d'une MR." deltaInfo={delta(latest.avg_review_time_hours, previous?.avg_review_time_hours)} />
-              <KpiCard title="NB Développeurs"      value={fmt(latest.nb_developers, 0)} icon="ri-team-line" color="secondary" unit="devs" description={selectedSite ? `Site : ${selectedSite.name}` : "Tous les sites"} tooltip="Développeurs ayant contribué au moins un commit." deltaInfo={delta(latest.nb_developers, previous?.nb_developers)} />
+              <KpiCard title="NB Développeurs" value={fmt(latest.nb_developers, 0)} icon="ri-team-line" color="secondary" unit="devs" description={selectedSite ? `Site : ${selectedSite.name}` : "Tous les sites"} tooltip="Développeurs ayant contribué au moins un commit." deltaInfo={delta(latest.nb_developers, previous?.nb_developers)} />
               <div className="col-xl-3 col-md-6">
                 <div className="card border-0 border-dashed h-100" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
                   <div className="card-body d-flex flex-column align-items-center justify-content-center text-center gap-2">
@@ -853,13 +863,13 @@ export default function DashboardKPI() {
                     </div>
                     {radarScores && (
                       <div className="vstack gap-0">
-                        <ScoreBadge label="Taux MR/site"    value={radarScores.mrRateSite}    color="primary"   />
-                        <ScoreBadge label="MR Approuvés"    value={radarScores.approvedMR}    color="success"   />
-                        <ScoreBadge label="MR Fusionnés"    value={radarScores.mergedMR}      color="info"      />
-                        <ScoreBadge label="Taux commit/site"value={radarScores.commitRateSite}color="warning"   />
-                        <ScoreBadge label="NB Commits"      value={radarScores.nbCommits}     color="danger"    />
-                        <ScoreBadge label="Rapidité revue"  value={radarScores.reviewTime}    color="secondary" />
-                        <ScoreBadge label="NB Développeurs" value={radarScores.nbDevs}        color="success"   />
+                        <ScoreBadge label="Taux MR/site" value={radarScores.mrRateSite} color="primary" />
+                        <ScoreBadge label="MR Approuvés" value={radarScores.approvedMR} color="success" />
+                        <ScoreBadge label="MR Fusionnés" value={radarScores.mergedMR} color="info" />
+                        <ScoreBadge label="Taux commit/site" value={radarScores.commitRateSite} color="warning" />
+                        <ScoreBadge label="NB Commits" value={radarScores.nbCommits} color="danger" />
+                        <ScoreBadge label="Rapidité revue" value={radarScores.reviewTime} color="secondary" />
+                        <ScoreBadge label="NB Développeurs" value={radarScores.nbDevs} color="success" />
                       </div>
                     )}
                   </div>

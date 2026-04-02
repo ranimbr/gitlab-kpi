@@ -113,10 +113,10 @@ async def lifespan(app: FastAPI):
 # ── FastAPI App ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title       = settings.APP_NAME,
-    version     = settings.APP_VERSION,
-    debug       = settings.DEBUG,
-    description = (
+    title          = settings.APP_NAME,
+    version        = settings.APP_VERSION,
+    debug          = settings.DEBUG,
+    description    = (
         "Dashboard KPI GitLab — PFE Cycle Ingénieur\n\n"
         "## KPIs disponibles\n"
         "- **KPI #1** MR Rate par site = NB MRs non-draft / NB développeurs\n"
@@ -126,10 +126,11 @@ app = FastAPI(
         "- **KPI #6** NB Commits       = somme commits du projet\n"
         "- **KPI #7** Avg Review Time  = Σ(approved_at - created_at) / NB approuvées"
     ),
-    lifespan = lifespan,
+    lifespan       = lifespan,
+    strict_slashes = False,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
+# ── CORS (PRIORITY MOVED TO TOP) ──────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins     = settings.ALLOWED_ORIGINS,

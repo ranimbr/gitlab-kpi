@@ -1,4 +1,4 @@
-"""api/routers/extraction_lots.py — inchangé."""
+"""api/routers/extraction_lots.py """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -11,7 +11,7 @@ from app.models.app_user import AppUser
 router = APIRouter(prefix="/extraction-lots", tags=["Extraction Lots"])
 repo   = ExtractionLotRepository()
 
-@router.get("/", response_model=List[ExtractionLotResponse])
+@router.get("", response_model=List[ExtractionLotResponse])
 def list_lots(db: Session = Depends(get_db), current_user: AppUser = Depends(get_current_user),
     project_id: Optional[int] = Query(default=None), period_id: Optional[int] = Query(default=None)):
     if project_id and period_id:

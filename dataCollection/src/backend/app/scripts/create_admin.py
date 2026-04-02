@@ -3,33 +3,36 @@ from sqlalchemy.orm import Session
 from app.database.session import SessionLocal
 from app.core.security import hash_password
 
-# ✅ Charge tous les modèles
-import app.models  
+import app.models
 
-from app.models.app_user import AppUser
+from app.models.app_user import AppUser, UserRoleEnum
 
 
 def create_admin():
     db: Session = SessionLocal()
 
     try:
-        existing_admin = db.query(AppUser).filter(AppUser.role == "admin").first()
+        existing_admin = db.query(AppUser).filter(
+            AppUser.role == UserRoleEnum.super_admin
+        ).first()
 
         if existing_admin:
-            print("Admin already exists.")
+            print(f"Super admin already exists: {existing_admin.email}")
             return
 
         admin = AppUser(
             email="admin@test.com",
-            hashed_password=hash_password("admin123"),
-            role="admin",
-            is_active=True
+            hashed_password=hash_password("Admin1234!"),
+            role=UserRoleEnum.super_admin,
+            is_active=True,
+            name="Super Admin",
         )
 
         db.add(admin)
         db.commit()
-
-        print("Admin created successfully.")
+        print("✅ Super admin created successfully.")
+        print("   Email    : admin@test.com")
+        print("   Password : Admin1234!")
 
     except Exception as e:
         db.rollback()

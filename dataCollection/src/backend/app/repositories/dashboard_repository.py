@@ -1,5 +1,5 @@
 """
-repositories/dashboard_repository.py — inchangé fonctionnellement, nettoyé.
+repositories/dashboard_repository.py — .
 DashboardAccessRepository supprimé (table DashboardAccess supprimée).
 get_accessible_by_user() utilise AppUser.dashboard_access[].
 """

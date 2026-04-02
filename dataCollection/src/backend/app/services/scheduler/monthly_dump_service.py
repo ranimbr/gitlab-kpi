@@ -1,4 +1,4 @@
-"""services/scheduler/monthly_dump_service.py — inchangé fonctionnellement."""
+"""services/scheduler/monthly_dump_service.py — ."""
 import logging
 from datetime import datetime
 from sqlalchemy.orm import Session

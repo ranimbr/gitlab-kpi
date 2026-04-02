@@ -1,4 +1,4 @@
-"""api/routers/kpi_definitions.py — inchangé."""
+"""api/routers/kpi_definitions.py """
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session

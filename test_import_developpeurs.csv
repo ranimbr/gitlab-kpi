@@ -1,0 +1,4 @@
+name,email,gitlab_username,sites,projects,group
+"Rami Abid",rami.ayari@corp.tn,rami.abid,"Sfax","frontend, backend-api","Equipe Alpha"
+"Sara Trabelsi",sara.trabelsi@corp.tn,sara.trabelsi,"Sfax, Tunis","frontend","Equipe Beta"
+"Leila Mansour",leila.mansour@corp.tn,leila.mansour,"Paris","backend-api","Equipe Charlie"

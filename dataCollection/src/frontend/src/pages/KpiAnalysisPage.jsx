@@ -348,55 +348,20 @@ export default function KpiAnalysisPage() {
     if (viewMode === "developer") entityParams.developerId = parseInt(entityId);
 
     try {
-      let dashData = null;
-      let usedFallback = false;
+      // Appel direct avec le filtre précis (site_id ou developer_id)
+      // On NE fait PAS de fallback silencieux vers les données globales —
+      // ce serait tromper l'utilisateur en affichant les mêmes KPIs pour tous les devs.
+      const dashData = await analyticsService.getKpiDashboard(parseInt(projectId), entityParams);
+      console.log("[KpiAnalysis] ✅ Données avec filtre entité:", dashData);
 
-      // Tentative 1 : avec filtre site/developer
-      try {
-        dashData = await analyticsService.getKpiDashboard(parseInt(projectId), entityParams);
-        console.log("[KpiAnalysis] ✅ Données avec filtre entité:", dashData);
-      } catch (e1) {
-        console.warn("[KpiAnalysis] ⚠️ Filtre entité échoué (", e1?.response?.status, ") — essai sans filtre");
-
-        // Tentative 2 : sans filtre entité (données projet globales)
-        try {
-          dashData = await analyticsService.getKpiDashboard(parseInt(projectId), {});
-          usedFallback = true;
-          console.log("[KpiAnalysis] ✅ Données projet global:", dashData);
-        } catch (e2) {
-          console.warn("[KpiAnalysis] ⚠️ Projet global échoué (", e2?.response?.status, ") — essai analytics endpoint");
-
-          // Tentative 3 : endpoint /analytics/{projectId}/dashboard
-          try {
-            dashData = await analyticsService.getDashboard(parseInt(projectId), entityParams);
-            console.log("[KpiAnalysis] ✅ Données via /analytics/:", dashData);
-          } catch (e3) {
-            console.error("[KpiAnalysis] ❌ Tous les endpoints ont échoué");
-            throw new Error(
-              e1?.response?.data?.detail ||
-              e1?.response?.data?.message ||
-              e1?.message ||
-              "Aucun snapshot KPI disponible. Lancez une extraction Monthly."
-            );
-          }
-        }
-      }
-
-      // Normalise la réponse — plusieurs structures possibles selon l'endpoint
-      const latest = dashData?.latest_metrics || dashData?.latest || dashData?.data || dashData;
+      // Normalise la réponse
+      const latest  = dashData?.latest_metrics || dashData?.latest || dashData?.data || dashData;
       const history = dashData?.history || dashData?.historical || [];
-
-      // Si fallback utilisé, enrichir le snapshot avec le filtre site
-      // pour que les comparaisons restent cohérentes
-      if (usedFallback && latest && viewMode === "site") {
-        latest._filtered_site_id = parseInt(entityId);
-        latest._is_global = true;
-      }
 
       setCurrentSnap(latest);
       if (history.length >= 2) setPreviousSnap(history[history.length - 2]);
 
-      // Comparaison inter-entités (même projet, même période)
+      // Comparaison inter-sites (indépendant du filtre developer)
       const compareData = await analyticsService.compareSites(
         parseInt(projectId),
         periodId ? parseInt(periodId) : null
@@ -412,7 +377,22 @@ export default function KpiAnalysisPage() {
         setTopDevs(Array.isArray(devs) ? devs : []);
       }
     } catch (err) {
-      setError(err.message || "Impossible de charger les données KPI.");
+      // Erreur 404 = pas de snapshot KPI pour ce développeur → message clair
+      const status  = err?.response?.status;
+      const isNoData = status === 404 || status === 422;
+      if (isNoData && viewMode === "developer") {
+        setError(
+          `Aucun snapshot KPI disponible pour ce développeur sur ce projet et cette période.\n` +
+          `Lancez une extraction « MONTHLY » pour générer les indicateurs individuels.`
+        );
+      } else {
+        setError(
+          err?.response?.data?.detail ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Impossible de charger les données KPI."
+        );
+      }
     } finally {
       setLoading(false);
     }

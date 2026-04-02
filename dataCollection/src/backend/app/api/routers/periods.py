@@ -1,4 +1,4 @@
-"""api/routers/periods.py — inchangé."""
+"""api/routers/periods.py """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List

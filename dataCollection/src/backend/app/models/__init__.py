@@ -2,15 +2,39 @@
 models/__init__.py
 
 Point d'entrée unique pour tous les modèles SQLAlchemy.
-Import ordonné selon les dépendances FK (les tables référencées avant les tables qui les référencent).
+Import ordonné selon les dépendances FK.
 
-⚠️  CHANGEMENTS DE NOM À PROPAGER dans les services et routers :
-    - ExtractionLot.type        → ExtractionLot.extraction_type
-    - KpiThreshold.type         → KpiThreshold.threshold_type
-    - KpiSnapshot : 3 nouveaux champs delta
-        + delta_approved_mr_rate
-        + delta_merged_mr_rate
-        + delta_nb_commits
+NOUVEAUX MODÈLES (remarques encadrant) :
+─────────────────────────────────────────
+  + ProjectSite          → M2M Project ↔ Site
+  + DeveloperProject     → M2M Developer ↔ Project
+  + DeveloperSite        → M2M Developer ↔ Site
+  + DeveloperImportLog   → Traçabilité imports CSV/Excel
+
+CHANGEMENTS PROPAGÉS :
+  - AppUser.role         : admin/user → super_admin/site_manager/team_lead/developer
+  - AppUser              : + site_id, + group_id, + developer_import_logs
+  - Developer            : - project_id, - site_id → M2M via tables de jonction
+                           + gitlab_username, + avatar_url, + is_external
+                           + auto_created, + onboarding_date, + last_active_at
+  - Project              : - site_id → M2M via ProjectSite
+                           + last_commit_date
+  - DeveloperGroup       : - project_id (groupe appartient au site, pas au projet)
+  - KpiSnapshot          : + developer_score, + score_rank_in_site, + mr_rate_per_ticket
+  - KpiThreshold         : + site_id (seuil configurable par site)
+  - Alert                : + developer_id (alerte individuelle par développeur)
+
+⚠️  MIGRATIONS REQUISES :
+  1. CREATE TABLE project_site, developer_project, developer_site, developer_import_log
+  2. ALTER TABLE developer   DROP COLUMN project_id, DROP COLUMN site_id
+     ADD COLUMN gitlab_username, avatar_url, is_external, auto_created, onboarding_date, last_active_at
+  3. ALTER TABLE project     DROP COLUMN site_id, ADD COLUMN last_commit_date
+  4. ALTER TABLE developer_group DROP COLUMN project_id
+  5. ALTER TABLE kpi_snapshot    ADD COLUMN developer_score, score_rank_in_site, mr_rate_per_ticket
+  6. ALTER TABLE kpi_threshold   ADD COLUMN site_id
+  7. ALTER TABLE alert           ADD COLUMN developer_id
+  8. ALTER TABLE app_user        ADD COLUMN site_id, group_id
+     ALTER TYPE userrole_enum RENAME/ADD VALUES
 """
 
 from app.models.base import Base
@@ -25,8 +49,14 @@ from app.models.app_user        import AppUser
 from app.models.audit_log       import AuditLog
 
 # ── Organisation Développeurs ──────────────────────────────────────────────
-from app.models.developer_group import DeveloperGroup
-from app.models.developer       import Developer
+from app.models.developer_group     import DeveloperGroup
+from app.models.developer           import Developer
+from app.models.developer_import_log import DeveloperImportLog
+
+# ── Tables de jonction Many-to-Many ───────────────────────────────────────
+from app.models.project_site        import ProjectSite
+from app.models.developer_project   import DeveloperProject
+from app.models.developer_site      import DeveloperSite
 
 # ── Périodes & Extraction ──────────────────────────────────────────────────
 from app.models.period          import Period
@@ -51,28 +81,19 @@ from app.models.dashboard       import Dashboard
 __all__ = [
     "Base",
     # Configuration
-    "GitLabConfig",
-    "Site",
-    "Project",
+    "GitLabConfig", "Site", "Project",
     # Utilisateurs
-    "AppUser",
-    "AuditLog",
+    "AppUser", "AuditLog",
     # Organisation
-    "DeveloperGroup",
-    "Developer",
+    "DeveloperGroup", "Developer", "DeveloperImportLog",
+    # Many-to-Many
+    "ProjectSite", "DeveloperProject", "DeveloperSite",
     # Périodes
-    "Period",
-    "PeriodFilter",
-    "ExtractionLot",
+    "Period", "PeriodFilter", "ExtractionLot",
     # Données GitLab
-    "Commit",
-    "MergeRequest",
-    "CommitMergeRequest",
+    "Commit", "MergeRequest", "CommitMergeRequest",
     # KPIs
-    "KpiDefinition",
-    "KpiSnapshot",
-    "KpiThreshold",
-    "Alert",
+    "KpiDefinition", "KpiSnapshot", "KpiThreshold", "Alert",
     # Dashboard
     "Dashboard",
 ]

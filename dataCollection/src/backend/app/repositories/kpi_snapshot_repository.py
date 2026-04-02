@@ -315,6 +315,7 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
         allowed_fields = {
             "mr_rate_per_site", "approved_mr_rate", "merged_mr_rate",
             "commit_rate_per_site", "nb_commits_per_project", "avg_review_time_hours",
+            "developer_score", "score_rank_in_site",
         }
         if kpi_field not in allowed_fields:
             raise ValueError(f"kpi_field '{kpi_field}' non autorisé.")

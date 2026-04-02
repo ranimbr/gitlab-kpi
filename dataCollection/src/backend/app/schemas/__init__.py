@@ -1,12 +1,29 @@
 """
-schemas/__init__.py — CORRIGÉ
+schemas/__init__.py
 
-CORRECTIONS :
-    1. Import de PeriodFilterCreate/Response depuis period_filter.py uniquement
-       (suppression du double alias DashboardPeriodFilterCreate/Response)
-    2. sub_project.py SUPPRIMÉ (SubProject retiré du projet)
-    3. Ajout des exports depuis enums.py
-    4. Import ExtractionTypeEnum depuis enums (plus depuis extraction_lot)
+CORRECTIONS (remarques encadrant + modèles mis à jour) :
+──────────────────────────────────────────────────────────
+NOUVEAUX EXPORTS :
+  + DeveloperSummary, DeveloperKpiSummary
+  + DeveloperImportRequest, DeveloperImportResponse, DeveloperImportLogResponse
+  + DeveloperSiteAssociation, DeveloperProjectAssociation
+  + DeveloperLeaderboardEntry, DeveloperLeaderboardResponse
+  + DeveloperKpiSnapshotResponse
+  + DeveloperAlertSummary
+  + CommitSummary, UnmatchedCommitResponse
+  + MergeRequestSummary, UnmatchedMRResponse, ReviewerWorkloadResponse
+  + ProjectSummary, ProjectSiteAssign
+  + ImportStatusEnum, MRStateEnum, DeveloperSourceEnum
+
+CHANGEMENTS PROPAGÉS :
+  UserRoleEnum      : 4 rôles (super_admin, site_manager, team_lead, developer)
+  DeveloperCreate   : + sites/projects (M2M), + gitlab_username, is_external, etc.
+  DeveloperResponse : + sites/projects listes, + nouveaux champs
+  DeveloperGroupCreate : - project_id, + description
+  ProjectCreate     : - site_id → site_ids (liste)
+  AlertResponse     : + developer_id
+  KpiSnapshotResponse : + developer_score, score_rank_in_site, mr_rate_per_ticket
+  KpiThresholdCreate  : + site_id
 """
 
 # ── Enums partagés (source unique) ───────────────────────────────────────────
@@ -18,6 +35,9 @@ from app.schemas.enums import (
     AlertLevelEnum,
     PeriodFilterTypeEnum,
     ExtractionTypeEnum,
+    MRStateEnum,
+    DeveloperSourceEnum,
+    ImportStatusEnum,
     HIGHER_IS_WORSE,
     LOWER_IS_WORSE,
     NEUTRAL_KPIS,
@@ -49,12 +69,22 @@ from app.schemas.gitlab_config import (
 # ── Project ───────────────────────────────────────────────────────────────────
 from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
+    ProjectSummary, ProjectSiteAssign,
 )
 
 # ── Developer ─────────────────────────────────────────────────────────────────
 from app.schemas.developer import (
+    # Groups
     DeveloperGroupCreate, DeveloperGroupUpdate, DeveloperGroupResponse,
+    # Developer CRUD
     DeveloperCreate, DeveloperUpdate, DeveloperValidate, DeveloperResponse,
+    # Associations M2M
+    DeveloperSiteAssociation, DeveloperProjectAssociation,
+    # Réponses enrichies
+    DeveloperSummary,
+    # Import CSV/Excel
+    DeveloperImportRequest, DeveloperImportResponse,
+    DeveloperImportLogResponse, DeveloperImportRowResult,
 )
 
 # ── Period ────────────────────────────────────────────────────────────────────
@@ -62,12 +92,10 @@ from app.schemas.period import (
     PeriodCreate, PeriodResponse, PeriodCloseResponse,
 )
 
-# ── PeriodFilter (source unique) ──────────────────────────────────────────────
+# ── PeriodFilter ──────────────────────────────────────────────────────────────
 from app.schemas.period_filter import (
     PeriodFilterCreate, PeriodFilterUpdate, PeriodFilterResponse,
 )
-# ✅ Plus de DashboardPeriodFilterCreate/DashboardPeriodFilterResponse
-# dashboard.py importe depuis period_filter.py directement
 
 # ── Extraction ────────────────────────────────────────────────────────────────
 from app.schemas.extraction_lot import (
@@ -75,8 +103,13 @@ from app.schemas.extraction_lot import (
 )
 
 # ── Données GitLab ────────────────────────────────────────────────────────────
-from app.schemas.commit import CommitResponse
-from app.schemas.merge_request import MergeRequestResponse
+from app.schemas.commit import (
+    CommitResponse, CommitSummary, UnmatchedCommitResponse,
+)
+from app.schemas.merge_request import (
+    MergeRequestResponse, MergeRequestSummary,
+    UnmatchedMRResponse, ReviewerWorkloadResponse,
+)
 
 # ── KPI Definition ────────────────────────────────────────────────────────────
 from app.schemas.kpi_definition import (
@@ -85,8 +118,13 @@ from app.schemas.kpi_definition import (
 
 # ── KPI Snapshot & Analytics ──────────────────────────────────────────────────
 from app.schemas.kpi import (
-    KpiSnapshotResponse, KpiHistoryResponse,
-    DashboardSummaryResponse, SnapshotGeneratedResponse,
+    KpiSnapshotResponse,
+    DeveloperKpiSnapshotResponse,
+    DeveloperLeaderboardEntry,
+    DeveloperLeaderboardResponse,
+    KpiHistoryResponse,
+    DashboardSummaryResponse,
+    SnapshotGeneratedResponse,
     SimpleMessageResponse,
 )
 
@@ -100,6 +138,7 @@ from app.schemas.kpi_threshold import (
 from app.schemas.alert import (
     AlertResponse, AlertAcknowledgeRequest,
     AlertFilterParams, AlertSummaryResponse,
+    DeveloperAlertSummary,
 )
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -111,8 +150,3 @@ from app.schemas.dashboard import (
 from app.schemas.audit_log import (
     AuditLogResponse, AuditLogFilterParams,
 )
-
-# ── Supprimés ─────────────────────────────────────────────────────────────────
-# sub_project.py ✗ supprimé — SubProject retiré du projet
-# DashboardPeriodFilterCreate ✗ supprimé — utiliser PeriodFilterCreate
-# DashboardPeriodFilterResponse ✗ supprimé — utiliser PeriodFilterResponse

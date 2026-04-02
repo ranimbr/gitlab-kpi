@@ -1,17 +1,24 @@
 """
 models/site.py
 
-Entité dédiée représentant un site géographique / organisationnel.
+Entité représentant un site géographique / organisationnel.
 
-Remplace le champ site:String répété dans Developer, DeveloperGroup,
-KpiSnapshot et Dashboard — garantit la cohérence des comparaisons
-inter-sites et centralise la gestion des sites.
+CORRECTIONS MAJEURES (remarques encadrant) :
+─────────────────────────────────────────────
+1. AJOUT des relations Many-to-Many :
+       project_associations    → ProjectSite    (site ↔ projets)
+       developer_associations  → DeveloperSite  (site ↔ développeurs)
 
-Exemples : "Tunis", "Lyon", "HGW-OPE", "Paris", "Casablanca"
+2. SUPPRESSION des relations directes :
+       developers → remplacé par developer_associations (M2M)
+       projects   → remplacé par project_associations  (M2M)
 
-CORRECTION :
-    Ajout de la relation `gitlab_configs` manquante — nécessaire depuis
-    l'ajout de site_id dans GitLabConfig.
+3. La relation gitlab_configs reste directe (1 site → N instances GitLab).
+   La relation developer_groups reste directe (1 site → N groupes).
+   La relation dashboards reste directe (1 site → N dashboards).
+   La relation kpi_snapshots reste directe (1 site → N snapshots).
+
+Exemples de sites : "Tunis", "Lyon", "Paris", "HGW-OPE", "Casablanca"
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, Index
@@ -31,22 +38,31 @@ class Site(Base):
     is_active = Column(Boolean, default=True, nullable=False)
 
     # ── Relations ────────────────────────────────────────────────────────────
-    # ✅ AJOUT : instances GitLab hébergées sur ce site
+
+    # ✅ CORRECTION : relation directe → Many-to-Many via DeveloperSite
+    developer_associations = relationship(
+        "DeveloperSite",
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+
+    # ✅ CORRECTION : relation directe → Many-to-Many via ProjectSite
+    project_associations = relationship(
+        "ProjectSite",
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
+
+    # Relations directes conservées (1-to-Many)
     gitlab_configs = relationship(
         "GitLabConfig",
         back_populates="site",
-        # pas de cascade delete-orphan : une config GitLab peut survivre
-        # si on désactive un site (is_active=False)
+        # Pas de cascade : une config peut survivre si le site est désactivé
     )
     developer_groups = relationship(
         "DeveloperGroup",
-        back_populates="site",
-        cascade="all, delete-orphan",
-    )
-    developers = relationship(
-        "Developer",
-        back_populates="site",
-        cascade="all, delete-orphan",
+        secondary="developer_group_site",
+        back_populates="sites",
     )
     dashboards = relationship(
         "Dashboard",
@@ -58,16 +74,14 @@ class Site(Base):
         back_populates="site",
         cascade="all, delete-orphan",
     )
-    # Pas de cascade delete-orphan sur projects :
-    # un projet peut continuer d'exister si le site est supprimé (site_id → NULL)
-    projects = relationship(
-        "Project",
+    kpi_thresholds = relationship(
+        "KpiThreshold",
         back_populates="site",
     )
 
     # ── Index ────────────────────────────────────────────────────────────────
     # name est UNIQUE → index auto via unique=True
     __table_args__ = (
-        Index("idx_site_country",    "country"),
-        Index("idx_site_active",     "is_active"),
+        Index("idx_site_country", "country"),
+        Index("idx_site_active",  "is_active"),
     )

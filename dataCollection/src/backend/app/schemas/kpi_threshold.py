@@ -1,23 +1,18 @@
 """
 schemas/kpi_threshold.py
 
-CORRECTIONS :
+CORRECTIONS (remarques encadrant + modèles mis à jour) :
+──────────────────────────────────────────────────────────
+1. AJOUT de site_id dans KpiThresholdCreate/Update/Response :
+   Un seuil peut être configuré par site (nouveau champ dans le modèle).
+   NULL = seuil global applicable à tous les sites.
+   Exemple : site Tunis → avg_review_time warning=48h
+             site Paris → avg_review_time warning=36h
 
-    1. FIX CRITIQUE — KpiThresholdCreate : champ `type` → `threshold_type`
-       Le modèle KpiThreshold.type a été renommé en threshold_type.
-       AVANT : type: ThresholdTypeEnum → ne mappe plus sur le modèle
-       ✅ FIX : threshold_type: ThresholdTypeEnum
-
-    2. FIX — KpiThresholdResponse : idem, type → threshold_type.
-       alias="type" pour rétrocompatibilité JSON si besoin.
-
-    3. FIX — KpiThresholdUpdate : idem.
-
-    4. KpiThresholdCreate.kpi_definition_id : OBLIGATOIRE (NOT NULL en DB).
-       kpi_name reste optionnel — utilisé uniquement pour la validation
-       métier du sens des seuils (warning < critical vs warning > critical).
-
-    5. Enums importés depuis enums.py (source unique).
+2. FIX conservés :
+   - threshold_type au lieu de type (réservé Python/SQLAlchemy)
+   - kpi_definition_id obligatoire (NOT NULL en DB)
+   - Validation warning/critical selon le sens du KPI
 """
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Literal
@@ -30,39 +25,24 @@ from app.schemas.enums import (
 
 __all__ = [
     "KpiThresholdCreate", "KpiThresholdUpdate", "KpiThresholdResponse",
-    "KpiAlertLevel", "KpiNameEnum", "ThresholdTypeEnum",
-    "HIGHER_IS_WORSE", "LOWER_IS_WORSE", "NEUTRAL_KPIS", "ALL_KPI_NAMES",
+    "KpiAlertLevel",
 ]
 
 
 class KpiThresholdCreate(BaseModel):
-    """
-    Création d'un seuil KPI.
-
-    kpi_definition_id OBLIGATOIRE (NOT NULL dans le modèle).
-    threshold_type remplace l'ancien champ `type`.
-
-    Règles warning/critical selon le sens du KPI :
-        HIGHER_IS_WORSE (AVG_REVIEW_TIME)  : warning < critical
-        LOWER_IS_WORSE  (APPROVED_MR_RATE) : warning > critical
-    """
     project_id:        int
     kpi_definition_id: int = Field(
-        description="ID de la KpiDefinition associée (obligatoire — NOT NULL en DB)"
+        description="ID de la KpiDefinition (obligatoire — NOT NULL en DB)"
     )
-    warning_value:  float = Field(..., description="Valeur seuil d'avertissement")
-    critical_value: float = Field(..., description="Valeur seuil critique")
-
-    # ✅ FIX : threshold_type au lieu de type
-    threshold_type: ThresholdTypeEnum = Field(
-        default=ThresholdTypeEnum.MONTHLY,
-        description="REALTIME = seuil temps réel | MONTHLY = seuil clôture mensuelle",
+    warning_value:     float = Field(..., ge=0, description="Valeur seuil d'avertissement")
+    critical_value:    float = Field(..., ge=0, description="Valeur seuil critique")
+    threshold_type:    ThresholdTypeEnum = ThresholdTypeEnum.MONTHLY
+    dashboard_id:      Optional[int] = None
+    # ✅ AJOUT : seuil configurable par site
+    site_id:           Optional[int] = Field(
+        default=None,
+        description="Site concerné (NULL = seuil global tous sites)",
     )
-    dashboard_id: Optional[int] = None
-
-    # kpi_name optionnel — pour validation métier du sens (warning/critical)
-    # Si fourni, le validator vérifie la cohérence warning vs critical.
-    # Dérivé de kpi_definition.code côté service après création.
     kpi_name: Optional[str] = Field(
         default=None,
         description="Code KPI ex: AVG_REVIEW_TIME (optionnel, pour validation sens)",
@@ -70,67 +50,57 @@ class KpiThresholdCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_threshold_order(self) -> "KpiThresholdCreate":
-        """Valide la cohérence warning/critical selon le sens du KPI."""
         kpi = self.kpi_name
         w   = self.warning_value
         c   = self.critical_value
 
+        if w == c:
+            raise ValueError("warning_value et critical_value ne peuvent pas être égaux.")
+
         if kpi is None:
-            # Sans kpi_name, validation impossible ici → faite dans le service
             return self
 
         if kpi in HIGHER_IS_WORSE:
             if w >= c:
                 raise ValueError(
                     f"Pour '{kpi}' (plus grand = pire), "
-                    f"warning ({w}) doit être < critical ({c}). "
-                    f"Exemple : warning=48h, critical=72h."
+                    f"warning ({w}) doit être < critical ({c})."
                 )
         elif kpi in LOWER_IS_WORSE:
             if w <= c:
                 raise ValueError(
                     f"Pour '{kpi}' (plus petit = pire), "
-                    f"warning ({w}) doit être > critical ({c}). "
-                    f"Exemple : warning=0.6, critical=0.3."
+                    f"warning ({w}) doit être > critical ({c})."
                 )
-        # NEUTRAL_KPIS : pas de contrainte d'ordre
         return self
 
 
 class KpiThresholdUpdate(BaseModel):
-    warning_value:  Optional[float]             = None
-    critical_value: Optional[float]             = None
-    # ✅ FIX : threshold_type au lieu de type
+    warning_value:  Optional[float]             = Field(default=None, ge=0)
+    critical_value: Optional[float]             = Field(default=None, ge=0)
     threshold_type: Optional[ThresholdTypeEnum] = None
     dashboard_id:   Optional[int]               = None
+    # ✅ AJOUT
+    site_id:        Optional[int]               = None
 
 
 class KpiThresholdResponse(BaseModel):
     id:                int
     project_id:        int
     kpi_definition_id: int
-
-    # kpi_name lit la @property SQLAlchemy via from_attributes=True
-    # La @property retourne kpi_definition.code — toujours cohérent
-    # Optional car nécessite que kpi_definition soit chargé (joinedload)
-    kpi_name: Optional[str] = None
-
-    warning_value:  float
-    critical_value: float
-
-    # ✅ FIX : threshold_type au lieu de type
-    threshold_type: str = Field(
-        alias="threshold_type",
-        description="REALTIME | MONTHLY",
-    )
-
-    created_by:   Optional[int]
-    dashboard_id: Optional[int]
-    created_at:   datetime
+    kpi_name:          Optional[str]  = None   # @property SQLAlchemy via from_attributes
+    warning_value:     float
+    critical_value:    float
+    threshold_type:    str
+    created_by:        Optional[int]
+    dashboard_id:      Optional[int]
+    # ✅ AJOUT
+    site_id:           Optional[int]  = None
+    created_at:        datetime
 
     model_config = {
-        "from_attributes": True,
-        "populate_by_name": True,
+        "from_attributes":   True,
+        "populate_by_name":  True,
     }
 
 
@@ -138,16 +108,15 @@ class KpiAlertLevel(BaseModel):
     """
     Résultat de l'évaluation d'un KPI par rapport à ses seuils.
     Affiché comme badge coloré dans le dashboard frontend.
-
-    level : "ok" | "warning" | "critical" | "unknown"
-    color : "green" | "yellow" | "red" | "gray"
     """
     kpi_name:          str
-    kpi_code:          Optional[str]   = None
+    kpi_code:          Optional[str]  = None
     value:             Optional[float]
     warning_value:     float
     critical_value:    float
     level:             Literal["ok", "warning", "critical", "unknown"]
     color:             Literal["green", "yellow", "red", "gray"]
-    dashboard_id:      Optional[int]   = None
-    kpi_definition_id: Optional[int]   = None
+    dashboard_id:      Optional[int]  = None
+    kpi_definition_id: Optional[int]  = None
+    # ✅ AJOUT : site concerné par ce seuil
+    site_id:           Optional[int]  = None

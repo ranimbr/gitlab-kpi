@@ -5,7 +5,7 @@ const extractionLotService = {
     const params = {};
     if (projectId != null) params.project_id = projectId;
     if (periodId  != null) params.period_id  = periodId;
-    return (await api.get("/extraction-lots/", { params })).data;
+    return (await api.get("/extraction-lots", { params })).data;
   },
   getById: async (lotId) => (await api.get(`/extraction-lots/${lotId}`)).data,
 };

@@ -1,8 +1,13 @@
 """
-schemas/user.py — CORRIGÉ
-- UserRoleEnum depuis enums.py (plus depuis models/)
-- ChangePasswordRequest : validation confirm_password
-- dashboard_access : validation IDs positifs
+schemas/user.py
+
+CORRECTIONS (remarques encadrant + modèles mis à jour) :
+──────────────────────────────────────────────────────────
+1. UserRoleEnum mis à jour : 4 rôles (super_admin, site_manager, team_lead, developer).
+2. AJOUT de site_id et group_id dans CreateUserRequest et UserManagementResponse.
+   site_manager → site_id obligatoire
+   team_lead    → group_id obligatoire
+3. Validation croisée : site_id requis si role=site_manager, etc.
 """
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional, List
@@ -11,15 +16,31 @@ from app.schemas.enums import UserRoleEnum
 
 
 class CreateUserRequest(BaseModel):
-    email:            EmailStr
-    password:         str          = Field(min_length=8)
-    role:             UserRoleEnum = UserRoleEnum.user
-    login:            Optional[str]      = Field(default=None, min_length=2, max_length=100)
-    name:             Optional[str]      = Field(default=None, max_length=255)
+    email:    EmailStr
+    password: str          = Field(min_length=8)
+    role:     UserRoleEnum = UserRoleEnum.developer
+    login:    Optional[str]       = Field(default=None, min_length=2, max_length=100)
+    name:     Optional[str]       = Field(default=None, max_length=255)
+
+    # ✅ AJOUT : site_id requis si role=site_manager
+    site_id:  Optional[int]       = Field(
+        default=None,
+        description="Obligatoire si role=site_manager",
+    )
+    # ✅ AJOUT : group_id requis si role=team_lead
+    group_id: Optional[int]       = Field(
+        default=None,
+        description="Obligatoire si role=team_lead",
+    )
+
     dashboard_access: Optional[List[int]] = None
 
     @model_validator(mode="after")
-    def validate_dashboard_ids(self) -> "CreateUserRequest":
+    def validate_role_requirements(self) -> "CreateUserRequest":
+        if self.role == UserRoleEnum.site_manager and not self.site_id:
+            raise ValueError("site_id est obligatoire pour le rôle site_manager.")
+        if self.role == UserRoleEnum.team_lead and not self.group_id:
+            raise ValueError("group_id est obligatoire pour le rôle team_lead.")
         if self.dashboard_access:
             if any(i <= 0 for i in self.dashboard_access):
                 raise ValueError("dashboard_access contient des IDs invalides (doivent être > 0).")
@@ -31,6 +52,9 @@ class UpdateUserRequest(BaseModel):
     is_active:        Optional[bool]         = None
     new_password:     Optional[str]          = Field(default=None, min_length=8)
     dashboard_access: Optional[List[int]]    = None
+    # ✅ AJOUT
+    site_id:          Optional[int]          = None
+    group_id:         Optional[int]          = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -55,6 +79,9 @@ class UserManagementResponse(BaseModel):
     role:             str
     is_active:        bool
     dashboard_access: Optional[List[int]] = None
+    # ✅ AJOUT
+    site_id:          Optional[int]       = None
+    group_id:         Optional[int]       = None
     created_at:       datetime
 
     model_config = {"from_attributes": True}

@@ -1,4 +1,4 @@
-"""services/scheduler/scheduler.py — inchangé."""
+"""services/scheduler/scheduler.py — ."""
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger

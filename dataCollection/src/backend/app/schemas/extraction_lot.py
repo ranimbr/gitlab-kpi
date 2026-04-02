@@ -30,7 +30,10 @@ class ExtractionLotCreate(BaseModel):
     period_id obligatoire si MONTHLY.
     is_backfill optionnel — si True + MONTHLY : recalcule sans lever 409.
     """
-    project_id:      int
+    project_id:      Optional[int] = None
+    developer_id:    Optional[int] = Field(default=None, description="Axe optionnel : extraire pour un contributeur spécifique")
+    gitlab_config_id: Optional[int] = Field(default=None, description="Requis si project_id est absent pour identifier l'instance GitLab")
+    
     extraction_type: ExtractionTypeEnum = Field(
         description="REALTIME = extraction manuelle | MONTHLY = clôture mensuelle"
     )
@@ -48,6 +51,18 @@ class ExtractionLotCreate(BaseModel):
     )
 
     @model_validator(mode="after")
+    def validate_extraction_targets(self) -> "ExtractionLotCreate":
+        # 1. Au moins un axe d'extraction
+        if not self.project_id and not self.developer_id:
+            raise ValueError("Vous devez spécifier au moins un 'project_id' ou un 'developer_id'.")
+        
+        # 2. GitLab Config ID requis si pas de projet
+        if not self.project_id and not self.gitlab_config_id:
+            raise ValueError("Le 'gitlab_config_id' est obligatoire si aucun 'project_id' n'est fourni.")
+            
+        return self
+
+    @model_validator(mode="after")
     def validate_monthly_requires_period(self) -> "ExtractionLotCreate":
         if self.extraction_type == ExtractionTypeEnum.MONTHLY and not self.period_id:
             raise ValueError("period_id est obligatoire pour une extraction MONTHLY.")
@@ -61,7 +76,8 @@ class ExtractionLotResponse(BaseModel):
     id:              int
     extraction_type: str = Field(alias="extraction_type")
     status:          str
-    project_id:      int
+    project_id:      Optional[int]
+    developer_id:    Optional[int] = None
     period_id:       int
     triggered_by:    Optional[int]
     generated_file:  Optional[str]
@@ -83,7 +99,8 @@ class ExtractionRunResponse(BaseModel):
     message:         str
     lot_id:          int
     extraction_type: str = Field(description="REALTIME | MONTHLY")
-    project_id:      int
+    project_id:      Optional[int]
+    developer_id:    Optional[int] = None
     period_id:       int
     generated_file:  Optional[str] = None
     md5sum:          Optional[str] = None

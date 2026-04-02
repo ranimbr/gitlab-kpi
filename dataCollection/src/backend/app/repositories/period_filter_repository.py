@@ -1,4 +1,4 @@
-"""repositories/period_filter_repository.py — inchangé fonctionnellement."""
+"""repositories/period_filter_repository.py """
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from app.models.period_filter import PeriodFilter, PeriodFilterTypeEnum

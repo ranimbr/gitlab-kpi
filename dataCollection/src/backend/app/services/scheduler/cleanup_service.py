@@ -1,4 +1,4 @@
-"""services/scheduler/cleanup_service.py — inchangé."""
+"""services/scheduler/cleanup_service.py — ."""
 import logging
 from sqlalchemy.orm import Session
 from app.repositories.extraction_lot_repository import ExtractionLotRepository

@@ -1,10 +1,30 @@
-"""schemas/merge_request.py — CORRIGÉ : time_to_approve → review_time_hours, complexity supprimé."""
+"""
+schemas/merge_request.py
+
+CORRECTIONS (modèles mis à jour) :
+────────────────────────────────────
+1. AJOUT des nouveaux champs du modèle MergeRequest :
+       source_branch → branche feature de la MR
+       target_branch → branche cible (ex: main, develop)
+       reviewer_id   → développeur relecteur assigné
+       author_name   → nom brut de l'auteur (fallback quand developer_id=NULL)
+
+2. AJOUT MergeRequestSummary : version allégée pour les listes.
+
+3. AJOUT UnmatchedMRResponse : MRs sans developer_id à traiter par l'admin.
+
+4. AJOUT ReviewerWorkloadResponse : charge de review par développeur
+   (requête fréquente pour détecter les relecteurs surchargés).
+"""
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
+from app.schemas.commit import CommitDeveloperInfo
+
 class MergeRequestResponse(BaseModel):
+    """Réponse complète GET /merge-requests/{id}."""
     id:                int
     gitlab_mr_id:      int
     title:             str
@@ -12,7 +32,13 @@ class MergeRequestResponse(BaseModel):
     state:             str
     is_draft:          bool
     approved:          bool
-    review_time_hours: Optional[float]   # (approved_at - created_at_gitlab) en heures
+    review_time_hours: Optional[float]
+
+    # ✅ AJOUT
+    source_branch:     Optional[str]  = None
+    target_branch:     Optional[str]  = None
+    author_name:       Optional[str]  = None
+
     additions:         Optional[int]
     deletions:         Optional[int]
     total_changes:     Optional[int]
@@ -22,6 +48,60 @@ class MergeRequestResponse(BaseModel):
     approved_at:       Optional[datetime]
     project_id:        int
     developer_id:      Optional[int]
+    # ✅ AJOUT
+    reviewer_id:       Optional[int]  = None
     extraction_lot_id: Optional[int]
+    
+    developer:         Optional[CommitDeveloperInfo] = None
 
     model_config = {"from_attributes": True}
+
+
+class MergeRequestSummary(BaseModel):
+    """Version allégée pour les listes."""
+    id:            int
+    gitlab_mr_id:  int
+    title:         str
+    state:         str
+    is_draft:      bool
+    approved:      bool
+    review_time_hours: Optional[float]
+    source_branch: Optional[str]
+    target_branch: Optional[str]
+    developer_id:  Optional[int]
+    reviewer_id:   Optional[int]
+    created_at_gitlab: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UnmatchedMRResponse(BaseModel):
+    """
+    MR sans developer_id — à matcher manuellement par l'admin.
+    Retourné par GET /merge-requests/unmatched.
+    """
+    id:              int
+    gitlab_mr_id:    int
+    title:           str
+    state:           str
+    author_name:     Optional[str]
+    source_branch:   Optional[str]
+    target_branch:   Optional[str]
+    created_at_gitlab: datetime
+    project_id:      int
+
+    model_config = {"from_attributes": True}
+
+
+class ReviewerWorkloadResponse(BaseModel):
+    """
+    Charge de review d'un développeur sur une période.
+    Retourné par GET /merge-requests/reviewer-workload.
+    Utile pour détecter les relecteurs surchargés.
+    """
+    reviewer_id:           int
+    reviewer_name:         Optional[str] = None
+    total_reviews_assigned: int
+    pending_reviews:        int           # MRs ouvertes sans approved_at
+    avg_review_time_hours:  Optional[float] = None
+    project_id:            int
