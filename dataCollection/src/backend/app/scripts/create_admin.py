@@ -8,31 +8,38 @@ import app.models
 from app.models.app_user import AppUser, UserRoleEnum
 
 
+from app.core.config import get_settings
+
 def create_admin():
+    settings = get_settings()
     db: Session = SessionLocal()
+    
+    email = settings.ADMIN_EMAIL or "admin@test.com"
+    password = settings.ADMIN_PASSWORD or "admin123"
 
     try:
-        existing_admin = db.query(AppUser).filter(
-            AppUser.role == UserRoleEnum.super_admin
-        ).first()
+        # On cherche l'utilisateur par son email
+        admin = db.query(AppUser).filter(AppUser.email == email).first()
 
-        if existing_admin:
-            print(f"Super admin already exists: {existing_admin.email}")
-            return
-
-        admin = AppUser(
-            email="admin@test.com",
-            hashed_password=hash_password("admin123"),
-            role=UserRoleEnum.super_admin,
-            is_active=True,
-            name="Super Admin",
-        )
-
-        db.add(admin)
+        if admin:
+            print(f"Super admin already exists ({email}). Updating password...")
+            admin.hashed_password = hash_password(password)
+            admin.role = UserRoleEnum.super_admin
+        else:
+            print(f"Creating new super admin: {email}")
+            admin = AppUser(
+                email=email,
+                hashed_password=hash_password(password),
+                role=UserRoleEnum.super_admin,
+                is_active=True,
+                name="Super Admin",
+            )
+            db.add(admin)
+        
         db.commit()
-        print("✅ Super admin created successfully.")
-        print("   Email    : admin@test.com")
-        print("   Password : admin123")
+        print(f"✅ Super admin localized successfully.")
+        print(f"   Email    : {email}")
+        print(f"   Password : {password}")
 
     except Exception as e:
         db.rollback()

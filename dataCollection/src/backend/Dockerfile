@@ -17,4 +17,4 @@ RUN mkdir -p logs dumps
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && python -m app.scripts.create_admin && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python -m app.scripts.setup_db && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

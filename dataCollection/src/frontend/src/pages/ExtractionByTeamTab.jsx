@@ -107,7 +107,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
     return () => clearInterval(pollTimerRef.current);
   }, [jobs, loading]);
 
-  const canRun = selectedConfig && (selectedSite || selectedGroup || selectedDeveloper) && (!loading) && (extractionType !== "MONTHLY" || selectedPeriod);
+  const canRun = selectedConfig && (selectedSite || selectedGroup || selectedDeveloperIds.length > 0) && (!loading) && (extractionType !== "MONTHLY" || selectedPeriod);
 
   const handleRun = async () => {
     setError(null);
@@ -185,7 +185,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
 
             <div className="mb-3">
               <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Site (Option 1)</label>
-              <select className="form-select" value={selectedSite} onChange={e => { setSelectedSite(e.target.value); setSelectedGroup(""); setSelectedDeveloper(""); }}>
+              <select className="form-select" value={selectedSite} onChange={e => { setSelectedSite(e.target.value); setSelectedGroup(""); setSelectedDeveloperIds([]); }}>
                 <option value="">Tous les sites</option>
                 {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -193,7 +193,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
 
             <div className="mb-3">
               <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Groupe (Option 2)</label>
-              <select className="form-select" value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); setSelectedSite(""); setSelectedDeveloper(""); }}>
+              <select className="form-select" value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); setSelectedSite(""); setSelectedDeveloperIds([]); }}>
                 <option value="">Tous les groupes</option>
                 {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>

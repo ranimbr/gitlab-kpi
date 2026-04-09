@@ -586,7 +586,7 @@ export default function ExtractionPage() {
                       {projects.map(p=><option key={p.id} value={p.id}>{p.name}{p.namespace?` (${p.namespace})`:""}</option>)}
                     </select>
                   )}
-                  {validated&&!isProjectValid&&selectedDeveloper===""&&<div className="invalid-feedback d-block">Veuillez sélectionner un projet ou un développeur.</div>}
+                  {validated && !isProjectValid && selectedDeveloperIds.length === 0 && <div className="invalid-feedback d-block">Veuillez sélectionner un projet ou un développeur.</div>}
                   {selectedConfig&&!loadingProjects&&projects.length===0&&<div className="text-warning fs-12 mt-1"><i className="ri-alert-line me-1"></i>Aucun projet pour ce domaine.</div>}
                 </div>
 
