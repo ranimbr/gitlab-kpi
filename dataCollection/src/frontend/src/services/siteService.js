@@ -37,6 +37,15 @@ const siteService = {
     if (siteId != null) params.site_id = siteId;
     return (await api.get("/kpis/developers", { params })).data;
   },
+
+  // ── Team Overview — Vision encadrant ────────────────────────────────────────
+  // GET /sites/{siteId}/team?project_id=X
+  // Retourne tous les devs du site + KPIs résumés + groupes
+  getSiteTeam: async (siteId, projectId = null) => {
+    const params = {};
+    if (projectId) params.project_id = projectId;
+    return (await api.get(`/sites/${siteId}/team`, { params })).data;
+  },
 };
 
 export default siteService;

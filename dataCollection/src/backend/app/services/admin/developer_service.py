@@ -66,15 +66,25 @@ class DeveloperService:
         created_by: Optional[int] = None,
         ip_address: Optional[str] = None,
     ) -> Developer:
-        if payload.email and self.dev_repo.get_by_email(db, payload.email):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Un développeur avec l'email '{payload.email}' existe déjà.",
-            )
-        if payload.gitlab_username and self.dev_repo.get_by_gitlab_username(db, payload.gitlab_username):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Un développeur avec le username '@{payload.gitlab_username}' existe déjà.",
+        # ✅ LOGIQUE SENIOR : Upsert interactif
+        # Si le développeur existe déjà (email ou username), on le met à jour
+        # au lieu de retourner une erreur 409. Cela permet de "ré-affecter" 
+        # un développeur existant via le modal d'ajout.
+        existing = None
+        if payload.email:
+            existing = self.dev_repo.get_by_email(db, payload.email)
+        
+        if not existing and payload.gitlab_username:
+            existing = self.dev_repo.get_by_gitlab_username(db, payload.gitlab_username)
+
+        if existing:
+            logger.info("create_developer: Doublon détecté (%s), passage en mode UPDATE (Upsert)", existing.email or existing.gitlab_username)
+            from app.schemas.developer import DeveloperUpdate
+            # Conversion du payload Create en Update
+            update_payload = DeveloperUpdate(**payload.model_dump(exclude_unset=True))
+            return self.update_developer(
+                db=db, developer_id=existing.id, payload=update_payload,
+                updated_by=created_by, ip_address=ip_address
             )
 
         dev_data = {
@@ -316,6 +326,7 @@ class DeveloperService:
         imported_by:             Optional[int] = None,
         default_site_id:         Optional[int] = None,
         default_group_id:        Optional[int] = None,
+        default_gitlab_config_id: Optional[int] = None,
         dry_run:                 bool = False,
         create_missing_sites:    bool = False,
         create_missing_projects: bool = False,
@@ -440,17 +451,27 @@ class DeveloperService:
                 })
 
             # ── Résolution des projets ────────────────────────────────────────
-            project_names     = [p.strip() for p in (row.get("projects") or "").split(",") if p.strip()]
+            project_items     = [p.strip() for p in (row.get("projects") or "").split(",") if p.strip()]
             resolved_projects : List[object] = []
 
-            for pname in project_names:
+            for pitem in project_items:
+                # Analyse syntaxe "Nom:ID" (ex: "Frontend:1234")
+                parts = pitem.rsplit(":", 1)
+                pname = parts[0].strip()
+                p_gitlab_id = int(parts[1].strip()) if len(parts) > 1 and parts[1].strip().isdigit() else None
+
                 proj = all_projects.get(pname.lower())
                 if proj is None:
                     if create_missing_projects:
-                        proj = self.project_repo.create_from_import(db, pname)
+                        proj = self.project_repo.create_from_import(
+                            db, 
+                            pname, 
+                            gitlab_project_id=p_gitlab_id, 
+                            gitlab_config_id=default_gitlab_config_id
+                        )
                         all_projects[pname.lower()] = proj
                         created_projects_names.add(pname)
-                        logger.info("Import: projet '%s' créé (ligne %d)", pname, row_num)
+                        logger.info("Import: projet '%s' créé avec ID%s (ligne %d)", pname, p_gitlab_id, row_num)
                     else:
                         unknown_projects_names.add(pname)
                         row_warnings.append(
@@ -458,6 +479,14 @@ class DeveloperService:
                         )
                         logger.warning("Import: projet '%s' introuvable (ligne %d)", pname, row_num)
                         continue
+                else:
+                    # Si le projet existait, mais qu'on a mis un ID dans le CSV, on peut potentiellement le mettre à jour 
+                    # si l'admin veut l'écraser, mais en général on se contente du repo qui existe.
+                    if p_gitlab_id is not None and getattr(proj, "gitlab_project_id", None) is None:
+                        # Si le projet existait en draft, on update son ID !
+                        self.project_repo.update(db, proj.id, {"gitlab_project_id": p_gitlab_id})
+                        if default_gitlab_config_id and getattr(proj, "gitlab_config_id", None) is None:
+                            self.project_repo.update(db, proj.id, {"gitlab_config_id": default_gitlab_config_id})
                 resolved_projects.append(proj)
 
             # ── Résolution du groupe ──────────────────────────────────────────
@@ -637,7 +666,8 @@ class DeveloperService:
             if all_sites.get(sname.lower()) is None:
                 unknown_sites_names.add(sname)
 
-        for pname in [p.strip() for p in (row.get("projects") or "").split(",") if p.strip()]:
+        for pitem in [p.strip() for p in (row.get("projects") or "").split(",") if p.strip()]:
+            pname = pitem.rsplit(":", 1)[0].strip()
             if all_projects.get(pname.lower()) is None:
                 unknown_projects_names.add(pname)
 

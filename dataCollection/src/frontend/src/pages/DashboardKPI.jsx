@@ -30,8 +30,10 @@ import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { kpiService } from "../services/kpiService";
 import projectService from "../services/projectService";   // ✅ FIX : source correcte
 import analyticsService from "../services/analyticsService"; // ✅ pour getMultiPeriod + getTrend
+import developerService from "../services/developerService"; // ✅ Phase 1: Pulse Widget
 import siteService from "../services/siteService";
 import periodService from "../services/periodService";
+import extractionLotService from "../services/extractionLotService";
 import ReactApexChart from "react-apexcharts";
 import Chart from "chart.js/auto";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -78,8 +80,28 @@ const MOIS_FR = {
 };
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
-const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaInfo }) => {
+const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaInfo, loading }) => {
   const [showTip, setShowTip] = useState(false);
+  
+  if (loading) {
+    return (
+      <div className="col-xl-3 col-md-6">
+        <div className="card border-0 h-100 shadow-sm" style={{ minHeight: 120 }}>
+          <div className="card-body">
+            <div className="d-flex align-items-center">
+              <div className="skeleton" style={{ width: 48, height: 48, borderRadius: 10 }} />
+              <div className="ms-3 flex-grow-1">
+                <div className="skeleton mb-2" style={{ width: '60%', height: 12 }} />
+                <div className="skeleton mb-1" style={{ width: '40%', height: 24 }} />
+                <div className="skeleton" style={{ width: '80%', height: 10 }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const colorMap = {
     primary: { bg: "bg-primary-subtle", text: "text-primary" },
     success: { bg: "bg-success-subtle", text: "text-success" },
@@ -91,7 +113,7 @@ const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaI
   const classes = colorMap[color] || colorMap.primary;
   return (
     <div className="col-xl-3 col-md-6">
-      <div className="card border-0 card-animate h-100" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
+      <div className="card border-0 card-animate h-100 shadow-sm">
         <div className="card-body">
           <div className="d-flex align-items-start">
             <div className="avatar-sm flex-shrink-0">
@@ -110,18 +132,18 @@ const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaI
                       onMouseEnter={() => setShowTip(true)}
                       onMouseLeave={() => setShowTip(false)} />
                     {showTip && (
-                      <div style={{
+                      <div className="glass" style={{
                         position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
-                        transform: "translateX(-50%)", background: "#1e2a3b", color: "#fff",
+                        transform: "translateX(-50%)", color: "#1e2a3b",
                         borderRadius: 8, padding: "8px 12px", fontSize: 11, lineHeight: 1.5,
                         zIndex: 1000, maxWidth: 240, whiteSpace: "normal",
-                        boxShadow: "0 4px 12px rgba(0,0,0,.2)", pointerEvents: "none",
+                        boxShadow: "0 4px 12px rgba(0,0,0,.1)", pointerEvents: "none",
                       }}>
                         {tooltip}
                         <div style={{
                           position: "absolute", top: "100%", left: "50%",
                           transform: "translateX(-50%)", border: "5px solid transparent",
-                          borderTopColor: "#1e2a3b"
+                          borderTopColor: "rgba(255,255,255,0.8)"
                         }} />
                       </div>
                     )}
@@ -149,19 +171,20 @@ const KpiCard = ({ title, value, unit, icon, color, description, tooltip, deltaI
 };
 
 // ── Radar Chart ───────────────────────────────────────────────────────────────
-const KpiRadarChart = ({ latest }) => {
+const KpiRadarChart = ({ latest, loading }) => {
   const chartRef = useRef(null);
   const instanceRef = useRef(null);
   useEffect(() => {
-    if (!chartRef.current || !latest) return;
+    if (!chartRef.current || !latest || loading) return;
     if (instanceRef.current) { instanceRef.current.destroy(); instanceRef.current = null; }
+    const hasMRs = (latest.mr_rate_per_site > 0 || (latest.total_mrs_created && latest.total_mrs_created > 0));
     const scores = {
       mrRateSite: Math.min(Number(((latest.mr_rate_per_site || 0) * 20).toFixed(1)), 100),
       approvedMR: Number(((latest.approved_mr_rate || 0) * 100).toFixed(1)),
       mergedMR: Number(((latest.merged_mr_rate || 0) * 100).toFixed(1)),
       commitRateSite: Math.min(Number(((latest.commit_rate_per_site || 0) * 10).toFixed(1)), 100),
       nbCommits: Math.min(Number(((latest.nb_commits_per_project || 0) / 10).toFixed(1)), 100),
-      reviewTime: Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))),
+      reviewTime: hasMRs ? Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))) : 0,
       nbDevs: Math.min((latest.nb_developers || 0) * 5, 100),
     };
     instanceRef.current = new Chart(chartRef.current, {
@@ -194,8 +217,115 @@ const KpiRadarChart = ({ latest }) => {
       },
     });
     return () => { if (instanceRef.current) { instanceRef.current.destroy(); instanceRef.current = null; } };
-  }, [latest]);
+  }, [latest, loading]);
+
+  if (loading) return <div className="skeleton rounded-3 w-100 h-100" style={{ minHeight: 300 }} />;
   return <canvas ref={chartRef} style={{ maxHeight: 320, width: "100%" }} />;
+};
+
+// ── Executive Insight Banner ──────────────────────────────────────────────────
+const ExecutiveInsight = ({ latest, projectName }) => {
+  if (!latest) return null;
+  const isHealthy = latest.merged_mr_rate > 0.6 && latest.avg_review_time_hours < 48;
+  const healthColor = isHealthy ? 'success' : 'warning';
+  const healthIcon = isHealthy ? 'ri-shield-check-line' : 'ri-error-warning-line';
+  const message = isHealthy 
+    ? `L'équipe affiche une dynamique positive sur ${projectName}. La vélocité de revue est excellente.`
+    : `Attention : des goulots d'étranglement sont détectés sur ${projectName}. Le temps de revue moyen est élevé.`;
+
+  return (
+    <div className={`card border-0 mb-4 fade-in-up glass`} style={{ borderLeft: `5px solid var(--brand-${healthColor})` }}>
+      <div className="card-body py-3">
+        <div className="d-flex align-items-center gap-3">
+          <div className={`avatar-sm bg-${healthColor}-subtle text-${healthColor} rounded-circle d-flex align-items-center justify-content-center flex-shrink-0`}>
+             <i className={`${healthIcon} fs-4`}></i>
+          </div>
+          <div className="flex-grow-1">
+            <h6 className="mb-1 fw-bold text-dark">Résumé Stratégique — {projectName}</h6>
+            <p className="mb-0 text-muted fs-13">{message}</p>
+          </div>
+          <div className="flex-shrink-0 text-end d-none d-md-block">
+             <span className={`badge bg-${healthColor}-subtle text-${healthColor} px-3 py-2 fs-12 fw-bold`}>
+                SANTÉ : {isHealthy ? 'OPTIMALE' : 'À SURVEILLER'}
+             </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── DORA Metrics Row ───────────────────────────────────────────────────────────
+const DoraMetricsRow = ({ latest, loading }) => {
+  const getDoraLevel = (metric, type) => {
+    if (type === 'lead_time') {
+      if (metric < 24) return { label: 'ELITE', color: 'success' };
+      if (metric < 72) return { label: 'HIGH', color: 'info' };
+      if (metric < 168) return { label: 'MEDIUM', color: 'warning' };
+      return { label: 'LOW', color: 'danger' };
+    }
+    if (type === 'frequency') {
+      if (metric > 1) return { label: 'ELITE', color: 'success' };
+      if (metric > 0.2) return { label: 'HIGH', color: 'info' };
+      if (metric > 0.05) return { label: 'MEDIUM', color: 'warning' };
+      return { label: 'LOW', color: 'danger' };
+    }
+    return { label: 'N/A', color: 'secondary' };
+  };
+
+  const leadTime = latest?.avg_review_time_hours || 0;
+  const frequency = (latest?.total_mrs_created || 0) / 30; // Approximation par mois
+  const ltDora = getDoraLevel(leadTime, 'lead_time');
+  const freqDora = getDoraLevel(frequency, 'frequency');
+
+  return (
+    <div className="row g-3 mb-4">
+      <div className="col-12 col-md-6">
+        <div className="card border-0 shadow-sm card-animate h-100 overflow-hidden">
+          <div className="card-body p-4">
+            <div className="d-flex align-items-center mb-3">
+              <i className="ri-rocket-2-line fs-1 text-primary me-3"></i>
+              <div>
+                <h6 className="text-uppercase fw-bold text-muted mb-1 fs-11" style={{ letterSpacing: '1px' }}>DORA: Deployment Frequency</h6>
+                <div className="d-flex align-items-baseline gap-2">
+                  <h3 className="mb-0 fw-bold">{frequency.toFixed(2)}</h3>
+                  <span className="text-muted fs-13">MRs / jour (moy)</span>
+                </div>
+              </div>
+              <div className="ms-auto text-end">
+                <span className={`badge bg-${freqDora.color}-subtle text-${freqDora.color} fs-12 px-3 py-2`}>{freqDora.label}</span>
+              </div>
+            </div>
+            <div className="progress" style={{ height: 6 }}>
+               <div className={`progress-bar bg-${freqDora.color}`} style={{ width: freqDora.label === 'ELITE' ? '100%' : freqDora.label === 'HIGH' ? '75%' : '40%' }} />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="col-12 col-md-6">
+        <div className="card border-0 shadow-sm card-animate h-100 overflow-hidden">
+          <div className="card-body p-4">
+            <div className="d-flex align-items-center mb-3">
+              <i className="ri-timer-flash-line fs-1 text-info me-3"></i>
+              <div>
+                <h6 className="text-uppercase fw-bold text-muted mb-1 fs-11" style={{ letterSpacing: '1px' }}>DORA: Lead Time for Changes</h6>
+                <div className="d-flex align-items-baseline gap-2">
+                  <h3 className="mb-0 fw-bold">{leadTime.toFixed(1)}h</h3>
+                  <span className="text-muted fs-13">délai de revue</span>
+                </div>
+              </div>
+              <div className="ms-auto text-end">
+                <span className={`badge bg-${ltDora.color}-subtle text-${ltDora.color} fs-12 px-3 py-2`}>{ltDora.label}</span>
+              </div>
+            </div>
+            <div className="progress" style={{ height: 6 }}>
+               <div className={`progress-bar bg-${ltDora.color}`} style={{ width: ltDora.label === 'ELITE' ? '100%' : ltDora.label === 'HIGH' ? '75%' : '40%' }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // ── Graphique de tendance (ligne) ─────────────────────────────────────────────
@@ -393,7 +523,7 @@ const ScoreBadge = ({ label, value, color }) => {
     secondary: { bg: "bg-secondary-subtle", text: "text-secondary", bar: "bg-secondary" },
   }[color] || {};
   return (
-    <div className="d-flex align-items-center justify-content-between py-2 border-bottom border-dashed">
+    <div className="d-flex align-items-center justify-content-between py-2 border-bottom border-light">
       <span className="fs-12 text-muted fw-medium">{label}</span>
       <div className="d-flex align-items-center gap-2">
         <div className="progress" style={{ width: 80, height: 5, borderRadius: 99 }}>
@@ -501,6 +631,102 @@ function exportSnapshotPDF(projectName) {
   document.title = originalTitle;
 }
 
+// ── Team Pulse Widget (Phase 1 — Developer-First) ─────────────────────────────
+const TeamPulseWidget = ({ projectId }) => {
+  const [topDevs, setTopDevs]     = useState([]);
+  const [atRisk, setAtRisk]       = useState([]);
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    if (!projectId) { setLoading(false); return; }
+    setLoading(true);
+    developerService.getLeaderboard(projectId, { limit: 50 })
+      .then(lb => {
+        const entries = lb?.entries || [];
+        // Top 5 performers
+        const top = entries.slice(0, 5);
+        // At-risk: score < 30% or bottom 3
+        const risky = entries.filter(e => e.developer_score != null && e.developer_score < 0.3).slice(0, 3);
+        setTopDevs(top);
+        setAtRisk(risky);
+      })
+      .catch(() => { setTopDevs([]); setAtRisk([]); })
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  if (loading || (!topDevs.length && !atRisk.length)) return null;
+
+  return (
+    <div className="row g-3 mb-4">
+      {/* Top Performers */}
+      <div className={atRisk.length ? "col-xl-7" : "col-12"}>
+        <div className="card border-0 card-animate" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)", overflow: 'hidden' }}>
+          <div style={{ height: 3, background: 'linear-gradient(90deg, #10b981, #06b6d4)' }} />
+          <div className="card-header bg-white d-flex align-items-center" style={{ borderBottom: "1px solid #f0f2f5" }}>
+            <i className="ri-pulse-line me-2 text-success fs-5"></i>
+            <h6 className="mb-0 fw-semibold flex-grow-1">Pulse Équipe — Top Performers</h6>
+            <Link to="/developers" className="btn btn-soft-primary btn-sm">
+              <i className="ri-team-line me-1"></i>Hub complet
+            </Link>
+          </div>
+          <div className="card-body py-2">
+            {topDevs.map((dev, i) => {
+              const score = dev.developer_score != null ? Math.round(dev.developer_score * 100) : null;
+              const scoreColor = score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444';
+              const medals = ['🥇', '🥈', '🥉'];
+              return (
+                <div key={dev.developer_id} className="d-flex align-items-center gap-3 py-2" style={{ borderBottom: i < topDevs.length - 1 ? '1px solid #f0f2f5' : 'none' }}>
+                  <span style={{ fontSize: 16, width: 26, textAlign: 'center' }}>{medals[i] || `#${i+1}`}</span>
+                  <Link to={`/developers/${dev.developer_id}`} className="fw-semibold fs-13 text-dark text-truncate flex-grow-1" style={{ textDecoration: 'none', maxWidth: 200 }}>
+                    {dev.developer_name}
+                  </Link>
+                  <div className="d-flex align-items-center gap-2" style={{ minWidth: 180 }}>
+                    <div className="progress flex-grow-1" style={{ height: 5, borderRadius: 99 }}>
+                      <div className="progress-bar" style={{ width: `${score || 0}%`, background: scoreColor, borderRadius: 99 }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: scoreColor, minWidth: 36 }}>{score ?? '—'}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* At-Risk Developers */}
+      {atRisk.length > 0 && (
+        <div className="col-xl-5">
+          <div className="card border-0 card-animate" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)", overflow: 'hidden' }}>
+            <div style={{ height: 3, background: 'linear-gradient(90deg, #f06548, #f7b84b)' }} />
+            <div className="card-header bg-white d-flex align-items-center" style={{ borderBottom: "1px solid #f0f2f5" }}>
+              <i className="ri-error-warning-line me-2 text-danger fs-5"></i>
+              <h6 className="mb-0 fw-semibold flex-grow-1">Développeurs à Risque</h6>
+              <span className="badge bg-danger-subtle text-danger fs-11">{atRisk.length} alerte(s)</span>
+            </div>
+            <div className="card-body py-2">
+              {atRisk.map((dev, i) => {
+                const score = dev.developer_score != null ? Math.round(dev.developer_score * 100) : 0;
+                return (
+                  <div key={dev.developer_id} className="d-flex align-items-center gap-3 py-2" style={{ borderBottom: i < atRisk.length - 1 ? '1px solid #f0f2f5' : 'none' }}>
+                    <i className="ri-alert-fill text-danger fs-5"></i>
+                    <Link to={`/developers/${dev.developer_id}`} className="fw-semibold fs-13 text-dark text-truncate flex-grow-1" style={{ textDecoration: 'none' }}>
+                      {dev.developer_name}
+                    </Link>
+                    <span className="badge bg-danger-subtle text-danger fs-11 fw-bold">{score}%</span>
+                  </div>
+                );
+              })}
+              <div className="mt-2 p-2 rounded-2" style={{ background: '#fffbeb', fontSize: 11, color: '#92400e' }}>
+                <i className="ri-lightbulb-line me-1"></i>Score &lt; 30% — Action managériale recommandée
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── KPI pour le tableau multi-mois ────────────────────────────────────────────
 const MULTI_PERIOD_KPIS = [
   { field: "mr_rate_per_site", label: "MR Rate" },
@@ -529,6 +755,10 @@ export default function DashboardKPI() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
+  // ✅ NOUVEAU : Isolation par Lot (Session)
+  const [lots, setLots] = useState([]);
+  const [selectedLotId, setSelectedLotId] = useState(null);
+
   // Chargement initial
   useEffect(() => {
     let mounted = true;
@@ -540,13 +770,25 @@ export default function DashboardKPI() {
       if (!mounted) return;
       setProjects(projs);
       setCurrentPeriod(period);
-      setSites(Array.isArray(sitesData) ? sitesData : []);
       const urlId = searchParams.get("project_id");
       const first = urlId ? parseInt(urlId) : projs[0]?.id;
       if (first) setSelectedProjectId(first);
+      
+      // Si un lot_id est dans l'URL, on le présélectionne
+      const urlLotId = searchParams.get("lot_id");
+      if (urlLotId) setSelectedLotId(parseInt(urlLotId));
     });
     return () => { mounted = false; };
   }, []); // eslint-disable-line
+
+  useEffect(() => {
+    if (!selectedProjectId) { setLots([]); return; }
+    extractionLotService.getAll(selectedProjectId)
+      .then(data => {
+        setLots(Array.isArray(data) ? data : (data.items || []));
+      })
+      .catch(() => setLots([]));
+  }, [selectedProjectId]);
 
   // Chargement KPIs + tableau multi-périodes
   useEffect(() => {
@@ -556,10 +798,11 @@ export default function DashboardKPI() {
     setError(null);
 
     const siteIdParam = selectedSiteId != null ? parseInt(selectedSiteId) : null;
+    const lotIdParam  = selectedLotId != null  ? parseInt(selectedLotId)  : null;
 
     Promise.all([
       // KPIs principaux
-      kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam }),
+      kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam, lotId: lotIdParam }),
       // ✅ NOUVEAU : tableau multi-périodes (PDF encadrant)
       analyticsService.getMultiPeriod(selectedProjectId, { months: 12, siteId: siteIdParam })
         .catch(() => []),
@@ -574,15 +817,16 @@ export default function DashboardKPI() {
     });
 
     return () => { mounted = false; };
-  }, [selectedProjectId, selectedSiteId]);
+  }, [selectedProjectId, selectedSiteId, selectedLotId]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedProjectId) return;
     setRefreshing(true);
     try {
       const siteIdParam = selectedSiteId != null ? parseInt(selectedSiteId) : null;
+      const lotIdParam  = selectedLotId  != null ? parseInt(selectedLotId)  : null;
       const [data, multiData] = await Promise.all([
-        kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam }),
+        kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam, lotId: lotIdParam }),
         analyticsService.getMultiPeriod(selectedProjectId, { months: 12, siteId: siteIdParam }).catch(() => []),
       ]);
       setKpiData(data);
@@ -593,11 +837,12 @@ export default function DashboardKPI() {
     } finally {
       setRefreshing(false);
     }
-  }, [selectedProjectId, selectedSiteId]);
+  }, [selectedProjectId, selectedSiteId, selectedLotId]);
 
   const handleProjectChange = useCallback((projectId) => {
     setSelectedProjectId(projectId);
     setSelectedSiteId(null);
+    setSelectedLotId(null); // Reset lot when project changes
     setSelectedSnapIndex(0); // ✅ reset au dernier snapshot
     setSearchParams({ project_id: projectId });
   }, [setSearchParams]);
@@ -615,13 +860,14 @@ export default function DashboardKPI() {
 
   const radarScores = useMemo(() => {
     if (!latest) return null;
+    const hasMRs = (latest.mr_rate_per_site > 0 || (latest.total_mrs_created && latest.total_mrs_created > 0));
     return {
       mrRateSite: Math.min(Number(((latest.mr_rate_per_site || 0) * 20).toFixed(1)), 100),
       approvedMR: Number(((latest.approved_mr_rate || 0) * 100).toFixed(1)),
       mergedMR: Number(((latest.merged_mr_rate || 0) * 100).toFixed(1)),
       commitRateSite: Math.min(Number(((latest.commit_rate_per_site || 0) * 10).toFixed(1)), 100),
       nbCommits: Math.min(Number(((latest.nb_commits_per_project || 0) / 10).toFixed(1)), 100),
-      reviewTime: Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))),
+      reviewTime: hasMRs ? Math.max(0, Number((100 - (latest.avg_review_time_hours || 0) * 2).toFixed(1))) : 0,
       nbDevs: Math.min((latest.nb_developers || 0) * 5, 100),
     };
   }, [latest]);
@@ -674,6 +920,20 @@ export default function DashboardKPI() {
                     {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 )}
+
+                {/* ✅ NOUVEAU : Sélecteur de session (Lot) */}
+                {lots.length > 0 && (
+                  <select className="form-select border-primary" style={{ width: 180, fontWeight: 600 }}
+                    value={selectedLotId || ""}
+                    onChange={e => setSelectedLotId(e.target.value ? Number(e.target.value) : null)}>
+                    <option value="">🚀 Session actuelle</option>
+                    {lots.map(l => (
+                      <option key={l.id} value={l.id}>
+                        Lot #{l.id} ({fmtDate(l.created_at)})
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {selectedSiteId && (
                   <button className="btn btn-sm btn-soft-warning" onClick={() => setSelectedSiteId(null)}>
                     <i className="ri-close-line me-1"></i>Tous les sites
@@ -719,165 +979,134 @@ export default function DashboardKPI() {
           </div>
         </div>
 
-        {/* Alerte temps de revue */}
-        {reviewAlert && (
-          <div className="d-flex align-items-center gap-3 rounded-3 p-3 mb-4"
-            style={{ background: "#fffbeb", border: "1px solid #fcd34d" }}>
-            <i className="ri-time-line fs-4 flex-shrink-0 text-warning"></i>
-            <div className="flex-grow-1 fs-13">
-              <strong>Temps de revue élevé</strong> — {fmt(latest?.avg_review_time_hours, 1)}h (seuil recommandé : 24h)
-            </div>
-            <button className="btn btn-sm btn-warning flex-shrink-0"
-              onClick={() => navigate(`/merge?project_id=${selectedProjectId}`)}>
-              <i className="ri-git-merge-line me-1"></i>Voir MRs
-            </button>
+        {/* Executive Summary Section */}
+        {!loading && latest && (
+          <ExecutiveInsight latest={latest} projectName={selectedProject?.name} />
+        )}
+
+        {/* DORA Metrics Transformation */}
+        {!loading && latest && (
+          <DoraMetricsRow latest={latest} loading={loading} />
+        )}
+
+        {/* Standard KPI Grid */}
+        <div className="row g-4 mb-4">
+          <KpiCard title="Engagement MR" value={latest?.mr_rate_per_site != null ? Number(latest.mr_rate_per_site).toFixed(2) : "—"}
+            unit="MR/site" icon="ri-git-merge-line" color="primary" loading={loading}
+            description="Moyenne de MR créées par développeur" tooltip="Nombre total de MR divisé par le nombre de développeurs actifs."
+            deltaInfo={delta(latest?.mr_rate_per_site, previous?.mr_rate_per_site)} />
+
+          <KpiCard title="Taux d'Approbation" value={latest?.approved_mr_rate != null ? `${(latest.approved_mr_rate * 100).toFixed(1)}%` : "—"}
+            unit="" icon="ri-checkbox-circle-line" color="success" loading={loading}
+            description="Pourcentage de MR approuvées" tooltip="Ratio entre les MR ayant reçu une version d'approbation et le total."
+            deltaInfo={delta(latest?.approved_mr_rate, previous?.approved_mr_rate)} />
+
+          <KpiCard title="Taux de Fusion" value={latest?.merged_mr_rate != null ? `${(latest.merged_mr_rate * 100).toFixed(1)}%` : "—"}
+            unit="" icon="ri-check-double-line" color="info" loading={loading}
+            description="Pourcentage de MR fusionnées" tooltip="Ratio entre les MR fusionnées dans la branche principale et le total."
+            deltaInfo={delta(latest?.merged_mr_rate, previous?.merged_mr_rate)} />
+
+          <KpiCard title="Activité Commits" value={latest?.commit_rate_per_site != null ? Number(latest.commit_rate_per_site).toFixed(2) : "—"}
+            unit="commit/dev" icon="ri-git-commit-line" color="warning" loading={loading}
+            description="Moyenne de commits par développeur" tooltip="Nombre total de commits divisé par le nombre de développeurs."
+            deltaInfo={delta(latest?.commit_rate_per_site, previous?.commit_rate_per_site)} />
+        </div>
+
+        {/* Technical Insights Row */}
+        {!loading && latest && (
+          <div className="row g-3 mb-4">
+             <div className="col-md-4">
+                <div className="card border-0 shadow-sm glass">
+                   <div className="card-body py-3 d-flex align-items-center">
+                      <div className="avatar-sm bg-soft-info text-info rounded-circle d-flex align-items-center justify-content-center me-3">
+                         <i className="ri-team-line fs-4"></i>
+                      </div>
+                      <div className="flex-grow-1">
+                         <p className="text-muted fs-11 text-uppercase fw-bold mb-0">Équipe Active</p>
+                         <h4 className="mb-0">{latest.nb_developers} <span className="fs-12 text-muted fw-normal">Devs</span></h4>
+                      </div>
+                   </div>
+                </div>
+             </div>
+             <div className="col-md-4">
+                <div className="card border-0 shadow-sm glass">
+                   <div className="card-body py-3 d-flex align-items-center">
+                      <div className="avatar-sm bg-soft-warning text-warning rounded-circle d-flex align-items-center justify-content-center me-3">
+                         <i className="ri-time-line fs-4"></i>
+                      </div>
+                      <div className="flex-grow-1">
+                         <p className="text-muted fs-11 text-uppercase fw-bold mb-0">Temps de Revue</p>
+                         <h4 className="mb-0">{latest.avg_review_time_hours?.toFixed(1)}h</h4>
+                      </div>
+                   </div>
+                </div>
+             </div>
+             <div className="col-md-4">
+                <div className="card border-0 shadow-sm glass">
+                   <div className="card-body py-3 d-flex align-items-center text-center">
+                      <div className="flex-grow-1 text-center">
+                         <p className="text-muted fs-11 text-uppercase fw-bold mb-0">Dernier Snapshot</p>
+                         <h6 className="mb-0 fw-semibold">{fmtDate(latest.snapshot_date)}</h6>
+                      </div>
+                   </div>
+                </div>
+             </div>
           </div>
         )}
 
-        {/* Erreur */}
-        {error && (
-          <div className="d-flex align-items-center gap-3 rounded-3 p-3 mb-4"
-            style={{ background: "#fffbeb", border: "1px solid #fcd34d" }}>
-            <i className="ri-information-line fs-4 flex-shrink-0 text-warning"></i>
-            <div className="flex-grow-1">
-              <p className="fs-13 mb-2 text-muted">{error}</p>
-              <button className="btn btn-primary btn-sm" onClick={() => navigate("/extraction")}>
-                <i className="ri-download-2-line me-1"></i>Lancer une extraction
-              </button>
-            </div>
-          </div>
-        )}
-
-        {latest && (
+        {/* Detailed Analytics & Comparison */}
+        {!loading && (
           <>
-            {/* KPI Cards */}
-            <div className="row g-3 mb-4">
-              <KpiCard title="Taux MR / site" value={fmt(latest.mr_rate_per_site, 2)} icon="ri-git-pull-request-line" color="primary" unit="MR/dev" description="NB MRs ÷ NB devs du site" tooltip="Mesure le nombre moyen de MRs créées par développeur." deltaInfo={delta(latest.mr_rate_per_site, previous?.mr_rate_per_site)} />
-              <KpiCard title="MR Approuvés" value={fmt((latest.approved_mr_rate || 0) * 100, 1)} icon="ri-checkbox-circle-line" color="success" unit="%" description="Taux d'approbation" tooltip="Pourcentage de MRs ayant reçu une approbation." deltaInfo={delta(latest.approved_mr_rate, previous?.approved_mr_rate)} />
-              <KpiCard title="MR Fusionnés" value={fmt((latest.merged_mr_rate || 0) * 100, 1)} icon="ri-git-merge-line" color="info" unit="%" description="Taux de fusion" tooltip="Pourcentage de MRs fusionnées." deltaInfo={delta(latest.merged_mr_rate, previous?.merged_mr_rate)} />
-              <KpiCard title="Taux commit / site" value={fmt(latest.commit_rate_per_site, 2)} icon="ri-git-commit-line" color="warning" unit="commit/dev" description="NB commits ÷ NB devs" tooltip="Productivité moyenne par développeur." deltaInfo={delta(latest.commit_rate_per_site, previous?.commit_rate_per_site)} />
-            </div>
-            <div className="row g-3 mb-4">
-              <KpiCard title="NB commits / projet" value={fmt(latest.nb_commits_per_project, 0)} icon="ri-code-s-slash-line" color="primary" description="Total commits" tooltip="Nombre total de commits sur la période." deltaInfo={delta(latest.nb_commits_per_project, previous?.nb_commits_per_project)} />
-              <KpiCard title="Temps de revue moyen" value={fmt(latest.avg_review_time_hours, 1)} icon="ri-time-line" color={reviewAlert ? "danger" : "warning"} unit="h" description={reviewAlert ? "⚠ Dépasse 24h" : "Durée moyenne d'approbation"} tooltip="Temps moyen entre création et approbation d'une MR." deltaInfo={delta(latest.avg_review_time_hours, previous?.avg_review_time_hours)} />
-              <KpiCard title="NB Développeurs" value={fmt(latest.nb_developers, 0)} icon="ri-team-line" color="secondary" unit="devs" description={selectedSite ? `Site : ${selectedSite.name}` : "Tous les sites"} tooltip="Développeurs ayant contribué au moins un commit." deltaInfo={delta(latest.nb_developers, previous?.nb_developers)} />
-              <div className="col-xl-3 col-md-6">
-                <div className="card border-0 border-dashed h-100" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
-                  <div className="card-body d-flex flex-column align-items-center justify-content-center text-center gap-2">
-                    <i className="ri-calendar-check-line fs-2 text-muted opacity-50"></i>
-                    <div>
-                      <p className="text-muted fs-12 mb-1">Dernier snapshot</p>
-                      <h6 className="mb-0 fw-semibold">{fmtDate(latest.snapshot_date)}</h6>
-                      <small className="text-muted">{kpiData?.total_snapshots || 0} snapshot(s) total</small>
-                    </div>
-                    {globalScore != null && (
-                      <div className="mt-1 pt-2 border-top w-100">
-                        <p className="fs-11 mb-0">
-                          Score global : <span className={`fw-bold text-${getScoreColor(globalScore)}`}>{globalScore}/100</span>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ✅ NOUVEAU : Tableau multi-périodes (PDF encadrant) */}
+            {/* Multi-Period Comparative Table (PDF Specific Requirement) */}
             {multiPeriodData.length > 0 && (
-              <>
-                {/* Sélecteur de KPI pour le tableau */}
-                <div className="d-flex align-items-center gap-2 mb-3 flex-wrap">
-                  <span className="fs-12 fw-semibold text-muted text-uppercase" style={{ letterSpacing: ".05em" }}>
-                    <i className="ri-table-line me-1"></i>Tableau multi-mois :
-                  </span>
-                  {MULTI_PERIOD_KPIS.map(kpi => (
-                    <button
-                      key={kpi.field}
-                      className={`btn btn-sm ${activeMultiKpi === kpi.field ? "btn-primary" : "btn-soft-secondary"}`}
-                      onClick={() => setActiveMultiKpi(kpi.field)}>
-                      {kpi.label}
-                    </button>
-                  ))}
+              <div className="card border-0 shadow-sm mb-4">
+                <div className="card-header bg-white py-3 d-flex align-items-center gap-3">
+                   <h6 className="mb-0 fw-bold"><i className="ri-table-line me-2 text-primary"></i>Comparaison Historique Multi-Mois</h6>
+                   <div className="ms-auto d-flex gap-2">
+                      {MULTI_PERIOD_KPIS.slice(0, 3).map(kpi => (
+                        <button key={kpi.field} className={`btn btn-sm ${activeMultiKpi === kpi.field ? "btn-primary" : "btn-soft-secondary"}`}
+                          onClick={() => setActiveMultiKpi(kpi.field)}>{kpi.label}</button>
+                      ))}
+                   </div>
                 </div>
-                <MultiPeriodTable
-                  multiPeriodData={multiPeriodData}
-                  kpiField={activeMultiKpiDef.field}
-                  kpiLabel={activeMultiKpiDef.label}
-                />
-              </>
-            )}
-
-            {/* Charts historique */}
-            {history.length > 1 && (
-              <div className="row g-3 mb-4">
-                <div className="col-xl-6"><KpiHistoryChart history={history} /></div>
-                <div className="col-xl-6"><MrRatesChart history={history} /></div>
+                <div className="card-body">
+                   <MultiPeriodTable multiPeriodData={multiPeriodData} kpiField={activeMultiKpiDef.field} kpiLabel={activeMultiKpiDef.label} />
+                </div>
               </div>
             )}
 
-            {/* Radar + Score */}
-            <div className="row g-3">
+            <div className="row g-4">
               <div className="col-xl-8">
-                <div className="card border-0" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
-                  <div className="card-header bg-white d-flex align-items-center" style={{ borderBottom: "1px solid #f0f2f5" }}>
-                    <h6 className="mb-0 fw-semibold flex-grow-1">
-                      <i className="ri-radar-line me-2 text-secondary"></i>Vue d'ensemble — 7 KPIs
-                    </h6>
-                    {globalScore != null && (
-                      <span className={`badge bg-${getScoreColor(globalScore)}-subtle text-${getScoreColor(globalScore)} fs-13`}>
-                        Score : {globalScore} / 100
-                      </span>
-                    )}
-                  </div>
-                  <div className="card-body">
-                    <div style={{ height: 320 }}><KpiRadarChart latest={latest} /></div>
-                  </div>
-                </div>
+                <KpiHistoryChart history={history} />
+                <MrRatesChart history={history} />
+                <SnapshotsTable history={history} />
               </div>
-
               <div className="col-xl-4">
-                <div className="card border-0 h-100" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
-                  <div className="card-header bg-white" style={{ borderBottom: "1px solid #f0f2f5" }}>
-                    <h6 className="mb-0 fw-semibold">
-                      <i className="ri-bar-chart-horizontal-line me-2 text-primary"></i>Détail des scores
-                    </h6>
+                <div className="card border-0 h-100 shadow-sm card-animate">
+                  <div className="card-header bg-white py-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
+                    <h6 className="mb-0 fw-bold text-gradient"><i className="ri-radar-line me-2"></i>Performance Equilibrium</h6>
                   </div>
-                  <div className="card-body">
-                    <div className="text-center mb-4">
-                      <div className="position-relative d-inline-flex align-items-center justify-content-center"
-                        style={{ width: 100, height: 100 }}>
-                        <svg width="100" height="100" style={{ position: "absolute", top: 0, left: 0 }}>
-                          <circle cx="50" cy="50" r="42" fill="none" stroke="#e9ebec" strokeWidth="8" />
-                          <circle cx="50" cy="50" r="42" fill="none"
-                            stroke={globalScore >= 70 ? CHART_COLORS.success : globalScore >= 40 ? CHART_COLORS.warning : CHART_COLORS.danger}
-                            strokeWidth="8"
-                            strokeDasharray={`${2 * Math.PI * 42 * ((globalScore || 0) / 100)} ${2 * Math.PI * 42}`}
-                            strokeLinecap="round" transform="rotate(-90 50 50)" />
-                        </svg>
-                        <div style={{ zIndex: 1 }}>
-                          <h3 className="mb-0 fw-bold">{globalScore ?? "—"}</h3>
-                          <p className="mb-0 fs-11 text-muted">/ 100</p>
-                        </div>
-                      </div>
-                      <p className="mt-2 mb-0 fs-12 fw-semibold text-muted">Score global</p>
+                  <div className="card-body d-flex flex-column align-items-center justify-content-center">
+                    <div style={{ width: '100%', height: 350 }}>
+                       <KpiRadarChart latest={latest} loading={loading} />
                     </div>
-                    {radarScores && (
-                      <div className="vstack gap-0">
-                        <ScoreBadge label="Taux MR/site" value={radarScores.mrRateSite} color="primary" />
-                        <ScoreBadge label="MR Approuvés" value={radarScores.approvedMR} color="success" />
-                        <ScoreBadge label="MR Fusionnés" value={radarScores.mergedMR} color="info" />
-                        <ScoreBadge label="Taux commit/site" value={radarScores.commitRateSite} color="warning" />
-                        <ScoreBadge label="NB Commits" value={radarScores.nbCommits} color="danger" />
-                        <ScoreBadge label="Rapidité revue" value={radarScores.reviewTime} color="secondary" />
-                        <ScoreBadge label="NB Développeurs" value={radarScores.nbDevs} color="success" />
+                    <div className="w-100 mt-4 px-2">
+                      <h6 className="fs-12 text-muted fw-bold text-uppercase mb-3">Scores de santé d'ingénierie</h6>
+                      <ScoreBadge label="Productivité (MR/site)" value={radarScores?.mrRateSite || 0} color="primary" />
+                      <ScoreBadge label="Qualité (Approbation)" value={radarScores?.approvedMR || 0} color="success" />
+                      <ScoreBadge label="Impact (Fusion)" value={radarScores?.mergedMR || 0} color="info" />
+                      <ScoreBadge label="Engagement (Commits)" value={radarScores?.commitRateSite || 0} color="warning" />
+                      <ScoreBadge label="Réactivité (Revue)" value={radarScores?.reviewTime || 0} color={reviewAlert ? "danger" : "info"} />
+                      
+                      <div className="mt-4 p-4 rounded-4 text-center glass" style={{ border: `1px solid var(--brand-${getScoreColor(globalScore)})` }}>
+                        <p className="text-muted fs-11 text-uppercase fw-extrabold mb-1 ls-2">Engineering Maturity Index</p>
+                        <h1 className={`mb-0 fw-black text-${getScoreColor(globalScore)}`} style={{ fontSize: '3rem' }}>{globalScore ?? "—"}<span className="fs-16">%</span></h1>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-
-            <SnapshotsTable history={history} />
           </>
         )}
 

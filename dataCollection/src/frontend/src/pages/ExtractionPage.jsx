@@ -27,6 +27,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
+import ExtractionByTeamTab from "./ExtractionByTeamTab";
 
 // ─── Étapes d'animation ───────────────────────────────────────────────────────
 const STEPS = [
@@ -251,6 +252,8 @@ export default function ExtractionPage() {
   const navigate       = useNavigate();
   const [searchParams] = useSearchParams();
 
+  const [activeTab, setActiveTab] = useState("project");
+
   const [gitlabConfigs,   setGitlabConfigs]   = useState([]);
   const [projects,        setProjects]         = useState([]);
   const [developers,      setDevelopers]       = useState([]);
@@ -259,7 +262,8 @@ export default function ExtractionPage() {
 
   const [selectedConfig,  setSelectedConfig]   = useState("");
   const [selectedProject, setSelectedProject]  = useState("");
-  const [selectedPeriod,  setSelectedPeriod]   = useState("");
+  const [selectedDeveloperIds, setSelectedDeveloperIds] = useState([]); // ← CHANGÉ : Multi-sélection
+  const [selectedPeriod,    setSelectedPeriod]    = useState("");
   const [extractionType,  setExtractionType]   = useState("REALTIME");
   const [isBackfill,      setIsBackfill]       = useState(false);   // ← NOUVEAU
 
@@ -403,7 +407,9 @@ export default function ExtractionPage() {
     setShowConfirm(false); setLoading(true); setResult(null); setError(null); setValidated(false);
     try {
       const payload = {
-        project_id:     Number(selectedProject),
+        project_id:     selectedProject ? Number(selectedProject) : null,
+        gitlab_config_id: selectedConfig ? Number(selectedConfig) : null,
+        developer_ids:   selectedDeveloperIds.length > 0 ? selectedDeveloperIds.map(Number) : undefined,
         extraction_type: extractionType,
         ...(selectedPeriod && { period_id: Number(selectedPeriod) }),
         is_backfill:     isBackfill,
@@ -443,7 +449,7 @@ export default function ExtractionPage() {
   const selectedPeriodObj  = availablePeriods.find(p => String(p.id) === String(selectedPeriod));
 
   const resetForm = () => {
-    setSelectedConfig(""); setSelectedProject(""); setSelectedPeriod("");
+    setSelectedConfig(""); setSelectedProject(""); setSelectedDeveloperIds([]); setSelectedPeriod("");
     setExtractionType("REALTIME"); setIsBackfill(false);
     setResult(null); setError(null); setValidated(false); setLogs([]); setCurrentStep(-1);
   };
@@ -473,6 +479,27 @@ export default function ExtractionPage() {
         </div>
       </div></div>
 
+      <div className="row mb-3">
+        <div className="col-12">
+          <ul className="nav nav-tabs nav-tabs-custom nav-success nav-justified" role="tablist">
+            <li className="nav-item">
+               <a className={`nav-link ${activeTab === "project" ? "active" : ""}`} onClick={() => setActiveTab("project")} style={{cursor: "pointer", fontWeight: 700}}>
+                  <i className="ri-folder-2-line me-2"></i>Par Projet
+               </a>
+            </li>
+            <li className="nav-item">
+               <a className={`nav-link ${activeTab === "team" ? "active" : ""}`} onClick={() => setActiveTab("team")} style={{cursor: "pointer", fontWeight: 700}}>
+                  <i className="ri-team-line me-2"></i>Par Équipe
+               </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {activeTab === "team" ? (
+         <ExtractionByTeamTab gitlabConfigs={gitlabConfigs} periods={allPeriods} />
+      ) : (
+      <>
       {/* Stats rapides */}
       <div className="row mb-2">
         {[
@@ -559,8 +586,64 @@ export default function ExtractionPage() {
                       {projects.map(p=><option key={p.id} value={p.id}>{p.name}{p.namespace?` (${p.namespace})`:""}</option>)}
                     </select>
                   )}
-                  {validated&&!isProjectValid&&<div className="invalid-feedback d-block">Veuillez sélectionner un projet.</div>}
+                  {validated&&!isProjectValid&&selectedDeveloper===""&&<div className="invalid-feedback d-block">Veuillez sélectionner un projet ou un développeur.</div>}
                   {selectedConfig&&!loadingProjects&&projects.length===0&&<div className="text-warning fs-12 mt-1"><i className="ri-alert-line me-1"></i>Aucun projet pour ce domaine.</div>}
+                </div>
+
+                {/* 2bis. Développeurs technique (Multi-sélection) */}
+                <div className="col-12 mt-3">
+                  <label className="form-label fw-medium d-flex justify-content-between align-items-center">
+                    <span><i className="ri-user-star-line me-1 text-muted"></i>Développeurs ciblés (Équipe officielle)</span>
+                    <div className="d-flex gap-2">
+                       <button className="btn btn-link py-0 fs-11" onClick={() => setSelectedDeveloperIds(developers.map(d => String(d.id)))}>Tout cocher</button>
+                       <button className="btn btn-link py-0 fs-11 text-danger" onClick={() => setSelectedDeveloperIds([])}>Vider</button>
+                    </div>
+                  </label>
+                  
+                  <div className="border rounded-3 p-3 bg-light-subtle" style={{maxHeight: "200px", overflowY: "auto"}}>
+                    {loadingDevs ? (
+                      <div className="text-center py-2 text-muted fs-12"><span className="spinner-border spinner-border-sm me-2"></span>Chargement des membres...</div>
+                    ) : developers.length === 0 ? (
+                      <div className="text-center py-2 text-muted fs-12">Aucun développeur trouvé pour ce projet.</div>
+                    ) : (
+                      <div className="row g-2">
+                        {developers.map(dev => (
+                          <div key={dev.id} className="col-md-4 col-sm-6">
+                            <div className="form-check card-radio p-0 h-100">
+                              <input 
+                                className="form-check-input d-none" 
+                                type="checkbox" 
+                                id={`dev-${dev.id}`}
+                                checked={selectedDeveloperIds.includes(String(dev.id))}
+                                onChange={e => {
+                                  const id = String(dev.id);
+                                  setSelectedDeveloperIds(prev => 
+                                    e.target.checked ? [...prev, id] : prev.filter(x => x !== id)
+                                  );
+                                }}
+                              />
+                              <label className={`form-check-label p-2 rounded-2 border h-100 d-flex align-items-center gap-2 ${selectedDeveloperIds.includes(String(dev.id)) ? "border-primary bg-primary-subtle bg-opacity-10" : "bg-white"}`} htmlFor={`dev-${dev.id}`} style={{cursor: "pointer"}}>
+                                <div className={`avatar-xs rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 ${selectedDeveloperIds.includes(String(dev.id)) ? "bg-primary text-white" : "bg-light text-muted"}`} style={{width: 24, height: 24, fontSize: 10}}>
+                                  {getInitials(dev.name || dev.gitlab_username)}
+                                </div>
+                                <div className="text-truncate">
+                                  <div className={`fs-12 fw-medium ${selectedDeveloperIds.includes(String(dev.id)) ? "text-primary" : "text-dark"}`}>{dev.name || dev.gitlab_username}</div>
+                                  <div className="text-muted fs-10">@{dev.gitlab_username}</div>
+                                </div>
+                                {selectedDeveloperIds.includes(String(dev.id)) && <i className="ri-checkbox-circle-fill text-primary ms-auto"></i>}
+                              </label>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-muted fs-11 mt-2">
+                    <i className="ri-information-line me-1"></i>
+                    {selectedDeveloperIds.length > 0 
+                      ? `Extraction limitée à ${selectedDeveloperIds.length} développeur(s).` 
+                      : "Si aucun n'est sélectionné, l'extraction portera sur TOUS les membres du projet."}
+                  </div>
                 </div>
 
                 {/* 3. Type d'extraction */}
@@ -804,6 +887,8 @@ export default function ExtractionPage() {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div></div>
   );
 }

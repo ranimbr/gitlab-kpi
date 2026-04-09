@@ -57,6 +57,7 @@ from app.models.developer_import_log import DeveloperImportLog
 from app.models.project_site        import ProjectSite
 from app.models.developer_project   import DeveloperProject
 from app.models.developer_site      import DeveloperSite
+from app.models.comment             import Comment
 
 # ── Périodes & Extraction ──────────────────────────────────────────────────
 from app.models.period          import Period
@@ -91,7 +92,7 @@ __all__ = [
     # Périodes
     "Period", "PeriodFilter", "ExtractionLot",
     # Données GitLab
-    "Commit", "MergeRequest", "CommitMergeRequest",
+    "Commit", "MergeRequest", "CommitMergeRequest", "Comment",
     # KPIs
     "KpiDefinition", "KpiSnapshot", "KpiThreshold", "Alert",
     # Dashboard

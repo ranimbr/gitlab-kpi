@@ -160,77 +160,31 @@ class GitLabClient:
         project_id: int,
         since:      Optional[str] = None,
         until:      Optional[str] = None,
+        author:     Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        [FIX-BRANCHES] Commits de TOUTES les branches, dédupliqués par SHA.
-        Avant : seulement la branche par défaut (main/master).
-        Après : 100% des commits capturés.
+        [FIX-PERF] Commits de TOUTES les branches, requêtés nativement.
+        Passage d'une boucle N-requêtes par branche à 1 requête unique avec 'all=True'.
         """
-        branches = await self.get_project_branches(project_id)
-
-        if not branches:
-            logger.warning(
-                f"Project {project_id} — no branches found, falling back to default"
-            )
-            return await self._get_commits_for_ref(project_id, ref=None,
-                                                   since=since, until=until)
-
-        all_commits: List[Dict[str, Any]] = []
-        seen_shas:   Set[str]             = set()
-
-        batch_size = 5
-        for i in range(0, len(branches), batch_size):
-            batch = branches[i:i + batch_size]
-            tasks = [
-                self._get_commits_for_ref(project_id,
-                                          ref=b["name"], since=since, until=until)
-                for b in batch
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for branch, result in zip(batch, results):
-                if isinstance(result, Exception):
-                    logger.error(
-                        f"Failed to fetch commits for branch '{branch['name']}' "
-                        f"project={project_id}: {result}"
-                    )
-                    continue
-                for commit in result:
-                    sha = commit.get("id")
-                    if sha and sha not in seen_shas:
-                        seen_shas.add(sha)
-                        commit["branch_name"] = branch["name"]
-                        all_commits.append(commit)
-
-        logger.info(
-            f"Project {project_id} — {len(all_commits)} unique commits (all branches)"
-        )
-        all_commits.sort(
-            key=lambda c: c.get("authored_date") or c.get("committed_date") or "",
-            reverse=True,
-        )
-        return all_commits
-
-    async def _get_commits_for_ref(
-        self,
-        project_id: int,
-        ref:        Optional[str],
-        since:      Optional[str] = None,
-        until:      Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        params: Dict[str, Any] = {"with_stats": True}
-        if ref:
-            params["ref_name"] = ref
+        params: Dict[str, Any] = {"with_stats": True, "all": True}
+        
+        if author:
+            params["author"] = author
         if since:
             params["since"] = since
         if until:
             params["until"] = until
+            
+        logger.info(f"Project {project_id} — Fetching commits with params: {params}")
+        
         try:
-            return await self._get_paginated(
+            commits = await self._get_paginated(
                 f"/projects/{project_id}/repository/commits", params=params
             )
+            logger.info(f"Project {project_id} — Extracted {len(commits)} commits natively.")
+            return commits
         except GitLabAPIError as e:
-            logger.error(f"Error fetching commits ref='{ref}' project={project_id}: {e}")
+            logger.error(f"Error fetching commits for project={project_id}: {e}")
             return []
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -238,11 +192,63 @@ class GitLabClient:
     # ──────────────────────────────────────────────────────────────────────────
 
     async def get_project_merge_requests(
-        self, project_id: int
+        self, 
+        project_id:       int, 
+        author_username:   Optional[str] = None,
+        reviewer_username: Optional[str] = None,
+        assignee_username: Optional[str] = None,
+        created_after:     Optional[str] = None,
+        created_before:    Optional[str] = None,
+        updated_after:     Optional[str] = None,
+        updated_before:    Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        # ... logic ...
+        params: Dict[str, Any] = {"state": "all", "per_page": 100}
+        if author_username:
+            params["author_username"] = author_username
+        if reviewer_username:
+            params["reviewer_username"] = reviewer_username
+        if assignee_username:
+            params["assignee_username"] = assignee_username
+        if created_after:
+            params["created_after"] = created_after
+        if created_before:
+            params["created_before"] = created_before
+        if updated_after:
+            params["updated_after"] = updated_after
+        if updated_before:
+            params["updated_before"] = updated_before
+
         return await self._get_paginated(
             f"/projects/{project_id}/merge_requests",
-            params={"state": "all", "with_labels_details": False},
+            params=params,
+        )
+
+    async def get_merge_request_detail(
+        self, project_id: int, mr_iid: int
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch full details of a single MR (includes commits_count, user_notes_count)."""
+        return await self._request(
+            "GET",
+            f"/projects/{project_id}/merge_requests/{mr_iid}"
+        )
+
+    async def get_merge_request_commits(
+        self, project_id: int, mr_iid: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch the list of commits for an MR (to get accurate count)."""
+        return await self._get_paginated(
+            f"/projects/{project_id}/merge_requests/{mr_iid}/commits",
+            params={"per_page": 100}
+        )
+
+    async def get_merge_request_notes(
+        self, project_id: int, mr_iid: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch all notes (comments) for an MR."""
+        return await self._get_paginated(
+            f"/projects/{project_id}/merge_requests/{mr_iid}/notes",
+            params={"per_page": 100}
         )
 
     async def get_merge_request_approvals(
@@ -269,6 +275,14 @@ class GitLabClient:
             logger.warning(f"approval_state unavailable MR={mr_iid}: {e}")
             return None
 
+    async def get_merge_request_notes(
+        self, project_id: int, mr_iid: int
+    ) -> List[Dict[str, Any]]:
+        return await self._get_paginated(
+            f"/projects/{project_id}/merge_requests/{mr_iid}/notes",
+            params={"sort": "asc", "per_page": 100}
+        )
+
     # ──────────────────────────────────────────────────────────────────────────
     # MEMBRES & USERS — [FIX-DEDUP]
     # ──────────────────────────────────────────────────────────────────────────
@@ -278,6 +292,13 @@ class GitLabClient:
 
     async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         return await self._request("GET", f"/users/{user_id}")
+
+    async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """Cherche un utilisateur par son username (login)."""
+        users = await self._request("GET", "/users", params={"username": username})
+        if users and isinstance(users, list) and len(users) > 0:
+            return users[0]
+        return None
 
     async def get_project_members_with_emails(
         self, project_id: int

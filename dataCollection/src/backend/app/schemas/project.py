@@ -46,6 +46,8 @@ class ProjectUpdate(BaseModel):
     archived:       Optional[bool]     = None
     description:    Optional[str]      = None
     default_branch: Optional[str]      = Field(default=None, max_length=100)
+    gitlab_project_id: Optional[int]   = None
+    gitlab_config_id:  Optional[int]   = None
 
     # ✅ CORRECTION : mise à jour des sites via liste (remplace l'ancien site_id)
     # Si fourni, remplace la liste actuelle des sites du projet
@@ -65,9 +67,9 @@ class ProjectSiteAssign(BaseModel):
 
 class ProjectResponse(BaseModel):
     id:                int
-    gitlab_project_id: int
+    gitlab_project_id: Optional[int]
     name:              str
-    path:              str
+    path:              Optional[str]
     namespace:         Optional[str]
     description:       Optional[str]
     visibility:        Optional[str]
@@ -93,7 +95,7 @@ class ProjectSummary(BaseModel):
     """Version allégée pour les listes de projets."""
     id:                int
     name:              str
-    gitlab_project_id: int
+    gitlab_project_id: Optional[int]
     is_active:         bool
     archived:          bool
     last_commit_date:  Optional[datetime] = None

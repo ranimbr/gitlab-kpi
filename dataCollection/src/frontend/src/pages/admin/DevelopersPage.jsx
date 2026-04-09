@@ -315,12 +315,13 @@ function MergeModal({ dev, canonicalDev, onClose, onConfirm }) {
 }
 
 // ── DevEditModal ──────────────────────────────────────────────────────────────
-function DevEditModal({ dev, sites, onClose, onSave }) {
+function DevEditModal({ dev, sites, groups, onClose, onSave }) {
   const [form, setForm] = useState({
     name:            dev?.name            || "",
     email:           dev?.email           || "",
     gitlab_username: dev?.gitlab_username || "",
     primary_site_id: dev?.primary_site_id || "",
+    group_id:        dev?.group_id        || "",
     is_bot:          dev?.is_bot          || false,
     is_external:     dev?.is_external     || false,
   });
@@ -342,13 +343,20 @@ function DevEditModal({ dev, sites, onClose, onSave }) {
         name:            form.name.trim()            || null,
         email:           form.email.trim()           || null,
         gitlab_username: form.gitlab_username.trim() || null,
+        group_id:        form.group_id ? parseInt(form.group_id) : null,
         is_bot:          form.is_bot,
         is_external:     form.is_external,
       };
       if (form.primary_site_id) {
         payload.sites = [{ site_id: parseInt(form.primary_site_id), is_primary: true }];
+      } else {
+        payload.sites = [];
       }
-      await developerService.update(dev.id, payload);
+      if (dev?.id) {
+        await developerService.update(dev.id, payload);
+      } else {
+        await developerService.create(payload);
+      }
       onSave();
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Erreur lors de la mise à jour.");
@@ -364,10 +372,16 @@ function DevEditModal({ dev, sites, onClose, onSave }) {
       <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
         <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
           <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            <Avatar dev={dev} size={44} />
+            {dev?.id ? (
+              <Avatar dev={dev} size={44} />
+            ) : (
+              <div className="d-flex align-items-center justify-content-center rounded-circle bg-primary-subtle flex-shrink-0" style={{ width: 44, height: 44 }}>
+                <i className="ri-user-add-line text-primary fs-20"></i>
+              </div>
+            )}
             <div className="flex-grow-1">
-              <h5 className="fw-semibold mb-0 fs-15">Modifier le développeur</h5>
-              <p className="text-muted fs-12 mb-0">{devHandle(dev)}</p>
+              <h5 className="fw-semibold mb-0 fs-15">{dev?.id ? "Modifier le développeur" : "Nouveau développeur"}</h5>
+              <p className="text-muted fs-12 mb-0">{dev?.id ? devHandle(dev) : "Création manuelle"}</p>
             </div>
             <button className="btn-close" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
           </div>
@@ -402,6 +416,15 @@ function DevEditModal({ dev, sites, onClose, onSave }) {
                   <option value="">— Aucun site —</option>
                   {sites.map(s => (
                     <option key={s.id} value={s.id}>{s.name}{s.country ? ` (${s.country})` : ""}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-md-12">
+                <label className="form-label fw-medium fs-13">Groupe / Équipe</label>
+                <select name="group_id" className="form-select" value={form.group_id} onChange={handle}>
+                  <option value="">— Aucun groupe —</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
               </div>
@@ -609,7 +632,7 @@ function DeleteGroupModal({ group, loading, onClose, onConfirm }) {
 }
 
 // ── TableView ─────────────────────────────────────────────────────────────────
-function TableView({ paginated, sites, duplicateIds, developers, onValidate, onEdit, onMerge }) {
+function TableView({ paginated, sites, groups, duplicateIds, developers, onValidate, onEdit, onMerge }) {
   return (
     <div className="table-responsive">
       <table className="table table-hover align-middle mb-0">
@@ -618,6 +641,7 @@ function TableView({ paginated, sites, duplicateIds, developers, onValidate, onE
             <th className="ps-4 py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Développeur</th>
             <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Email</th>
             <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Site principal</th>
+            <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Groupe</th>
             <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Statut</th>
             <th className="py-3 text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Créé le</th>
             <th className="pe-4 py-3 text-center text-muted fs-11 fw-semibold text-uppercase" style={{ letterSpacing: ".05em" }}>Actions</th>
@@ -651,6 +675,11 @@ function TableView({ paginated, sites, duplicateIds, developers, onValidate, onE
                 <td>
                   {site
                     ? <span className="badge fs-11" style={{ background: "#e0f2fe", color: "#0369a1" }}><i className="ri-map-pin-line me-1"></i>{site.name}</span>
+                    : <span className="text-muted fs-12">—</span>}
+                </td>
+                <td>
+                  {dev.group_id 
+                    ? <span className="badge fs-11" style={{ background: "#f5f3ff", color: "#6f42c1" }}><i className="ri-group-line me-1"></i>{groups.find(g => g.id === dev.group_id)?.name || "Groupe #"+dev.group_id}</span>
                     : <span className="text-muted fs-12">—</span>}
                 </td>
                 <td>
@@ -697,7 +726,7 @@ function TableView({ paginated, sites, duplicateIds, developers, onValidate, onE
 }
 
 // ── CardView ──────────────────────────────────────────────────────────────────
-function CardView({ paginated, sites, duplicateIds, onValidate, onEdit, onMerge }) {
+function CardView({ paginated, sites, groups, duplicateIds, onValidate, onEdit, onMerge }) {
   return (
     <div className="row g-3 p-4">
       {paginated.map(dev => {
@@ -728,6 +757,7 @@ function CardView({ paginated, sites, duplicateIds, onValidate, onEdit, onMerge 
                           : <span className="badge fs-10" style={{ background: "#dcfce7", color: "#15803d" }}>Validé</span>}
                       {dev.is_external && <span className="badge fs-10" style={{ background: "#f5f3ff", color: "#6f42c1" }}>Externe</span>}
                       {site && <span className="badge fs-10" style={{ background: "#e0f2fe", color: "#0369a1" }}><i className="ri-map-pin-line me-1"></i>{site.name}</span>}
+                      {dev.group_id && <span className="badge fs-10" style={{ background: "#f5f3ff", color: "#6f42c1" }}><i className="ri-group-line me-1"></i>{groups.find(g => g.id === dev.group_id)?.name || "Grp."}</span>}
                     </div>
                   </div>
                 </div>
@@ -904,7 +934,12 @@ export default function DevelopersPage() {
     }
   }, [load, showToast]);
 
-  const handleEditSave   = useCallback(async () => { setEditDev(null);   showToast("Développeur mis à jour."); await load(); }, [load, showToast]);
+  const handleEditSave   = useCallback(async () => {
+    const isNew = !editDev?.id;
+    setEditDev(null);
+    showToast(isNew ? "Développeur ajouté avec succès." : "Développeur mis à jour.");
+    await load();
+  }, [load, showToast, editDev]);
   const handleGroupSave  = useCallback(async () => { const isNew = !editGroup?.id; setEditGroup(null); showToast(isNew ? "Groupe créé." : "Groupe mis à jour."); await load(); }, [load, showToast, editGroup]);
 
   const handleDeleteGroup = useCallback(async (groupId) => {
@@ -1036,11 +1071,14 @@ export default function DevelopersPage() {
                   <li className="breadcrumb-item">Administration</li>
                   <li className="breadcrumb-item active">Développeurs</li>
                 </ol>
+                <button className="btn btn-sm btn-primary" onClick={() => setEditDev({})}>
+                  <i className="ri-user-add-line me-1"></i>Nouveau développeur
+                </button>
                 <Link to="/admin/developers/import" className="btn btn-sm btn-soft-info">
-                  <i className="ri-upload-2-line me-1"></i>Import CSV/Excel
+                  <i className="ri-upload-2-line me-1"></i>Importation CSV
                 </Link>
-                <button className="btn btn-sm btn-primary" onClick={() => setEditGroup({})}>
-                  <i className="ri-add-line me-1"></i>Nouveau groupe
+                <button className="btn btn-sm btn-outline-primary" onClick={() => setEditGroup({})}>
+                  <i className="ri-group-line me-1"></i>Nouveau groupe
                 </button>
               </div>
             </div>
@@ -1282,14 +1320,14 @@ export default function DevelopersPage() {
                   />
                 ) : viewMode === "cards" ? (
                   <CardView
-                    paginated={paginated} sites={sites} duplicateIds={duplicateIds}
+                    paginated={paginated} sites={sites} groups={groups} duplicateIds={duplicateIds}
                     onValidate={setValidateTarget}
                     onEdit={setEditDev}
                     onMerge={dev => setMergeTarget({ dev, canonical: getMergeCanonical(dev) })}
                   />
                 ) : (
                   <TableView
-                    paginated={paginated} sites={sites} duplicateIds={duplicateIds}
+                    paginated={paginated} sites={sites} groups={groups} duplicateIds={duplicateIds}
                     developers={allDevelopers}
                     onValidate={setValidateTarget}
                     onEdit={setEditDev}
@@ -1434,8 +1472,13 @@ export default function DevelopersPage() {
         />
       )}
       {editDev && (
-        <DevEditModal dev={editDev} sites={sites}
-          onClose={() => setEditDev(null)} onSave={handleEditSave} />
+        <DevEditModal
+          dev={editDev?.id ? editDev : null}
+          sites={sites}
+          groups={groups}
+          onClose={() => setEditDev(null)}
+          onSave={handleEditSave}
+        />
       )}
       {mergeTarget && (
         <MergeModal

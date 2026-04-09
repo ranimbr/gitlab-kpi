@@ -11,6 +11,7 @@
  *      → évite setState sur composant démonté (memory leak / warning React)
  */
 import { useState, useEffect } from "react";
+import { useNavigate }     from "react-router-dom";
 import projectService       from "../../services/projectService";
 import extractionLotService from "../../services/extractionLotService";
 import periodService        from "../../services/periodService";
@@ -102,6 +103,7 @@ function DownloadButton({ lot }) {
 }
 
 export default function ExtractionLotsPage() {
+  const navigate = useNavigate();
   const [lots,         setLots]         = useState([]);
   const [projects,     setProjects]     = useState([]);
   const [periods,      setPeriods]      = useState([]);
@@ -127,22 +129,42 @@ export default function ExtractionLotsPage() {
     return () => { mounted = false; };
   }, []);
 
-  // ✅ FIX : mounted flag sur le chargement des lots
+  // ✅ FIX : Polling live si un lot est "running"
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
-    extractionLotService.getAll(
-      projFilter   ? parseInt(projFilter)   : null,
-      periodFilter ? parseInt(periodFilter) : null,
-    )
-      .then(data => {
-        if (!mounted) return;
-        setLots(Array.isArray(data) ? data : (data?.items ?? []));
-        setPage(1);
-      })
-      .catch(() => { if (mounted) setLots([]); })
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
+    let pollInterval = null;
+
+    const fetchLots = (isInitial = false) => {
+      if (isInitial && mounted) setLoading(true);
+      extractionLotService.getAll(
+        projFilter   ? parseInt(projFilter)   : null,
+        periodFilter ? parseInt(periodFilter) : null,
+      )
+        .then(data => {
+          if (!mounted) return;
+          const newLots = Array.isArray(data) ? data : (data?.items ?? []);
+          setLots(newLots);
+          if (isInitial) setPage(1);
+
+          // Si des lots sont en cours, activer le polling
+          const hasRunning = newLots.some(l => l.status === "running");
+          if (hasRunning && !pollInterval) {
+            pollInterval = setInterval(() => fetchLots(false), 2000);
+          } else if (!hasRunning && pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        })
+        .catch(() => { if (mounted && isInitial) setLots([]); })
+        .finally(() => { if (mounted && isInitial) setLoading(false); });
+    };
+
+    fetchLots(true);
+
+    return () => { 
+      mounted = false; 
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [projFilter, periodFilter]);
 
   const filtered = lots.filter(l => {
@@ -318,8 +340,10 @@ export default function ExtractionLotsPage() {
                         <th>Type</th>
                         <th>Statut</th>
                         <th>Déclenché par</th>
+
                         <th>Début</th>
                         <th>Durée</th>
+                        <th>Actions</th>
                         <th>MD5 / Download</th>
                       </tr>
                     </thead>
@@ -333,11 +357,54 @@ export default function ExtractionLotsPage() {
                             {/* ✅ FIX : extraction_type au lieu de type */}
                             <StatusBadge type="lotType" value={lot.extraction_type} />
                           </td>
-                          <td><StatusBadge type="lot" value={lot.status} /></td>
+                          <td>
+                            <StatusBadge type="lot" value={lot.status} />
+                            {lot.status === "running" && lot.step_label && (
+                              <div className="fs-11 mt-1 text-info text-truncate" style={{maxWidth: 150}}>
+                                <i className="ri-loader-4-line ri-spin me-1"></i>{lot.step_label}
+                              </div>
+                            )}
+                          </td>
                           <td className="text-muted fs-12">{getTriggeredBy(lot)}</td>
                           <td className="text-muted fs-12">{formatDate(lot.created_at)}</td>
                           <td className="text-muted fs-12">
-                            {formatDuration(lot.created_at, lot.completed_at)}
+                            {formatDuration(lot.created_at, lot.completed_at || (lot.status==="running" ? new Date() : null))}
+                          </td>
+                          <td>
+                            <div className="d-flex gap-1">
+                              <button 
+                                className="btn btn-sm btn-soft-primary px-2 py-1" 
+                                title="Voir les Merge Requests"
+                                onClick={() => navigate(`/merge-requests?project_id=${lot.project_id}&lot_id=${lot.id}`)}
+                                disabled={lot.status !== "completed"}
+                              >
+                                <i className="ri-git-merge-line"></i> MRs
+                              </button>
+                              <button 
+                                className="btn btn-sm btn-soft-info px-2 py-1" 
+                                title="Voir les Commits"
+                                onClick={() => navigate(`/commits?project_id=${lot.project_id}&lot_id=${lot.id}`)}
+                                disabled={lot.status !== "completed"}
+                              >
+                                <i className="ri-git-commit-line"></i> Commits
+                              </button>
+                              <button 
+                                className="btn btn-sm btn-soft-success px-2 py-1" 
+                                title="Explorer le Dashboard"
+                                onClick={() => navigate(`/dashboard?project_id=${lot.project_id}&lot_id=${lot.id}`)}
+                                disabled={lot.status !== "completed"}
+                              >
+                                <i className="ri-dashboard-2-line"></i>
+                              </button>
+                              <button 
+                                className="btn btn-sm btn-soft-warning px-2 py-1" 
+                                title="Explorer le Hub Talent"
+                                onClick={() => navigate(`/developers?project_id=${lot.project_id}&lot_id=${lot.id}`)}
+                                disabled={lot.status !== "completed"}
+                              >
+                                <i className="ri-team-line"></i>
+                              </button>
+                            </div>
                           </td>
                           <td><DownloadButton lot={lot} /></td>
                         </tr>

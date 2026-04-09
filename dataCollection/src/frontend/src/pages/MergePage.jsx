@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import api from "../services/api";
 
@@ -46,7 +47,7 @@ function reviewTime(mr) {
     const merged  = new Date(mr.merged_at);
     // Sécurité : si l'une des dates est invalide ou le résultat est incohérent → on abandonne
     if (isNaN(created.getTime()) || isNaN(merged.getTime())) return null;
-    const hours = (merged - created) / 3_600_000;
+    const hours = Math.max(0, (merged - created) / 3_600_000);
     // Lead Time négatif = problème de qualité de données (fuseau horaire, import incorrect)
     // → On affiche "—", jamais une valeur négative ou absurde
     if (hours < 0) return null;
@@ -69,7 +70,7 @@ const STATE_CFG={
   closed:{label:"Closed",icon:"ri-close-circle-line",    bg:"#fde8e8",color:"#9b1c1c"},
 };
 
-const INITIAL_FILTERS={search:"",state:"all",project:"all",author:"all",approved:"all",dateFrom:"",dateTo:""};
+
 
 // ─── MR Detail Modal ──────────────────────────────────────────────────────────
 function MRDetailModal({ mr, onClose }) {
@@ -113,6 +114,9 @@ function MRDetailModal({ mr, onClose }) {
                 {icon:"ri-user-line",          label:"Auteur",  value:mr.author||"Unknown"},
                 {icon:"ri-folder-2-line",      label:"Projet",  value:mr.project||"Unknown"},
                 {icon:"ri-calendar-event-line",label:"Créée",   value:fmtDate(mr.created_at_gitlab)},
+                {icon:"ri-history-line",       label:"Activité",value:fmtDate(mr.updated_at_gitlab)},
+                {icon: "ri-chat-1-line",       label: "Comm.",    value: mr.user_notes_count || 0},
+                {icon: "ri-git-commit-line",   label: "Commits",  value: mr.commits_count || 0},
                 {icon:"ri-time-line",          label:"Délai",   value:timeSince(mr.created_at_gitlab)},
                 {icon:"ri-check-double-line",  label:"Temps revue", value: (() => {
                     const rt = reviewTime(mr);
@@ -121,7 +125,7 @@ function MRDetailModal({ mr, onClose }) {
                     return rt.isExact ? label : `~${label} (Lead Time)`;
                   })()},
               ].map((item,i)=>(
-                <div key={i} className="col-6">
+                <div key={i} className={item.label === "Comm." || item.label === "Commits" ? "col-3" : "col-6"}>
                   <div className="rounded-3 p-3" style={{background:"#f8f9fc",border:"1px solid #e9ecef"}}>
                     <div style={{fontSize:10,color:"#9ca3af",textTransform:"uppercase",fontWeight:600,letterSpacing:0.8,marginBottom:4}}><i className={`${item.icon} me-1`}></i>{item.label}</div>
                     <div className="fw-semibold text-dark fs-13">{item.value}</div>
@@ -181,12 +185,25 @@ function FilterTag({ label, onRemove, color="#f0f0f0", textColor="#495057" }) {
 }
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
-function FilterBar({ filters, onChange, projects, authors, activeCount, onReset }) {
+function FilterBar({ filters, onChange, projects, authors, activeCount, onReset, availableLots = [] }) {
   return (
     <div className="card mb-3"><div className="card-body pb-2">
       <div className="row g-2 align-items-end">
-        <div className="col-xl-3 col-md-6"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-search-line me-1"></i>Search</label><div className="search-box"><input type="text" className="form-control form-control-sm" placeholder="Title, author, project…" value={filters.search} onChange={e=>onChange("search",e.target.value)}/><i className="ri-search-line search-icon"></i></div></div>
-        <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
+        <div className="col-xl-2 col-md-6"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-search-line me-1"></i>Search</label><div className="search-box"><input type="text" className="form-control form-control-sm" placeholder="Title, author, project…" value={filters.search} onChange={e=>onChange("search",e.target.value)}/><i className="ri-search-line search-icon"></i></div></div>
+        
+        <div className="col-xl-2 col-md-3">
+          <label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-stack-line me-1"></i>Session (Lot)</label>
+          <select className="form-select form-select-sm" value={filters.lot} onChange={e=>onChange("lot",e.target.value)}>
+            <option value="all">Toutes les extractions</option>
+            {availableLots.map(l => (
+              <option key={l.id} value={l.id}>
+                {l.extraction_type} - {l.period?.name || `Lot #${l.id}`} ({new Date(l.created_at).toLocaleDateString()})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
         <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Author</label><select className="form-select form-select-sm" value={filters.author} onChange={e=>onChange("author",e.target.value)}><option value="all">All</option>{authors.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-shield-check-line me-1"></i>Approved</label><select className="form-select form-select-sm" value={filters.approved} onChange={e=>onChange("approved",e.target.value)}><option value="all">All</option><option value="yes">Yes</option><option value="no">No</option></select></div>
@@ -197,17 +214,17 @@ function FilterBar({ filters, onChange, projects, authors, activeCount, onReset 
       {activeCount>0&&(
         <div className="d-flex flex-wrap gap-2 mt-2">
           {filters.search&&<FilterTag label={`"${filters.search}"`} onRemove={()=>onChange("search","")}/>}
+          {filters.lot!=="all"&&<FilterTag label={`Session: #${filters.lot}`} onRemove={()=>onChange("lot","all")} color="#ede9fb" textColor="#5b21b6"/>}
           {filters.state!=="all"&&<FilterTag label={`Status: ${STATE_CFG[filters.state]?.label}`} onRemove={()=>onChange("state","all")} color="#dce9ff" textColor="#1a56db"/>}
           {filters.project!=="all"&&<FilterTag label={`Project: ${filters.project}`} onRemove={()=>onChange("project","all")} color="#e8ecf8" textColor="#405189"/>}
           {filters.author!=="all"&&<FilterTag label={`Author: ${filters.author}`} onRemove={()=>onChange("author","all")} color="#ede9fb" textColor="#5b21b6"/>}
           {filters.approved!=="all"&&<FilterTag label={`Approved: ${filters.approved}`} onRemove={()=>onChange("approved","all")} color="#d7edf9" textColor="#1a6fa3"/>}
-          {filters.dateFrom&&<FilterTag label={`From: ${filters.dateFrom}`} onRemove={()=>onChange("dateFrom","")} color="#fef3dc" textColor="#b78a1e"/>}
-          {filters.dateTo&&<FilterTag label={`To: ${filters.dateTo}`} onRemove={()=>onChange("dateTo","")} color="#fef3dc" textColor="#b78a1e"/>}
         </div>
       )}
     </div></div>
   );
 }
+
 
 // ─── Status Donut ─────────────────────────────────────────────────────────────
 function StatusDonut({ opened, merged, closed }) {
@@ -229,8 +246,80 @@ function StatusDonut({ opened, merged, closed }) {
   );
 }
 
-// ─── Top Contributors ─────────────────────────────────────────────────────────
-function TopContributors({ mrs }) {
+// ─── Top Contributors (Contextual Breakdown) ──────────────────────────────────
+function TopContributors({ mrs, selectedAuthor }) {
+  // Mode Individuel : Si un auteur est sélectionné (Vue Axel)
+  if (selectedAuthor && selectedAuthor !== "all") {
+    let authored = 0, reviewed = 0, assigned = 0;
+    let authMerged = 0, revMerged = 0;
+    
+    // ✅ LOGIQUE ROBUSTE : Comparaison insensible à la casse pour le graphique
+    const target = selectedAuthor.toLowerCase().trim();
+
+    mrs.forEach(mr => {
+      const aut = (mr.author || "").toLowerCase();
+      const rev = (mr.reviewer || "").toLowerCase();
+      const ass = (mr.assignee || "").toLowerCase();
+
+      if (aut.includes(target)) {
+        authored++;
+        if (mr.state === "merged") authMerged++;
+      }
+      if (rev.includes(target)) {
+        reviewed++;
+        if (mr.state === "merged") revMerged++;
+      }
+      if (ass.includes(target) && !aut.includes(target)) {
+        assigned++;
+      }
+    });
+
+    const categories = ["Creation (Author)", "Quality (Reviewer)", "Support (Assignee)"];
+    const seriesData = [
+      { name: "Merged", data: [authMerged, revMerged, 0] },
+      { name: "Pending/Other", data: [authored - authMerged, reviewed - revMerged, assigned] }
+    ];
+
+    return (
+      <div className="card h-100">
+        <div className="card-header d-flex align-items-center">
+          <h5 className="card-title mb-0 flex-grow-1">
+            <i className="ri-user-star-line me-2 text-primary"></i>Contribution Analysis
+          </h5>
+          <span className="badge bg-success-subtle text-success">{selectedAuthor}</span>
+        </div>
+        <div className="card-body">
+          <ReactApexChart type="bar" height={210} series={seriesData}
+            options={{
+              chart: { type: "bar", stacked: true, toolbar: { show: false }, fontFamily: "Poppins, sans-serif" },
+              plotOptions: { bar: { horizontal: true, barHeight: "60%", borderRadius: 4 } },
+              colors: ["#0ab39c", "#405189"],
+              xaxis: { categories, labels: { style: { fontSize: "11px" } } },
+              legend: { position: "top", fontSize: "12px" },
+              tooltip: { y: { formatter: v => `${v} MRs` } }
+            }} />
+          <div className="mt-3 p-2 bg-light rounded">
+            <div className="row text-center">
+              <div className="col-4">
+                <div className="fw-bold text-primary">{authored}</div>
+                <div className="text-muted fs-10">Authored</div>
+              </div>
+              <div className="col-4">
+                <div className="fw-bold text-success">{reviewed}</div>
+                <div className="text-muted fs-10">Reviewed</div>
+              </div>
+              <div className="col-4">
+                <div className="fw-bold text-warning">{assigned}</div>
+                <div className="text-muted fs-10">Assigned</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Mode Global : La liste des meilleurs contributeurs (Vue Manager)
   const map={};
   mrs.forEach(mr=>{ const a=mr.author||"Unknown"; if(!map[a])map[a]={total:0,merged:0,opened:0}; map[a].total++; if(mr.state==="merged")map[a].merged++; if(mr.state==="opened")map[a].opened++; });
   const top=Object.entries(map).sort((a,b)=>b[1].total-a[1].total).slice(0,7);
@@ -344,6 +433,8 @@ function MRTable({ mrs, onDetail }) {
     {key:"project",          label:"Project", sortable:true },
     {key:"state",            label:"Status",  sortable:true },
     {key:"approved",         label:"Approved",sortable:false},
+    {key:"user_notes_count", label:"Comms",   sortable:true },
+    {key:"commits_count",    label:"Commits", sortable:true },
     {key:"time_to_approve",  label:"Revue",   sortable:true },
     {key:"created_at_gitlab",label:"Created", sortable:true },
     {key:"_actions",         label:"",        sortable:false},
@@ -382,10 +473,41 @@ function MRTable({ mrs, onDetail }) {
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <td style={{padding:"14px 16px"}}><code style={{background:"#e8ecf8",color:"#405189",borderRadius:4,padding:"3px 8px",fontWeight:700,fontSize:12}}>!{mr.gitlab_mr_id}</code>{mr.is_draft&&<span style={{marginLeft:4,background:"#f0f0f0",color:"#6c757d",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:600}}>Draft</span>}</td>
                     <td style={{padding:"14px 16px",maxWidth:260}}><div style={{fontWeight:600,color:"#212529",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240,cursor:"pointer"}} title={mr.title} onClick={()=>onDetail(mr)}>{mr.title}</div></td>
-                    <td style={{padding:"14px 16px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:30,height:30,borderRadius:"50%",background:aCol.bg,color:aCol.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{getInitials(mr.author)}</span><span style={{color:"#495057",fontSize:13,whiteSpace:"nowrap"}}>{mr.author||"Unknown"}</span></div></td>
+                    <td style={{padding:"14px 16px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{width:30,height:30,borderRadius:"50%",background:aCol.bg,color:aCol.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{getInitials(mr.author)}</span>
+                        <div style={{display:"flex",flexDirection:"column"}}>
+                          <span style={{color:"#495057",fontSize:13,whiteSpace:"nowrap",fontWeight:600}}>{mr.author||"Unknown"}</span>
+                          <div style={{display: "flex", gap: "4px", marginTop: "2px", flexWrap: "wrap"}}>
+                            {mr.reviewer && <span style={{fontSize:10,color:"#e8ecf8",background:"#405189",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Rev: {mr.reviewer}</span>}
+                            {mr.assignee && mr.assignee !== mr.reviewer && <span style={{fontSize:10,color:"#1a6fa3",background:"#d7edf9",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Assig: {mr.assignee}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
                     <td style={{padding:"14px 16px"}}><span style={{color:"#6c757d",fontSize:13,whiteSpace:"nowrap"}}><i className="ri-folder-3-line me-1" style={{color:"#878a99"}}></i>{mr.project||"Unknown"}</span></td>
                     <td style={{padding:"14px 16px"}}><span style={{background:cfg.bg,color:cfg.color,borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><i className={cfg.icon}></i>{cfg.label}</span></td>
                     <td style={{padding:"14px 16px"}}>{isApproved?<span style={{background:"#d7edf9",color:"#1a6fa3",borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5}}><i className="ri-shield-check-line"></i>Yes</span>:<span style={{color:"#c8cbcf",fontSize:18}}>—</span>}</td>
+                    
+                    {/* Colonne COMMS (Commentaires) */}
+                    <td style={{padding:"14px 16px"}}>
+                      <div className="d-flex align-items-center gap-1">
+                        <i className="ri-chat-1-line text-muted"></i>
+                        <span style={{fontWeight: 600, color: (mr.user_notes_count > 0 ? "#405189" : "#adb5bd")}}>
+                          {mr.user_notes_count || 0}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Colonne COMMITS */}
+                    <td style={{padding:"14px 16px"}}>
+                      <div className="d-flex align-items-center gap-1">
+                        <i className="ri-git-commit-line text-muted"></i>
+                        <span style={{fontWeight: 600, color: (mr.commits_count > 0 ? "#212529" : "#adb5bd")}}>
+                          {mr.commits_count || 0}
+                        </span>
+                      </div>
+                    </td>
                     {/* Colonne REVUE — exact ou proxy Lead Time (DORA) */}
                     {(() => {
                       const rt = reviewTime(mr);
@@ -394,7 +516,7 @@ function MRTable({ mrs, onDetail }) {
                       return (
                         <td style={{padding:"14px 16px"}}>
                           <span style={{fontSize:12,fontWeight:600,color}} title={rt.isExact ? "Temps d'approbation exact" : "Lead Time (proxy DORA) : merged_at − created_at"}>
-                            {rt.isExact ? "" : "~"}{rt.hours === 0 ? "Instant" : `${rt.hours}h`}
+                            {rt.isExact ? "" : "~"}{rt.hours === 0 ? "Instant" : `${rt.hours.toFixed(1)}h`}
                           </span>
                           {!rt.isExact && (
                             <span style={{marginLeft:4,fontSize:10,color:"#adb5bd"}} title="Lead Time approximé">ⓘ</span>
@@ -402,7 +524,16 @@ function MRTable({ mrs, onDetail }) {
                         </td>
                       );
                     })()}
-                    <td style={{padding:"14px 16px",whiteSpace:"nowrap"}}><span style={{color:"#878a99",fontSize:12.5}}><i className="ri-time-line me-1"></i>{timeSince(mr.created_at_gitlab)}</span><br/><span style={{color:"#adb5bd",fontSize:11}}>{fmtDate(mr.created_at_gitlab)}</span></td>
+                    <td style={{padding:"14px 16px",whiteSpace:"nowrap"}}>
+                      <div className="d-flex flex-column">
+                        <span style={{color:"#495057",fontSize:12.5,fontWeight:600}}><i className="ri-calendar-line me-1 text-muted"></i>{fmtDate(mr.created_at_gitlab)}</span>
+                        {mr.updated_at_gitlab && (
+                          <span style={{color:"#878a99",fontSize:11,marginTop:2}} title="Dernière activité détectée">
+                            <i className="ri-history-line me-1"></i>Actif: {fmtDate(mr.updated_at_gitlab)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={{padding:"14px 16px"}}><button onClick={()=>onDetail(mr)} className="btn btn-sm btn-soft-primary" style={{fontSize:11,padding:"3px 10px"}}><i className="ri-eye-line"></i></button></td>
                   </tr>
                 );
@@ -428,36 +559,96 @@ function MRTable({ mrs, onDetail }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+const INITIAL_FILTERS={search:"", lot: "all", state:"all",project:"all",author:"all",approved:"all",dateFrom:"",dateTo:""};
+
 export default function MergePage() {
   const [allMrs,   setAllMrs]   = useState([]);
+  const [projects, setProjects]  = useState([]); 
+  const [lots,     setLots]      = useState([]);    
   const [loading,  setLoading]  = useState(true);
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState({
+    ...INITIAL_FILTERS,
+    project: searchParams.get("project_id") || searchParams.get("project") || "all",
+    lot: searchParams.get("lot_id") || "all"
+  });
   const [error,    setError]    = useState(null);
-  const [filters,  setFilters]  = useState(INITIAL_FILTERS);
   const [detailMr, setDetailMr] = useState(null);
   const [spinning, setSpinning] = useState(false);
+
+  useEffect(() => {
+    api.get("/projects/").then(res => {
+      const p = Array.isArray(res.data)?res.data:(res.data?.items??[]);
+      setProjects(p);
+    });
+  }, []);
+
+  useEffect(() => {
+    const fetchLots = async () => {
+      try {
+        let url = "/extraction-lots";
+        if (filters.project !== "all") {
+          const proj = projects.find(p => p.name === filters.project);
+          if (proj) url += `?project_id=${proj.id}`;
+        }
+        const res = await api.get(url);
+        setLots(res.data || []);
+      } catch (err) {
+        console.error("Erreur lors du chargement des lots:", err);
+        setLots([]);
+      }
+    };
+    fetchLots();
+  }, [filters.project, projects]);
 
   const load = useCallback(async()=>{
     setLoading(true); setSpinning(true);
     try {
-      const res=await api.get("/projects/");
-      const projects=Array.isArray(res.data)?res.data:(res.data?.items??[]);
+      const res = await api.get("/projects/");
+      const projs = Array.isArray(res.data)?res.data:(res.data?.items??[]);
+      setProjects(projs);
+      
       const collected=[];
-      for(const project of projects){
+      for(const project of projs){
+        // Isolation par projet
+        if (filters.project !== "all" && project.name !== filters.project) continue;
+
         try {
-          const mrRes=await api.get(`/projects/${project.id}/merge-requests`,{params:{exclude_draft:false}});
+          const params = { exclude_draft: false };
+          // Isolation par lot
+          if (filters.lot !== "all") params.lot_id = filters.lot;
+
+          const mrRes=await api.get(`/projects/${project.id}/merge-requests`, { params });
           const data=Array.isArray(mrRes.data)?mrRes.data:(mrRes.data?.items??[]);
-          data.forEach(mr=>collected.push({...mr,project:project.name,author:mr.developer?.name||mr.developer?.gitlab_username||mr.author_name||"Unknown"}));
+          
+          data.forEach(mr=>collected.push({
+            ...mr,
+            project:project.name,
+            author:mr.developer?.name||mr.developer?.gitlab_username||mr.author_name||"Unknown",
+            updated_at_gitlab: mr.updated_at_gitlab,
+            reviewer:mr.reviewer?.name||mr.reviewer?.gitlab_username||null,
+            assignee:mr.assignee?.name||mr.assignee?.gitlab_username||null
+          }));
         } catch { /* projet sans MRs */ }
       }
       setAllMrs(collected); setError(null);
     } catch { setError("Impossible de charger les merge requests."); }
     finally { setLoading(false); setSpinning(false); }
-  },[]);
+  }, [filters.project, filters.lot]);
+
 
   useEffect(()=>{ load(); },[load]);
 
   const projectList=useMemo(()=>[...new Set(allMrs.map(m=>m.project).filter(Boolean))].sort(),[allMrs]);
-  const authorList =useMemo(()=>[...new Set(allMrs.map(m=>m.author).filter(Boolean))].sort(),[allMrs]);
+  const authorList = useMemo(() => {
+    const symbols = new Set();
+    allMrs.forEach(m => {
+      if (m.author) symbols.add(m.author);
+      if (m.reviewer) symbols.add(m.reviewer);
+      if (m.assignee) symbols.add(m.assignee);
+    });
+    return Array.from(symbols).filter(Boolean).sort();
+  }, [allMrs]);
 
   const activeFilterCount=useMemo(()=>Object.entries(filters).filter(([,v])=>v!==""&&v!=="all").length,[filters]);
 
@@ -465,7 +656,17 @@ export default function MergePage() {
     return allMrs.filter(mr=>{
       if(filters.state!=="all"&&mr.state!==filters.state)return false;
       if(filters.project!=="all"&&mr.project!==filters.project)return false;
-      if(filters.author!=="all"&&mr.author!==filters.author)return false;
+      
+      // ✅ FILTRE INCLUSIF (Auteur OR Reviewer OR Assignee)
+      if (filters.author !== "all") {
+        const target = filters.author.toLowerCase().trim();
+        const aut = (mr.author || "").toLowerCase();
+        const rev = (mr.reviewer || "").toLowerCase();
+        const ass = (mr.assignee || "").toLowerCase();
+        
+        if (!aut.includes(target) && !rev.includes(target) && !ass.includes(target)) return false;
+      }
+
       if(filters.approved==="yes"&&!(mr.approved===true||mr.approved===1))return false;
       if(filters.approved==="no"&&(mr.approved===true||mr.approved===1))return false;
       if(filters.search){const q=filters.search.toLowerCase();if(!mr.title?.toLowerCase().includes(q)&&!mr.author?.toLowerCase().includes(q)&&!mr.project?.toLowerCase().includes(q))return false;}
@@ -517,7 +718,7 @@ export default function MergePage() {
         </div>
       </div>
 
-      <FilterBar filters={filters} onChange={setFilter} projects={projectList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)}/>
+      <FilterBar filters={filters} onChange={setFilter} projects={projectList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots}/>
 
       <div className="row">
         <KPICard icon="ri-git-pull-request-line" label="Total MRs"   value={kpis.total}  bg="#e8ecf8" color="#405189" sub={`${kpis.mergeRate}% merge rate`}/>
@@ -527,7 +728,12 @@ export default function MergePage() {
         {kpis.avgReview&&<KPICard icon="ri-timer-line" label="Moy. Revue" value={`${kpis.avgReview}h`} bg="#ede9fb" color="#5b21b6" sub="Temps d'approbation"/>}
       </div>
 
-      <div className="row"><div className="col-xl-4"><StatusDonut opened={kpis.opened} merged={kpis.merged} closed={kpis.closed}/></div><div className="col-xl-8"><TopContributors mrs={filtered}/></div></div>
+      <div className="row">
+        <div className="col-xl-4"><StatusDonut opened={kpis.opened} merged={kpis.merged} closed={kpis.closed}/></div>
+        <div className="col-xl-8">
+          <TopContributors mrs={filtered} selectedAuthor={filters.author} />
+        </div>
+      </div>
       <div className="row"><div className="col-12"><MRTable mrs={filtered} onDetail={setDetailMr}/></div></div>
       <div className="row"><div className="col-12"><ProjectsBreakdown mrs={filtered}/></div></div>
     </div>

@@ -39,16 +39,24 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         project_id: int,
         limit:      int = 50,
         offset:     int = 0,
+        lot_id:     Optional[int] = None,
     ) -> List[MergeRequest]:
-        return (
+        query = (
             db.query(MergeRequest)
             .options(joinedload(MergeRequest.developer))
             .filter(MergeRequest.project_id == project_id)
+        )
+        if lot_id is not None:
+            query = query.filter(MergeRequest.extraction_lot_id == lot_id)
+
+        return (
+            query
             .order_by(MergeRequest.created_at_gitlab.desc())
             .limit(limit)
             .offset(offset)
             .all()
         )
+
 
     def count_by_project(self, db: Session, project_id: int) -> int:
         return (

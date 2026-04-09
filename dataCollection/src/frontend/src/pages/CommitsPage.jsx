@@ -601,44 +601,77 @@ export default function CommitsPage() {
 
   const [projects,           setProjects]         = useState([]);
   const [selectedProjectId,  setSelectedProjectId] = useState(null);
+  const [lots,               setLots]              = useState([]);        // [NEW] Sessions d'extraction
+  const [selectedLotId,      setSelectedLotId]    = useState("");      // [NEW] Lot sélectionné
   const [commits,            setCommits]           = useState([]);
   const [loading,            setLoading]           = useState(false);
   const [error,              setError]             = useState(null);
   const [search,             setSearch]            = useState("");
   const [siteFilter,         setSiteFilter]        = useState("all");
-  const [sortKey,            setSortKey]           = useState("date");   // [NEW]
+  const [sortKey,            setSortKey]           = useState("date");   
   const [page,               setPage]              = useState(1);
   const [detailCommit,       setDetailCommit]      = useState(null);
   const perPage = 8;
+
+  const isInitialized = useRef(false);
 
   // Chargement projets
   useEffect(() => {
     projectService.getAll()
       .then((data) => {
         setProjects(data);
-        const urlId   = searchParams.get("project_id");
-        const firstId = urlId ? parseInt(urlId) : data[0]?.id;
-        if (firstId) setSelectedProjectId(firstId);
+        const urlProjId = searchParams.get("project_id");
+        const urlLotId  = searchParams.get("lot_id");
+        
+        const firstProjId = urlProjId ? parseInt(urlProjId) : data[0]?.id;
+        if (firstProjId) setSelectedProjectId(firstProjId);
+        if (urlLotId)    setSelectedLotId(urlLotId);
       })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); 
 
-  // [FIX] useCallback — référence stable entre les renders
-  const loadCommits = useCallback((projectId) => {
+  // [NEW] Charger les lots quand le projet change
+  useEffect(() => {
+    if (selectedProjectId) {
+      api.get(`/extraction-lots?project_id=${selectedProjectId}`)
+        .then(res => setLots(res.data || []))
+        .catch(() => setLots([]));
+    } else {
+      setLots([]);
+    }
+
+    // On ne reset le lot que si ce n'est pas l'initialisation depuis l'URL
+    if (isInitialized.current) {
+        setSelectedLotId(""); 
+    } else if (selectedProjectId !== null) {
+        isInitialized.current = true;
+    }
+  }, [selectedProjectId]);
+
+
+  // [FIX] loadCommits — inclut maintenant lotId
+  const loadCommits = useCallback((projectId, lotId) => {
     if (!projectId) return;
     setLoading(true);
     setError(null);
     setPage(1);
-    api.get(`/projects/${projectId}/commits`)
+    
+    const params = {};
+    if (lotId) params.lot_id = lotId;
+
+    api.get(`/projects/${projectId}/commits`, { params })
       .then((res) => {
         const data = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
         setCommits(data);
       })
-      .catch(() => setError("Aucun commit trouvé. Lancez une extraction d'abord."))
+      .catch(() => setError("Aucun commit trouvé pour cette session."))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { loadCommits(selectedProjectId); }, [selectedProjectId, loadCommits]);
+  useEffect(() => { 
+    loadCommits(selectedProjectId, selectedLotId); 
+  }, [selectedProjectId, selectedLotId, loadCommits]);
+
 
   // [FIX] useMemo remplace useEffect + setState sur le filtre — plus de state dérivé
   const filtered = useMemo(() => {
@@ -735,6 +768,21 @@ export default function CommitsPage() {
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
+
+          {/* [NEW] Sélecteur de Lot */}
+          <div className="col-sm-auto">
+            <select className="form-select" style={{ width: 230 }}
+              value={selectedLotId}
+              onChange={(e) => setSelectedLotId(e.target.value)}>
+              <option value="">Toutes les extractions</option>
+              {lots.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.extraction_type} - {l.period?.name || `Lot #${l.id}`} ({new Date(l.created_at).toLocaleDateString()})
+                </option>
+              ))}
+            </select>
+          </div>
+
 
           {sites.length > 0 && (
             <div className="col-sm-auto">

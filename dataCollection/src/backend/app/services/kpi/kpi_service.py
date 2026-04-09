@@ -4,7 +4,7 @@ services/kpi/kpi_service.py
 """
 import logging
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional, Any, Dict
 
 from sqlalchemy.orm import Session
 
@@ -30,8 +30,8 @@ class KpiService:
         lot_id:       int,
         site_id:      Optional[int] = None,
         group_id:     Optional[int] = None,
-        developer_id: Optional[int] = None,
-    ) -> KpiSnapshot:
+        developer_ids: Optional[List[int]] = None,
+    ) -> None:
 
         period_repo   = PeriodRepository()
         snapshot_repo = KpiSnapshotRepository()
@@ -48,32 +48,45 @@ class KpiService:
         )
 
         calculator = KpiCalculator(db)
-        metrics    = calculator.calculate_project_kpis(
-            project_id = project_id,
-            start_date = start_dt,
-            end_date   = end_dt,
-            site_id    = site_id,
-        )
+        
+        # Liste des cibles à calculer (individuels + agrégat projet)
+        targets = []
+        if developer_ids:
+            # Mode ciblé : On calcule les KPIs pour chaque développeur de la liste
+            for d_id in developer_ids:
+                targets.append({"developer_id": d_id})
+        else:
+            # Mode global : On calcule l'agrégat du projet
+            targets.append({"developer_id": None})
 
-        # Nettoyage des clés non persistables (calculées par KpiCalculator)
-        excluded = {"period_start", "period_end", "site_id", "project_id"}
-        data = {k: v for k, v in metrics.items() if k not in excluded}
+        for target in targets:
+            dev_id = target["developer_id"]
+            
+            metrics = calculator.calculate_project_kpis(
+                project_id   = project_id,
+                start_date   = start_dt,
+                end_date     = end_dt,
+                site_id      = site_id,
+                developer_id = dev_id,
+            )
 
-        # Clés FK
-        data["project_id"]    = project_id
-        data["period_id"]     = period_id
-        data["lot_id"]        = lot_id
-        data["site_id"]       = site_id
-        data["group_id"]      = group_id
-        data["developer_id"]  = developer_id
-        # ✅ FIX : début de la période, pas date.today()
-        # Cohérent avec KpiAggregator._upsert_snapshot()
-        data["snapshot_date"] = date(period.year, period.month, 1)
+            # Nettoyage des clés non persistables
+            excluded = {"period_start", "period_end", "site_id", "project_id"}
+            data = {k: v for k, v in metrics.items() if k not in excluded}
 
-        snapshot = snapshot_repo.upsert(db, data)
-        db.flush()
+            # Clés FK
+            data["project_id"]    = project_id
+            data["period_id"]     = period_id
+            data["lot_id"]        = lot_id
+            data["site_id"]       = site_id
+            data["group_id"]      = group_id
+            data["developer_id"]  = dev_id
+            data["snapshot_date"] = date(period.year, period.month, 1)
+
+            snapshot = snapshot_repo.upsert(db, data)
+            logger.info(f"KpiSnapshot saved — lot={lot_id} dev={dev_id} project={project_id}")
+
         db.commit()
-        db.refresh(snapshot)
 
         logger.info(
             f"KpiSnapshot saved — lot_id={lot_id} project_id={project_id} "

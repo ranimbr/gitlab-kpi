@@ -1,474 +1,318 @@
 /**
- * pages/LandingPage.jsx — Enterprise Edition + Présence Internationale
+ * LandingPage.jsx — TELNET COMMAND · v3
  *
- * Design direction : "Orbital Command" — dark-space premium,
- * canvas particle network, animated KPI mockup, kinetic typography,
- * 3D tilt cards, custom cursor, live data ticker, world map section.
- *
- * Fonts : Syne (display) + DM Mono (data) + Plus Jakarta Sans (body)
- * Color  : #040912 base · #1A56FF primary · #F59E0B gold · #10B981 green
+ * Améliorations vs v2 :
+ *   · CSS Variables système — cohérence totale sur toute la page
+ *   · Navbar : frosted glass plus raffiné + logo agrandi
+ *   · Hero  : shimmer animé sur les lignes H1 (gradient clip text en mouvement)
+ *             + badge "New" sur le bouton CTA
+ *   · KPI Mockup : redesigné avec onglets actifs + barre de progression live
+ *   · Feature cards : ligne de couleur en bas au hover (accent progressif)
+ *                     + numéro de feature en superposition stylisée
+ *   · World Map (présence internationale) : sidebar plus dense + dot animé HQ
+ *   · Section stats : border-top accent bleu sur chaque stat block au hover
+ *   · Scroll reveal amélioré (stagger sur les cards)
+ *   · Architecture strip : nodes connectés par des arrows stylisées
+ *   · Footer redesigné avec grid et liens
+ *   · Three.js ThreeHeroNetwork : conservé, opacité ajustée
+ *   · react-simple-maps world map : conservé
  */
-
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  Marker,
-  Line
-} from "react-simple-maps";
+import { ComposableMap, Geographies, Geography, Marker, Line } from "react-simple-maps";
+import ThreeHeroNetwork from "../components/three/ThreeHeroNetwork";
 
-const FONT_HREF =
-  "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap";
+const FONTS = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap";
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CANVAS PARTICLE NETWORK
-// ─────────────────────────────────────────────────────────────────────────────
-function ParticleCanvas() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    let raf;
-    let mouse = { x: null, y: null };
-    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
-    resize();
-    window.addEventListener("resize", resize);
-    window.addEventListener("mousemove", e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-    const N = Math.min(70, Math.floor(window.innerWidth / 22));
-    const nodes = Array.from({ length: N }, () => ({
-      x: Math.random() * canvas.width, y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35,
-      r: Math.random() * 1.8 + 0.6,
-    }));
-    const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (mouse.x) {
-        nodes.forEach(n => {
-          const dx = mouse.x - n.x, dy = mouse.y - n.y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < 180) { n.vx += (dx / d) * 0.012; n.vy += (dy / d) * 0.012; }
-        });
-      }
-      nodes.forEach(n => {
-        n.x += n.vx; n.y += n.vy;
-        n.vx *= 0.992; n.vy *= 0.992;
-        if (n.x < 0) n.x = canvas.width; if (n.x > canvas.width) n.x = 0;
-        if (n.y < 0) n.y = canvas.height; if (n.y > canvas.height) n.y = 0;
-      });
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < 160) {
-            ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y);
-            ctx.strokeStyle = `rgba(26,86,255,${0.18 * (1 - d / 160)})`; ctx.lineWidth = 0.7; ctx.stroke();
-          }
-        }
-      }
-      nodes.forEach(n => { ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fillStyle = "rgba(26,86,255,0.55)"; ctx.fill(); });
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
-  }, []);
-  return <canvas ref={ref} style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", opacity: 0.85 }} />;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CUSTOM CURSOR
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Custom Cursor ─────────────────────────────────────────────────────────────
 function CustomCursor() {
   const dot = useRef(null), ring = useRef(null);
-  const pos = useRef({ x: -100, y: -100 }), ring_pos = useRef({ x: -100, y: -100 });
+  const pos = useRef({ x: -100, y: -100 }), rp = useRef({ x: -100, y: -100 });
   useEffect(() => {
-    const move = e => { pos.current = { x: e.clientX, y: e.clientY }; };
-    window.addEventListener("mousemove", move);
+    const mv = e => { pos.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("mousemove", mv);
     let raf;
-    const animate = () => {
-      ring_pos.current.x += (pos.current.x - ring_pos.current.x) * 0.12;
-      ring_pos.current.y += (pos.current.y - ring_pos.current.y) * 0.12;
-      if (dot.current) dot.current.style.transform = `translate(${pos.current.x - 4}px, ${pos.current.y - 4}px)`;
-      if (ring.current) ring.current.style.transform = `translate(${ring_pos.current.x - 18}px, ${ring_pos.current.y - 18}px)`;
-      raf = requestAnimationFrame(animate);
+    const anim = () => {
+      rp.current.x += (pos.current.x - rp.current.x) * 0.12;
+      rp.current.y += (pos.current.y - rp.current.y) * 0.12;
+      if (dot.current) dot.current.style.transform = `translate(${pos.current.x - 4}px,${pos.current.y - 4}px)`;
+      if (ring.current) ring.current.style.transform = `translate(${rp.current.x - 18}px,${rp.current.y - 18}px)`;
+      raf = requestAnimationFrame(anim);
     };
-    animate();
-    const over = () => ring.current && ring.current.classList.add("cursor-hover");
-    const out = () => ring.current && ring.current.classList.remove("cursor-hover");
-    document.querySelectorAll("a, button").forEach(el => { el.addEventListener("mouseenter", over); el.addEventListener("mouseleave", out); });
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("mousemove", move); };
+    anim();
+    const over = () => ring.current?.classList.add("c-hover");
+    const out  = () => ring.current?.classList.remove("c-hover");
+    document.querySelectorAll("a,button").forEach(el => { el.addEventListener("mouseenter", over); el.addEventListener("mouseleave", out); });
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("mousemove", mv); };
   }, []);
-  return (<><div ref={dot} className="cursor-dot" /><div ref={ring} className="cursor-ring" /></>);
+  return (<><div ref={dot} className="c-dot" /><div ref={ring} className="c-ring" /></>);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  COUNTER ANIMATION HOOK
-// ─────────────────────────────────────────────────────────────────────────────
-function useCounter(target, duration = 1800) {
-  const [value, setValue] = useState(0);
+// ─── Counter Hook ──────────────────────────────────────────────────────────────
+function useCounter(target, dur = 1800) {
+  const [val, setVal] = useState(0);
   const ref = useRef(null);
   useEffect(() => {
     const obs = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return;
-      obs.disconnect();
-      const start = performance.now();
-      const tick = now => {
-        const p = Math.min((now - start) / duration, 1);
-        setValue(Math.round((1 - Math.pow(1 - p, 3)) * target));
-        if (p < 1) requestAnimationFrame(tick);
-      };
+      if (!e.isIntersecting) return; obs.disconnect();
+      const s = performance.now();
+      const tick = n => { const p = Math.min((n - s) / dur, 1); setVal(Math.round((1 - Math.pow(1 - p, 3)) * target)); if (p < 1) requestAnimationFrame(tick); };
       requestAnimationFrame(tick);
     }, { threshold: 0.3 });
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
-  }, [target, duration]);
-  return [ref, value];
+  }, [target, dur]);
+  return [ref, val];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  ANIMATED KPI MOCKUP
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Reveal Hook ───────────────────────────────────────────────────────────────
+function useReveal(delay = 0) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) {
+        setTimeout(() => { e.target.classList.add("visible"); }, delay);
+        obs.disconnect();
+      }
+    }, { threshold: 0.1 });
+    if (ref.current) obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [delay]);
+  return ref;
+}
+
+// ─── Tilt Card ────────────────────────────────────────────────────────────────
+function TiltCard({ children, className = "" }) {
+  const ref = useRef(null);
+  const mv = useCallback(e => {
+    const el = ref.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width - 0.5) * 18;
+    const y = ((e.clientY - r.top) / r.height - 0.5) * -18;
+    el.style.transform = `perspective(700px) rotateX(${y}deg) rotateY(${x}deg) scale(1.02)`;
+    el.style.boxShadow = `${-x}px ${y}px 32px rgba(26,86,255,.14)`;
+  }, []);
+  const out = useCallback(() => { const el = ref.current; if (!el) return; el.style.transform = ""; el.style.boxShadow = ""; }, []);
+  return <div ref={ref} className={`tilt ${className}`} onMouseMove={mv} onMouseLeave={out}>{children}</div>;
+}
+
+// ─── Live Ticker ──────────────────────────────────────────────────────────────
+function Ticker() {
+  const items = ["MR Rate Tunis ↑ 96.4%","Commit Rate Paris → 4.8/day","Review Time ↓ 10.2h","Merge Success Lyon 98.1%","Devs actifs 147","Alertes KPI 3","Extraction GitLab ✓ 2min","Projets actifs 23","Vélocité globale ↑ 12%","Sfax onboarding 11 devs"];
+  return (
+    <div className="ticker">
+      <div className="ticker-tag">LIVE</div>
+      <div className="ticker-track">
+        <div className="ticker-inner">
+          {[...items, ...items].map((t, i) => <span key={i} className="ticker-item"><span className="ticker-dot" />{t}</span>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── KPI Mockup (improved) ────────────────────────────────────────────────────
 function KpiMockup() {
   const [tick, setTick] = useState(0);
-  useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 2200); return () => clearInterval(id); }, []);
+  const [tab, setTab]   = useState(0);
+
+  useEffect(() => { const id = setInterval(() => setTick(t => (t + 1) % 3), 2400); return () => clearInterval(id); }, []);
+
   const metrics = [
-    { label: "MR Rate", value: ["94.2%", "96.1%", "93.8%"][tick % 3], up: true, color: "#10B981" },
-    { label: "Review Time", value: ["11.4h", "10.9h", "12.1h"][tick % 3], up: false, color: "#F59E0B" },
-    { label: "Merge Success", value: ["97.3%", "98.0%", "96.7%"][tick % 3], up: true, color: "#1A56FF" },
-    { label: "Commit Rate", value: ["4.2/d", "4.6/d", "3.9/d"][tick % 3], up: true, color: "#A78BFA" },
+    { l: "MR Rate",       v: ["94.2%","96.1%","93.8%"][tick], up: true,  c: "#10B981" },
+    { l: "Review Time",   v: ["11.4h","10.9h","12.1h"][tick], up: false, c: "#F59E0B" },
+    { l: "Merge Success", v: ["97.3%","98.0%","96.7%"][tick], up: true,  c: "#1A56FF" },
+    { l: "Commit Rate",   v: ["4.2/d","4.6/d","3.9/d"][tick], up: true,  c: "#A78BFA" },
   ];
-  const sparkPoints = (seed) => Array.from({ length: 12 }, (_, i) => {
+
+  const spark = seed => Array.from({ length: 12 }, (_, i) => {
     const x = i * (200 / 11);
     const y = 40 - (Math.sin(i * 0.9 + seed) * 14 + Math.cos(i * 0.5 + seed * 2) * 8);
     return `${x},${y}`;
   }).join(" ");
+
+  const bars = [58, 72, 45, 88, 62, 95, 51, 80];
+
   return (
-    <div className="kpi-mockup-shell">
-      <div className="km-topbar">
-        <div className="km-dots"><span className="km-dot" style={{ background: "#FF5F57" }} /><span className="km-dot" style={{ background: "#FFBD2E" }} /><span className="km-dot" style={{ background: "#28CA41" }} /></div>
-        <div className="km-title">Dashboard KPI · GitLab</div>
-        <div className="km-live"><span className="km-live-dot" />LIVE</div>
+    <div className="mock">
+      
+
+      {/* Tabs */}
+      <div className="mock-tabs">
+        {["Aperçu","Commits","MR Flow"].map((t, i) => (
+          <button key={i} className={`mock-tab ${tab === i ? "mock-tab-on" : ""}`} onClick={() => setTab(i)}>{t}</button>
+        ))}
       </div>
-      <div className="km-cards">
+
+      {/* KPI Cards */}
+      <div className="mock-cards">
         {metrics.map((m, i) => (
-          <div key={i} className="km-card" style={{ "--accent": m.color }}>
-            <div className="km-card-label">{m.label}</div>
-            <div className="km-card-value" style={{ color: m.color }}>{m.value}</div>
-            <svg viewBox="0 0 200 50" className="km-spark" preserveAspectRatio="none">
-              <defs><linearGradient id={`sg${i}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={m.color} stopOpacity="0.3" /><stop offset="100%" stopColor={m.color} stopOpacity="0" /></linearGradient></defs>
-              <polygon points={sparkPoints(i + tick * 0.2) + " 200,50 0,50"} fill={`url(#sg${i})`} />
-              <polyline points={sparkPoints(i + tick * 0.2)} fill="none" stroke={m.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <div key={i} className="mock-card">
+            <div className="mock-card-lbl">{m.l}</div>
+            <div className="mock-card-val" style={{ color: m.c }}>{m.v}</div>
+            <svg viewBox="0 0 200 50" className="mock-spark" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id={`g${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={m.c} stopOpacity=".3" /><stop offset="100%" stopColor={m.c} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <polygon points={spark(i + tick * 0.22) + " 200,50 0,50"} fill={`url(#g${i})`} />
+              <polyline points={spark(i + tick * 0.22)} fill="none" stroke={m.c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <div className="km-card-delta" style={{ color: m.up ? "#10B981" : "#F59E0B" }}>
-              <i className={`ri-arrow-${m.up ? "up" : "down"}-s-fill`} />{m.up ? "+2.4%" : "-1.1%"}
+            <div className="mock-delta" style={{ color: m.up ? "#10B981" : "#F59E0B" }}>
+              <i className={`ri-arrow-${m.up ? "up" : "down"}-s-fill`} />{m.up ? "+2.4%" : "−1.1%"}
             </div>
           </div>
         ))}
       </div>
-      <div className="km-chart-area">
-        <div className="km-chart-header">
-          <span className="km-chart-title">Vélocité Multi-Sites · 30 jours</span>
-          <div style={{ display: "flex", gap: 12 }}>
-            {["Tunis", "Lyon", "Paris"].map((s, i) => (
-              <span key={i} className="km-legend">
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: ["#1A56FF", "#10B981", "#F59E0B"][i], display: "inline-block", marginRight: 4 }} />{s}
-              </span>
-            ))}
+
+      {/* Bar chart */}
+      <div className="mock-chart">
+        <div className="mock-chart-hd">
+          <span className="mock-chart-lbl">Vélocité équipes · 8 semaines</span>
+          <div className="mock-legend">
+            {["Tunis","Lyon","Paris"].map((s,i) => <span key={i} className="mock-leg"><span style={{background:["#1A56FF","#10B981","#F59E0B"][i]}}/>{s}</span>)}
           </div>
         </div>
-        <svg viewBox="0 0 600 140" className="km-main-chart" preserveAspectRatio="none">
-          {[0, 35, 70, 105, 140].map(y => <line key={y} x1="0" y1={y} x2="600" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />)}
-          {[
-            { d: "M0,90 C60,70 120,40 180,55 S300,30 360,45 S480,20 600,35", c: "#1A56FF" },
-            { d: "M0,110 C60,90 120,75 180,80 S300,60 360,70 S480,50 600,55", c: "#10B981" },
-            { d: "M0,120 C60,105 120,95 180,100 S300,80 360,90 S480,70 600,75", c: "#F59E0B" },
-          ].map((l, i) => (
-            <g key={i}><path d={l.d} fill="none" stroke={l.c} strokeWidth="2" strokeLinecap="round" className="chart-draw" style={{ animationDelay: `${i * 0.3}s` }} /></g>
-          ))}
-        </svg>
+        <div className="mock-bars">
+          {bars.map((h, i) => {
+            const animated = h + Math.sin(tick * 0.8 + i * 0.7) * 6;
+            const colors = ["#1A56FF","#1A56FF","#10B981","#10B981","#F59E0B","#F59E0B","#1A56FF","#10B981"];
+            return (
+              <div key={i} className="mock-bar-col">
+                <div className="mock-bar-fill" style={{ height: `${Math.min(animated, 100)}%`, background: `linear-gradient(to top, ${colors[i]}, ${colors[i]}99)` }} />
+                <span className="mock-bar-lbl">{["S1","S2","S3","S4","S5","S6","S7","S8"][i]}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
-      <div className="km-footer-row">
-        {["Sites actifs", "Devs validés", "MRs ce mois", "Alertes"].map((lbl, i) => (
-          <div key={i} className="km-footer-stat">
-            <span className="km-fs-val">{["12", "147", "2.4k", "3"][i]}</span>
-            <span className="km-fs-lbl">{lbl}</span>
+
+      {/* Footer */}
+      <div className="mock-foot">
+        {[["12","Sites actifs"],["147","Devs validés"],["2.4k","MRs/mois"],["3","Alertes"]].map(([v,l],i) => (
+          <div key={i} className="mock-fs">
+            <span className="mock-fv">{v}</span>
+            <span className="mock-fl">{l}</span>
           </div>
         ))}
       </div>
-      <div className="km-scanline" />
+      <div className="mock-scanline" />
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  LIVE DATA TICKER
-// ─────────────────────────────────────────────────────────────────────────────
-function DataTicker() {
-  const items = ["MR Rate Tunis ↑ 96.4%", "Commit Rate Paris → 4.8/day", "Code Review Time ↓ 10.2h", "Merge Success Lyon 98.1%", "Active Devs 147", "Alertes KPI 3", "Extraction GitLab ✓ 2min ago", "Projets actifs 23", "Vélocité globale ↑ 12%"];
-  return (
-    <div className="ticker-wrap">
-      <div className="ticker-label">LIVE</div>
-      <div className="ticker-track">
-        <div className="ticker-inner">
-          {[...items, ...items].map((it, i) => <span key={i} className="ticker-item"><span className="ticker-dot" />{it}</span>)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  3D TILT CARD
-// ─────────────────────────────────────────────────────────────────────────────
-function TiltCard({ children, className = "" }) {
-  const ref = useRef(null);
-  const onMove = useCallback(e => {
-    const el = ref.current; if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 22;
-    const y = ((e.clientY - rect.top) / rect.height - 0.5) * -22;
-    el.style.transform = `perspective(700px) rotateX(${y}deg) rotateY(${x}deg) scale(1.03)`;
-    el.style.boxShadow = `${-x * 1.2}px ${y * 1.2}px 40px rgba(26,86,255,0.18)`;
-  }, []);
-  const onLeave = useCallback(() => {
-    const el = ref.current; if (!el) return;
-    el.style.transform = "perspective(700px) rotateX(0) rotateY(0) scale(1)";
-    el.style.boxShadow = "";
-  }, []);
-  return <div ref={ref} className={`tilt-card ${className}`} onMouseMove={onMove} onMouseLeave={onLeave}>{children}</div>;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  STAT BLOCK
-// ─────────────────────────────────────────────────────────────────────────────
-function StatBlock({ target, suffix = "", label }) {
-  const [ref, value] = useCounter(target);
-  return (
-    <div ref={ref} className="stat-block">
-      <div className="stat-number">{value.toLocaleString("fr-FR")}<span className="stat-suffix">{suffix}</span></div>
-      <div className="stat-label">{label}</div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  REVEAL SECTION HOOK
-// ─────────────────────────────────────────────────────────────────────────────
-function useReveal() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { e.target.classList.add("revealed"); obs.disconnect(); }
-    }, { threshold: 0.12 });
-    if (ref.current) obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, []);
-  return ref;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  WORLD MAP — PRÉSENCE INTERNATIONALE
-// ─────────────────────────────────────────────────────────────────────────────
-const PRESENCE_SITES = [
-  { name: "Tunisie",        coordinates: [10.18, 36.81],  hq: true,  devs: 147, projects: 23, status: "Siège social" },
-  { name: "France",         coordinates: [2.35, 48.86],   hq: false, devs: 42,  projects: 8,  status: "R&D Lyon · Paris" },
-  { name: "Allemagne",      coordinates: [13.41, 52.52],  hq: false, devs: 18,  projects: 4,  status: "Engineering Hub" },
-  { name: "Arabie Saoudite",coordinates: [46.68, 24.71],  hq: false, devs: 24,  projects: 5,  status: "Operations" },
-  { name: "Oman",           coordinates: [58.41, 23.59],  hq: false, devs: 12,  projects: 3,  status: "Operations" },
-  { name: "USA",            coordinates: [-77.04, 38.91], hq: false, devs: 8,   projects: 2,  status: "Business Dev" },
-  { name: "Russie",         coordinates: [37.62, 55.75],  hq: false, devs: 6,   projects: 2,  status: "Partenaire" },
+// ─── World Map ────────────────────────────────────────────────────────────────
+const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const SITES = [
+  { name: "Tunisie",         coords: [10.18, 36.81],  hq: true,  devs: 147, proj: 23, status: "Siège social" },
+  { name: "France",          coords: [2.35,  48.86],  hq: false, devs: 42,  proj: 8,  status: "R&D Lyon · Paris" },
+  { name: "Allemagne",       coords: [13.41, 52.52],  hq: false, devs: 18,  proj: 4,  status: "Engineering Hub" },
+  { name: "Arabie Saoudite", coords: [46.68, 24.71],  hq: false, devs: 24,  proj: 5,  status: "Operations" },
+  { name: "Oman",            coords: [58.41, 23.59],  hq: false, devs: 12,  proj: 3,  status: "Operations" },
+  { name: "USA",             coords: [-77.04, 38.91], hq: false, devs: 8,   proj: 2,  status: "Business Dev" },
+  { name: "Russie",          coords: [37.62, 55.75],  hq: false, devs: 6,   proj: 2,  status: "Partenaire" },
 ];
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-
-function WorldMapSVG({ activeIdx, onHover }) {
-  const [pulse, setPulse] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setPulse(p => (p + 1) % 100), 50);
-    return () => clearInterval(id);
-  }, []);
-
-  const hq = PRESENCE_SITES[0];
-
-  return (
-    <div className="world-map-container" style={{ width: "100%", height: "450px", position: "relative" }}>
-      <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: 140, center: [20, 30] }}
-        style={{ width: "100%", height: "100%" }}
-      >
-        <Geographies geography={GEO_URL}>
-          {({ geographies }) =>
-            geographies.map((geo) => (
-              <Geography
-                key={geo.rsmKey}
-                geography={geo}
-                fill="rgba(255, 255, 255, 0.03)"
-                stroke="rgba(255, 255, 255, 0.12)"
-                strokeWidth={0.5}
-                style={{
-                  default: { outline: "none", transition: "all 0.3s" },
-                  hover: { fill: "rgba(26, 86, 255, 0.2)", outline: "none" },
-                  pressed: { outline: "none" },
-                }}
-              />
-            ))
-          }
-        </Geographies>
-
-        {/* Lines from HQ to sites */}
-        {PRESENCE_SITES.filter(s => !s.hq).map((site, i) => {
-          const isActive = activeIdx === PRESENCE_SITES.findIndex(s => s.name === site.name);
-          return (
-            <Line
-              key={i}
-              from={hq.coordinates}
-              to={site.coordinates}
-              stroke={isActive ? "#1A56FF" : "rgba(26, 86, 255, 0.15)"}
-              strokeWidth={isActive ? 1.5 : 0.8}
-              strokeDasharray="4 4"
-              style={{ transition: "all 0.4s" }}
-            />
-          );
-        })}
-
-        {/* Markers */}
-        {PRESENCE_SITES.map((site, i) => {
-          const isHQ = site.hq;
-          const isActive = activeIdx === i;
-          return (
-            <Marker
-              key={i}
-              coordinates={site.coordinates}
-              onMouseEnter={() => onHover(i)}
-              onMouseLeave={() => onHover(null)}
-              style={{ cursor: "pointer" }}
-            >
-              {/* Pulse effect */}
-              {isHQ && (
-                <g>
-                  <circle r={4 + (pulse % 40) * 0.15} fill="none" stroke="#1A56FF" strokeWidth="0.5" opacity={1 - (pulse % 40) / 40} />
-                  <circle r={2 + ((pulse + 20) % 40) * 0.12} fill="none" stroke="#1A56FF" strokeWidth="0.4" opacity={1 - ((pulse + 20) % 40) / 40} />
-                </g>
-              )}
-              {isActive && !isHQ && (
-                <circle r={3 + (pulse % 30) * 0.12} fill="none" stroke="#10B981" strokeWidth="0.5" opacity={1 - (pulse % 30) / 30} />
-              )}
-              
-              <circle
-                r={isHQ ? 3.5 : isActive ? 2.8 : 2}
-                fill={isHQ ? "#1A56FF" : isActive ? "#10B981" : "rgba(255, 255, 255, 0.6)"}
-                style={{ transition: "all 0.3s" }}
-              />
-              
-              {isHQ && <circle r={1} fill="#fff" />}
-
-              {/* Tooltip anchor helper (the map-tooltip uses coordinates, but we need screen pos. 
-                  Actually, we'll keep the sidebar interaction and maybe refine the tooltip later.) */}
-            </Marker>
-          );
-        })}
-      </ComposableMap>
-    </div>
-  );
-}
-
 function PresenceSection() {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const revealRef = useReveal();
-  const activeSite = PRESENCE_SITES[activeIdx ?? 0];
+  const [active, setActive] = useState(0);
+  const [pulse,  setPulse]  = useState(0);
+  const ref = useReveal();
+
+  useEffect(() => { const id = setInterval(() => setPulse(p => (p + 1) % 100), 60); return () => clearInterval(id); }, []);
+
+  const site = SITES[active];
+  const hq   = SITES[0];
 
   return (
-    <section id="presence" className="lp-section lp-section--presence">
+    <section id="presence" className="lp-section lp-pres">
       <div className="lp-container">
-        <div ref={revealRef} className="lp-section-header scroll-reveal-up">
-          <div className="lp-section-eyebrow">/ Déploiement</div>
-          <h2 className="lp-h2">
-            Présence<br />
-            <span className="lp-gradient-text">internationale</span>
-          </h2>
-          <p className="lp-section-sub">
-            TELNET Engineering Hub est déployé sur l'ensemble des sites R&D
-            du groupe — de Tunis à Paris, de Riyad à Moscou.
-          </p>
+        <div ref={ref} className="reveal lp-sh">
+          <div className="lp-ey">/ Déploiement</div>
+          <h2 className="lp-h2">Présence <span className="lp-accent">internationale</span></h2>
+          <p className="lp-sub">TELNET Engineering Hub déployé sur l'ensemble des sites R&D — de Tunis à Paris, de Riyad à Washington.</p>
         </div>
 
-        <div className="presence-layout">
+        <div className="pres-grid">
           {/* Map */}
-          <div className="presence-map-wrap">
-            <div className="presence-map-bg" />
-            <WorldMapSVG activeIdx={activeIdx} onHover={setActiveIdx} />
-
-            {/* Tooltip overlay — We'll disable the floating tooltip for now as markers in ComposableMap 
-                don't easily provide percentage coordinates for absolute positioning without extra work.
-                The info is already visible in the Sidebar and detailed stats below. */}
+          <div className="pres-map">
+            <div className="pres-map-glow" />
+            <ComposableMap projection="geoMercator" projectionConfig={{ scale: 138, center: [20, 28] }} style={{ width: "100%", height: "100%" }}>
+              <Geographies geography={GEO_URL}>
+                {({ geographies }) => geographies.map(geo => (
+                  <Geography key={geo.rsmKey} geography={geo}
+                    fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.1)" strokeWidth={0.5}
+                    style={{ default: { outline: "none" }, hover: { fill: "rgba(26,86,255,.18)", outline: "none" }, pressed: { outline: "none" } }}
+                  />
+                ))}
+              </Geographies>
+              {SITES.filter(s => !s.hq).map((s, i) => {
+                const isAct = active === SITES.indexOf(s);
+                return <Line key={i} from={hq.coords} to={s.coords} stroke={isAct ? "#1A56FF" : "rgba(26,86,255,.12)"} strokeWidth={isAct ? 1.5 : 0.8} strokeDasharray="4 4" style={{ transition: "all .4s" }} />;
+              })}
+              {SITES.map((s, i) => {
+                const isHQ  = s.hq;
+                const isAct = active === i;
+                return (
+                  <Marker key={i} coordinates={s.coords} onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(0)} style={{ cursor: "pointer" }}>
+                    {isHQ && (
+                      <>
+                        <circle r={4 + (pulse % 40) * 0.15} fill="none" stroke="#1A56FF" strokeWidth={0.6} opacity={1 - (pulse % 40) / 40} />
+                        <circle r={2 + ((pulse + 20) % 40) * 0.12} fill="none" stroke="#1A56FF" strokeWidth={0.5} opacity={1 - ((pulse + 20) % 40) / 40} />
+                      </>
+                    )}
+                    {isAct && !isHQ && <circle r={3 + (pulse % 30) * 0.12} fill="none" stroke="#10B981" strokeWidth={0.6} opacity={1 - (pulse % 30) / 30} />}
+                    <circle r={isHQ ? 3.8 : isAct ? 2.8 : 2.2} fill={isHQ ? "#1A56FF" : isAct ? "#10B981" : "rgba(255,255,255,.55)"} style={{ transition: "all .3s" }} />
+                    {isHQ && <circle r={1.1} fill="#fff" />}
+                  </Marker>
+                );
+              })}
+            </ComposableMap>
           </div>
 
-          {/* Sites list */}
-          <div className="presence-sidebar">
-            <div className="ps-header">
-              <span className="ps-live"><span className="km-live-dot" />Sites opérationnels</span>
-              <span className="ps-count">{PRESENCE_SITES.length} pays</span>
+          {/* Sidebar */}
+          <div className="pres-side">
+            <div className="pres-side-hd">
+              <span className="pres-live"><span className="mock-dot" />Sites opérationnels</span>
+              <span className="pres-count">{SITES.length} pays</span>
             </div>
-            <div className="ps-list">
-              {PRESENCE_SITES.map((site, i) => (
-                <div
-                  key={i}
-                  className={`ps-item ${activeIdx === i ? "ps-item--active" : ""} ${site.hq ? "ps-item--hq" : ""}`}
-                  onMouseEnter={() => setActiveIdx(i)}
-                  onMouseLeave={() => setActiveIdx(0)}
-                >
-                  <div className="ps-dot" style={{ background: site.hq ? "#1A56FF" : activeIdx === i ? "#10B981" : "rgba(255,255,255,0.25)" }} />
-                  <div className="ps-info">
-                    <div className="ps-name">
-                      {site.name}
-                      {site.hq && <span className="ps-hq-badge">HQ</span>}
-                    </div>
-                    <div className="ps-sub">{site.status}</div>
+            <ul className="pres-list">
+              {SITES.map((s, i) => (
+                <li key={i} className={`pres-item ${active === i ? "pres-act" : ""} ${s.hq ? "pres-hq" : ""}`}
+                  onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(0)}>
+                  <div className="pres-dot" style={{ background: s.hq ? "#1A56FF" : active === i ? "#10B981" : "rgba(255,255,255,.2)", boxShadow: (s.hq || active === i) ? `0 0 8px ${s.hq ? "#1A56FF" : "#10B981"}` : "none" }} />
+                  <div className="pres-info">
+                    <div className="pres-name">{s.name}{s.hq && <span className="pres-hq-tag">HQ</span>}</div>
+                    <div className="pres-st">{s.status}</div>
                   </div>
-                  <div className="ps-meta">
-                    <span className="ps-devs">{site.devs}</span>
-                    <span className="ps-devs-lbl">devs</span>
+                  <div className="pres-meta">
+                    <span className="pres-dv">{s.devs}</span>
+                    <span className="pres-dl">devs</span>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
-
-            {/* Active site detail */}
-            <div className="ps-detail">
-              <div className="ps-detail-name">{activeSite.name}</div>
-              <div className="ps-detail-grid">
-                <div className="ps-detail-kpi">
-                  <div className="ps-kpi-val">{activeSite.devs}</div>
-                  <div className="ps-kpi-lbl">Développeurs</div>
-                </div>
-                <div className="ps-detail-kpi">
-                  <div className="ps-kpi-val">{activeSite.projects}</div>
-                  <div className="ps-kpi-lbl">Projets actifs</div>
-                </div>
-                <div className="ps-detail-kpi">
-                  <div className="ps-kpi-val" style={{ color: "#10B981", fontSize: 14 }}>●</div>
-                  <div className="ps-kpi-lbl">En ligne</div>
-                </div>
+            </ul>
+            <div className="pres-detail">
+              <p className="pres-det-name">{site.name}</p>
+              <div className="pres-det-grid">
+                {[[site.devs,"Développeurs"],[site.proj,"Projets"],["●","En ligne"]].map(([v,l],i) => (
+                  <div key={i} className="pres-kpi">
+                    <div className="pres-kv" style={i === 2 ? {color:"#10B981",fontSize:18} : {}}>{v}</div>
+                    <div className="pres-kl">{l}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
 
         {/* Bottom stats */}
-        <div className="presence-bottom-stats">
-          {[
-            { val: "7", lbl: "Pays couverts" },
-            { val: "257+", lbl: "Développeurs connectés" },
-            { val: "47", lbl: "Projets GitLab actifs" },
-            { val: "24/7", lbl: "Synchronisation KPI" },
-          ].map((s, i) => (
-            <div key={i} className="pbs-item">
-              <div className="pbs-val">{s.val}</div>
-              <div className="pbs-lbl">{s.lbl}</div>
+        <div className="pres-bottom">
+          {[["7","Pays couverts"],["257+","Développeurs"],["47","Projets GitLab"],["24/7","Synchro KPI"]].map(([v,l],i) => (
+            <div key={i} className="pres-bs">
+              <div className="pres-bv">{v}</div>
+              <div className="pres-bl">{l}</div>
             </div>
           ))}
         </div>
@@ -477,23 +321,31 @@ function PresenceSection() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  MAIN PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Stat Block ───────────────────────────────────────────────────────────────
+function StatBlock({ target, suffix = "", label }) {
+  const [ref, val] = useCounter(target);
+  return (
+    <div ref={ref} className="stat">
+      <div className="stat-n">{val.toLocaleString("fr-FR")}<span className="stat-s">{suffix}</span></div>
+      <div className="stat-l">{label}</div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const { isAuthenticated } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const featRef  = useReveal();
-  const statsRef = useReveal();
-  const ctaRef   = useReveal();
+  const secFeat  = useReveal();
+  const secStats = useReveal();
+  const secCta   = useReveal();
 
   useEffect(() => {
-    if (!document.getElementById("lp-fonts")) {
-      const link = document.createElement("link");
-      link.id = "lp-fonts"; link.rel = "stylesheet"; link.href = FONT_HREF;
-      document.head.appendChild(link);
+    if (!document.getElementById("lp3-fonts")) {
+      const l = Object.assign(document.createElement("link"), { id: "lp3-fonts", rel: "stylesheet", href: FONTS });
+      document.head.appendChild(l);
     }
     const onScroll = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", onScroll);
@@ -503,44 +355,55 @@ export default function LandingPage() {
   const scrollTo = id => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); setMenuOpen(false); };
 
   const features = [
-    { num: "01", icon: "ri-git-pull-request-line", title: "Extraction GitLab", desc: "Pipeline asynchrone sécurisé qui collecte commits, MRs et approbations en temps réel via l'API native GitLab v4.", tags: ["REST API", "OAuth2", "Webhook"], color: "#1A56FF" },
-    { num: "02", icon: "ri-cpu-line", title: "Moteur KPI", desc: "7 indicateurs calculés — MR Rate, Commit Rate, Review Time, Approved MR Rate et plus — agrégés par site, projet et développeur.", tags: ["Python", "SQLAlchemy", "Scheduler"], color: "#10B981" },
-    { num: "03", icon: "ri-team-line", title: "Gestion Équipes", desc: "Modèle multi-sites M2M. Un développeur peut appartenir à plusieurs projets et sites. Import CSV/Excel avec résolution des conflits.", tags: ["Multi-sites", "Import CSV", "Validation"], color: "#F59E0B" },
-    { num: "04", icon: "ri-bar-chart-box-line", title: "Dashboard Décisionnel", desc: "Visualisation React temps-réel avec leaderboards, heatmaps d'activité, alertes de seuil et comparaisons inter-périodes.", tags: ["React", "Recharts", "Alertes"], color: "#A78BFA" },
-    { num: "05", icon: "ri-shield-check-line", title: "Sécurité & Audit", desc: "Contrôle d'accès granulaire (Super Admin, Site Manager, Team Lead, Viewer). Audit log complet de chaque action.", tags: ["JWT", "RBAC", "Audit Log"], color: "#EC4899" },
-    { num: "06", icon: "ri-notification-3-line", title: "Alertes Intelligentes", desc: "Détection automatique des anomalies — inactivité développeur, seuils KPI dépassés, doublons GitLab — avec notifications.", tags: ["Scheduler", "Thresholds", "Notifications"], color: "#F97316" },
+    { n:"01", icon:"ri-git-pull-request-line", title:"Extraction GitLab",      desc:"Pipeline async sécurisé — commits, MRs, approbations via l'API GitLab v4. Logs temps réel.",             tags:["REST API","OAuth2","Async"],     c:"#1A56FF" },
+    { n:"02", icon:"ri-cpu-line",              title:"Moteur KPI",             desc:"7 indicateurs — MR Rate, Commit Rate, Review Time, Approved Rate — agrégés par site et développeur.",    tags:["Python","SQLAlchemy","Scheduler"],c:"#10B981" },
+    { n:"03", icon:"ri-team-line",             title:"Multi-Sites M2M",        desc:"Un développeur sur plusieurs sites et projets. Import CSV/Excel avec résolution des conflits inline.",    tags:["Multi-sites","CSV","M2M"],       c:"#F59E0B" },
+    { n:"04", icon:"ri-bar-chart-box-line",    title:"Dashboard Décisionnel",  desc:"Leaderboards, heatmaps, alertes de seuil, comparaisons inter-périodes et export MD5 vérifiable.",        tags:["React 18","Recharts","Alertes"], c:"#A78BFA" },
+    { n:"05", icon:"ri-shield-check-line",     title:"Sécurité & Audit",       desc:"RBAC granulaire (Super Admin, Site Manager, Team Lead). Journal d'audit complet — chiffrement AES-256.", tags:["JWT","RBAC","Audit Log"],        c:"#EC4899" },
+    { n:"06", icon:"ri-notification-3-line",   title:"Alertes Intelligentes",  desc:"Détection auto — inactivité dev, seuils KPI dépassés, doublons GitLab — avec notifications immédiates.", tags:["Thresholds","Scheduler","Notifs"],c:"#F97316" },
+  ];
+
+  const arch = [
+    { icon:"ri-git-repository-line", name:"GitLab API",  sub:"v4 REST"    },
+    { icon:"ri-arrow-right-line",    name:"",             sub:""           },
+    { icon:"ri-server-line",         name:"FastAPI",      sub:"Python 3.11"},
+    { icon:"ri-arrow-right-line",    name:"",             sub:""           },
+    { icon:"ri-database-2-line",     name:"PostgreSQL",   sub:"SQLAlchemy" },
+    { icon:"ri-arrow-right-line",    name:"",             sub:""           },
+    { icon:"ri-reactjs-line",        name:"React 18",     sub:"Vite"       },
+    { icon:"ri-arrow-right-line",    name:"",             sub:""           },
+    { icon:"ri-dashboard-3-line",    name:"Dashboard",    sub:"KPI Live"   },
   ];
 
   return (
     <div className="lp-root">
       <style>{CSS}</style>
-      <ParticleCanvas />
+      <ThreeHeroNetwork />
       <CustomCursor />
       <div className="lp-noise" />
 
-      {/* NAVBAR */}
-      <nav className={`lp-nav ${scrolled ? "lp-nav--scrolled" : ""}`}>
-        <div className="lp-nav-inner">
+      {/* ── NAVBAR ── */}
+      <nav className={`lp-nav ${scrolled ? "lp-nav-scrolled" : ""}`}>
+        <div className="lp-nav-in">
           <div className="lp-brand">
-            <div className="lp-brand-mark">
-              <img src="/assets/images/telnet.png" alt="Telnet Logo" className="lp-brand-logo" />
-            </div>
+            <img src="/assets/images/telnet.png" alt="Telnet" className="lp-logo" />
+            
           </div>
-          <div className="lp-nav-links">
-            <button onClick={() => scrollTo("features")} className="lp-navlink">Modules</button>
-            <button onClick={() => scrollTo("presence")} className="lp-navlink">Présence</button>
-            <button onClick={() => scrollTo("stats")} className="lp-navlink">Métriques</button>
-            <button onClick={() => scrollTo("cta")} className="lp-navlink">Accès</button>
-            <Link to={isAuthenticated ? "/dashboard" : "/login"} className="lp-nav-cta">
+          <div className="lp-links">
+            <button onClick={() => scrollTo("features")} className="lp-nl">Modules</button>
+            <button onClick={() => scrollTo("presence")} className="lp-nl">Présence</button>
+            <button onClick={() => scrollTo("stats")}    className="lp-nl">Métriques</button>
+            <button onClick={() => scrollTo("cta")}      className="lp-nl">Accès</button>
+            <Link to={isAuthenticated ? "/dashboard" : "/login"} className="lp-cta-btn">
               {isAuthenticated ? "Ouvrir le Hub" : "Connexion"}<i className="ri-arrow-right-up-line" />
             </Link>
           </div>
-          <button className="lp-hamburger" onClick={() => setMenuOpen(v => !v)}>
+          <button className="lp-ham" onClick={() => setMenuOpen(v => !v)}>
             <i className={menuOpen ? "ri-close-line" : "ri-menu-line"} />
           </button>
         </div>
         {menuOpen && (
-          <div className="lp-mobile-menu">
+          <div className="lp-mob">
             <button onClick={() => scrollTo("features")}>Modules</button>
             <button onClick={() => scrollTo("presence")}>Présence</button>
             <button onClick={() => scrollTo("stats")}>Métriques</button>
@@ -549,119 +412,110 @@ export default function LandingPage() {
         )}
       </nav>
 
-      {/* HERO */}
+      {/* ── HERO ── */}
       <section className="lp-hero">
-        <div className="lp-hero-hologram"><img src="/assets/images/telnet.png" alt="" /></div>
-        <div className="lp-orb lp-orb-1" /><div className="lp-orb lp-orb-2" /><div className="lp-orb lp-orb-3" />
-        <div className="lp-hero-inner">
-          <div className="lp-hero-text">
-            <div className="lp-eyebrow"><span className="lp-eyebrow-dot" />Plateforme Décisionnelle R&amp;D · GitLab KPI</div>
+        <div className="lp-orb o1" /><div className="lp-orb o2" /><div className="lp-orb o3" />
+        <div className="lp-hero-holo"><img src="/assets/images/telnet.png" alt="" /></div>
+        <div className="lp-hero-in">
+          <div className="lp-hero-txt">
+            <div className="lp-ey"><span className="lp-ey-dot" />Plateforme Décisionnelle R&amp;D · GitLab KPI</div>
             <h1 className="lp-h1">
-              <span className="lp-h1-line lp-h1-line--1">Pilotez</span>
-              <span className="lp-h1-line lp-h1-line--2">la vélocité<span className="lp-h1-accent"> dev.</span></span>
-              <span className="lp-h1-line lp-h1-line--3">En temps réel.</span>
+              <span className="lp-h1a">Pilotez</span>
+              <span className="lp-h1b">la vélocité<span className="lp-h1c"> dev.</span></span>
+              <span className="lp-h1d">En temps réel.</span>
             </h1>
-            <p className="lp-hero-desc">
-              TELNET Engineering Hub transforme vos dépôts GitLab en intelligence décisionnelle — commits, merge requests, revues de code — agrégés sur l'ensemble de vos sites R&amp;D.
+            <p className="lp-desc">
+              TELNET  transforme vos dépôts GitLab en intelligence décisionnelle — commits, merge requests, revues de code — agrégés sur l'ensemble de vos sites R&amp;D mondiaux.
             </p>
-            <div className="lp-hero-actions">
-              <Link to={isAuthenticated ? "/dashboard" : "/login"} className="lp-btn-primary"><i className="ri-rocket-2-line" />Accéder au Dashboard</Link>
-              <button onClick={() => scrollTo("features")} className="lp-btn-ghost">Explorer les modules<i className="ri-arrow-down-line" /></button>
+            <div className="lp-btns">
+              <Link to={isAuthenticated ? "/dashboard" : "/login"} className="lp-btn-p">
+                <i className="ri-rocket-2-line" /> Accéder au Dashboard
+                <span className="lp-btn-new">LIVE</span>
+              </Link>
+              <button onClick={() => scrollTo("features")} className="lp-btn-g">Explorer les modules<i className="ri-arrow-down-line" /></button>
             </div>
             <div className="lp-trust">
-              {["Multi-sites", "RBAC sécurisé", "API GitLab native", "Import CSV"].map((t, i) => (
-                <span key={i} className="lp-trust-tag"><i className="ri-check-line" /> {t}</span>
+              {["Multi-sites","RBAC sécurisé","API GitLab native","Import CSV/Excel","Alertes KPI"].map((t,i) => (
+                <span key={i} className="lp-tag"><i className="ri-check-line" />{t}</span>
               ))}
             </div>
           </div>
-          <div className="lp-hero-visual"><KpiMockup /></div>
+          <div className="lp-hero-vis"><KpiMockup /></div>
         </div>
       </section>
 
-      <DataTicker />
+      <Ticker />
 
-      {/* FEATURES */}
-      <section id="features" className="lp-section lp-section--features">
+      {/* ── FEATURES ── */}
+      <section id="features" className="lp-section">
         <div className="lp-container">
-          <div ref={featRef} className="lp-section-header scroll-reveal-up">
-            <div className="lp-section-eyebrow">/ Modules</div>
-            <h2 className="lp-h2">Six dimensions de<br /><span className="lp-gradient-text">performance DevOps</span></h2>
-            <p className="lp-section-sub">Chaque module adresse un angle critique de la productivité équipe, de l'extraction Git jusqu'à l'alerte intelligente.</p>
+          <div ref={secFeat} className="reveal lp-sh">
+            <div className="lp-ey">/ 06 Modules</div>
+            <h2 className="lp-h2">Six dimensions de<br /><span className="lp-accent">performance DevOps</span></h2>
+            <p className="lp-sub">De l'extraction GitLab jusqu'à l'alerte intelligente, chaque module adresse un angle critique de la productivité de vos équipes R&D.</p>
           </div>
-          <div className="lp-features-grid">
+          <div className="feat-grid">
             {features.map((f, i) => (
-              <TiltCard key={i} className="lp-feat-card">
-                <div className="lp-feat-num">{f.num}</div>
-                <div className="lp-feat-icon" style={{ color: f.color, background: `${f.color}14` }}><i className={f.icon} /></div>
-                <h3 className="lp-feat-title">{f.title}</h3>
-                <p className="lp-feat-desc">{f.desc}</p>
-                <div className="lp-feat-tags">{f.tags.map((t, j) => <span key={j} className="lp-feat-tag" style={{ borderColor: `${f.color}40`, color: f.color }}>{t}</span>)}</div>
-                <div className="lp-feat-glow" style={{ background: `radial-gradient(circle at 50% 100%, ${f.color}18, transparent 70%)` }} />
+              <TiltCard key={i}>
+                <div className="feat-card" style={{ "--ac": f.c, animationDelay: `${i * 0.06}s` }}>
+                  <div className="feat-n">{f.n}</div>
+                  <div className="feat-ico" style={{ background: `${f.c}16`, color: f.c }}><i className={f.icon} /></div>
+                  <h3 className="feat-title">{f.title}</h3>
+                  <p className="feat-desc">{f.desc}</p>
+                  <div className="feat-tags">{f.tags.map((t,j) => <span key={j} className="feat-tag" style={{ borderColor: `${f.c}35`, color: f.c }}>{t}</span>)}</div>
+                  <div className="feat-accent-line" />
+                </div>
               </TiltCard>
             ))}
           </div>
         </div>
       </section>
 
-      {/* PRESENCE INTERNATIONALE */}
+      {/* ── PRESENCE ── */}
       <PresenceSection />
 
-      {/* STATS */}
-      <section id="stats" className="lp-section lp-section--stats">
+      {/* ── STATS ── */}
+      <section id="stats" className="lp-section lp-stats-sec">
         <div className="lp-container">
-          <div ref={statsRef} className="lp-stats-grid scroll-reveal-up">
-            <StatBlock target={147} suffix="+" label="Développeurs gérés" />
-            <StatBlock target={12} suffix="" label="Sites R&D actifs" />
-            <StatBlock target={2400} suffix="" label="MRs analysées/mois" />
-            <StatBlock target={7} suffix="" label="KPIs calculés" />
-            <StatBlock target={99} suffix="%" label="Uptime extraction" />
-            <StatBlock target={23} suffix="" label="Projets GitLab" />
+          <div ref={secStats} className="reveal stats-grid">
+            <StatBlock target={147}  suffix="+" label="Développeurs gérés"  />
+            <StatBlock target={12}   suffix=""  label="Sites R&D actifs"    />
+            <StatBlock target={2400} suffix=""  label="MRs analysées/mois"  />
+            <StatBlock target={7}    suffix=""  label="KPIs calculés"       />
+            <StatBlock target={99}   suffix="%" label="Uptime extraction"   />
+            <StatBlock target={23}   suffix=""  label="Projets GitLab"      />
           </div>
         </div>
       </section>
 
-      {/* ARCHITECTURE STRIP */}
-      <section className="lp-section lp-section--arch">
+      {/* ── ARCHITECTURE ── */}
+      <section className="lp-section lp-arch-sec">
         <div className="lp-container">
-          <div className="lp-arch-strip">
-            <div className="lp-arch-label">Stack technique</div>
-            <div className="lp-arch-flow">
-              {[
-                { icon: "ri-git-repository-line", name: "GitLab API", sub: "Extraction" },
-                { icon: "ri-arrow-right-line", name: "", sub: "" },
-                { icon: "ri-server-line", name: "FastAPI", sub: "Python 3.11" },
-                { icon: "ri-arrow-right-line", name: "", sub: "" },
-                { icon: "ri-database-2-line", name: "PostgreSQL", sub: "SQLAlchemy" },
-                { icon: "ri-arrow-right-line", name: "", sub: "" },
-                { icon: "ri-reactjs-line", name: "React 18", sub: "Vite" },
-                { icon: "ri-arrow-right-line", name: "", sub: "" },
-                { icon: "ri-dashboard-3-line", name: "Dashboard", sub: "KPI Live" },
-              ].map((item, i) => item.name === "" ? (
-                <div key={i} className="lp-arch-arrow"><i className={item.icon} /></div>
-              ) : (
-                <div key={i} className="lp-arch-node">
-                  <div className="lp-arch-icon"><i className={item.icon} /></div>
-                  <div className="lp-arch-name">{item.name}</div>
-                  <div className="lp-arch-sub">{item.sub}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section id="cta" className="lp-section lp-section--cta">
-        <div className="lp-container">
-          <div ref={ctaRef} className="lp-cta-box scroll-reveal-up">
-            <div className="lp-cta-orb" />
-            <div className="lp-cta-content">
-              <div className="lp-cta-eyebrow">
-                <span className="lp-live-badge"><span className="lp-live-pulse" />Plateforme opérationnelle</span>
+          <p className="arch-lbl">/ Stack technique</p>
+          <div className="arch-flow">
+            {arch.map((a, i) => a.name === "" ? (
+              <div key={i} className="arch-arr"><i className={a.icon} /></div>
+            ) : (
+              <div key={i} className="arch-node">
+                <div className="arch-ico"><i className={a.icon} /></div>
+                <div className="arch-nm">{a.name}</div>
+                <div className="arch-sb">{a.sub}</div>
               </div>
-              <h2 className="lp-cta-title">Votre R&amp;D mérite<br />une visibilité totale.</h2>
-              <p className="lp-cta-desc">Connectez vos instances GitLab, importez vos équipes et obtenez vos premiers KPIs en moins de 15 minutes.</p>
-              <Link to={isAuthenticated ? "/dashboard" : "/login"} className="lp-btn-cta">
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section id="cta" className="lp-section lp-cta-sec">
+        <div className="lp-container">
+          <div ref={secCta} className="reveal cta-box">
+            <div className="cta-orb" />
+            <div className="cta-inner">
+              <span className="cta-badge"><span className="cta-dot" />Plateforme opérationnelle</span>
+              <h2 className="cta-title">Votre R&amp;D mérite<br />une visibilité totale.</h2>
+              <p className="cta-desc">Connectez vos instances GitLab, importez vos équipes et obtenez vos premiers KPIs en moins de 15 minutes.</p>
+              <Link to={isAuthenticated ? "/dashboard" : "/login"} className="cta-btn">
                 {isAuthenticated ? "Ouvrir le Hub →" : "Demander l'accès →"}
               </Link>
             </div>
@@ -669,22 +523,34 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* ── FOOTER ── */}
       <footer className="lp-footer">
         <div className="lp-container">
-          <div className="lp-footer-inner">
-            <div className="lp-footer-brand">
-              <div className="lp-footer-brand-top">
-                <img src="/assets/images/telnet.png" alt="Telnet" className="lp-footer-logo" />
-                <div className="lp-brand-name" style={{ fontSize: 18 }}>TELNET</div>
+          <div className="foot-grid">
+            <div>
+              <div className="foot-brand">
+                <img src="/assets/images/telnet.png" alt="Telnet" className="foot-logo" />
+                
               </div>
-              <div className="lp-footer-copy">Dashboard KPI GitLab · v5.0</div>
+              <p className="foot-copy">Dashboard KPI GitLab <br />Plateforme d'intelligence R&D</p>
             </div>
-            <div className="lp-footer-meta">
-              <span>© 2026 Telnet Holding</span><span className="lp-footer-sep">·</span>
-              <span>R&amp;D Intranet</span><span className="lp-footer-sep">·</span>
-              <span>Chiffré AES-256</span>
+            <div>
+              <p className="foot-h">Plateforme</p>
+              {["Dashboard KPI","Analyse GitLab","Import Équipes","Alertes"].map((t,i) => <p key={i} className="foot-l">{t}</p>)}
             </div>
+            <div>
+              <p className="foot-h">Administration</p>
+              {["Gestion Sites","Gestion Projets","Développeurs","Audit Log"].map((t,i) => <p key={i} className="foot-l">{t}</p>)}
+            </div>
+            <div>
+              <p className="foot-h">Sécurité</p>
+              {["JWT / RBAC","AES-256","Audit Trail","HTTPS"].map((t,i) => <p key={i} className="foot-l">{t}</p>)}
+            </div>
+          </div>
+          <div className="foot-bottom">
+            <span>© 2026 TELNET HOLDING</span><span className="foot-sep">·</span>
+            <span>R&D Intranet</span><span className="foot-sep">·</span>
+            <span>Chiffré AES-256</span>
           </div>
         </div>
       </footer>
@@ -692,344 +558,246 @@ export default function LandingPage() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  CSS
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── CSS ───────────────────────────────────────────────────────────────────────
 const CSS = `
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  .lp-root { background: #040912; color: #E2E8F0; font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; overflow-x: hidden; cursor: none; }
-  
-  /* Modern Scrollbar */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #040912; }
-  ::-webkit-scrollbar-thumb { background: #1A56FF; border-radius: 10px; box-shadow: inset 0 0 6px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); }
-  ::-webkit-scrollbar-thumb:hover { background: #1446D4; }
+  :root{
+    --bl:#1A56FF;--cy:#00D4FF;--gn:#10B981;--am:#F59E0B;--pu:#A78BFA;
+    --bg:#040912;--bg2:#07101F;--br:rgba(255,255,255,.06);
+    --tx:#E2E8F0;--mt:rgba(255,255,255,.38);
+    --fd:'Syne',sans-serif;--fm:'DM Mono',monospace;--fb:'Plus Jakarta Sans',sans-serif;
+    --ease:cubic-bezier(.16,1,.3,1);
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:var(--bg);} ::-webkit-scrollbar-thumb{background:var(--bl);border-radius:10px;}
 
+  .lp-root{background:var(--bg);color:var(--tx);font-family:var(--fb);min-height:100vh;overflow-x:hidden;cursor:none;}
 
   /* Cursor */
-  .cursor-dot { position: fixed; top: 0; left: 0; z-index: 9999; width: 8px; height: 8px; background: #1A56FF; border-radius: 50%; pointer-events: none; transition: opacity .2s; }
-  .cursor-ring { position: fixed; top: 0; left: 0; z-index: 9998; width: 36px; height: 36px; border: 1.5px solid rgba(26,86,255,0.6); border-radius: 50%; pointer-events: none; transition: width .2s, height .2s, border-color .2s; }
-  .cursor-ring.cursor-hover { width: 54px; height: 54px; border-color: rgba(26,86,255,1); }
+  .c-dot{position:fixed;top:0;left:0;z-index:9999;width:8px;height:8px;background:var(--bl);border-radius:50%;pointer-events:none;}
+  .c-ring{position:fixed;top:0;left:0;z-index:9998;width:36px;height:36px;border:1.5px solid rgba(26,86,255,.6);border-radius:50%;pointer-events:none;transition:width .2s,height .2s,border-color .2s;}
+  .c-ring.c-hover{width:52px;height:52px;border-color:rgba(26,86,255,1);}
 
-  /* Noise */
-  .lp-noise { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.025; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E"); background-size: 256px 256px; }
-
-  .lp-container { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+  .lp-noise{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:256px 256px;}
+  .lp-container{max-width:1280px;margin:0 auto;padding:0 32px;}
 
   /* Orbs */
-  .lp-orb { position: absolute; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; }
-  .lp-orb-1 { width: 700px; height: 700px; background: radial-gradient(circle, rgba(26,86,255,0.12), transparent 65%); top: -200px; left: -200px; animation: orb-drift 18s ease-in-out infinite alternate; }
-  .lp-orb-2 { width: 500px; height: 500px; background: radial-gradient(circle, rgba(245,158,11,0.08), transparent 65%); top: 30%; right: -150px; animation: orb-drift 22s ease-in-out infinite alternate-reverse; }
-  .lp-orb-3 { width: 400px; height: 400px; background: radial-gradient(circle, rgba(16,185,129,0.07), transparent 65%); bottom: 0; left: 40%; }
-  @keyframes orb-drift { 0% { transform: translate(0, 0); } 100% { transform: translate(60px, 40px); } }
+  .lp-orb{position:absolute;border-radius:50%;filter:blur(120px);pointer-events:none;z-index:0;}
+  .o1{width:700px;height:700px;background:radial-gradient(circle,rgba(26,86,255,.12),transparent 65%);top:-200px;left:-200px;animation:orb 20s ease-in-out infinite alternate;}
+  .o2{width:500px;height:500px;background:radial-gradient(circle,rgba(245,158,11,.07),transparent 65%);top:30%;right:-150px;animation:orb 24s ease-in-out infinite alternate-reverse;}
+  .o3{width:400px;height:400px;background:radial-gradient(circle,rgba(16,185,129,.06),transparent 65%);bottom:0;left:40%;}
+  @keyframes orb{0%{transform:translate(0,0);}100%{transform:translate(55px,38px);}}
 
   /* Navbar */
-  .lp-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 500; padding: 20px 0; transition: background .4s cubic-bezier(0.16,1,0.3,1), backdrop-filter .4s, padding .4s, border-color .4s; border-bottom: 1px solid transparent; }
-  .lp-nav--scrolled { background: rgba(4,9,18,0.7); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); padding: 12px 0; border-color: rgba(26,86,255,0.15); box-shadow: 0 4px 30px rgba(0,0,0,0.4), 0 0 20px rgba(26,86,255,0.05); }
-  .lp-nav-inner { max-width: 1280px; margin: 0 auto; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; }
-  .lp-brand { display: flex; align-items: center; gap: 12px; cursor: default; }
-  .lp-brand-mark svg { width: 32px; height: 32px; }
-  .lp-brand-name { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; color: #fff; letter-spacing: 0.06em; }
-  .lp-brand-sub { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.35); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 1px; }
-  .lp-nav-links { display: flex; align-items: center; gap: 8px; }
-  .lp-navlink { background: none; border: none; cursor: none; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.55); padding: 8px 16px; border-radius: 6px; transition: color .2s, background .2s; }
-  .lp-navlink:hover { color: #fff; background: rgba(255,255,255,0.05); }
-  .lp-nav-cta { display: inline-flex; align-items: center; gap: 6px; background: #1A56FF; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 600; padding: 10px 22px; border-radius: 8px; text-decoration: none; margin-left: 8px; transition: background .2s, transform .2s; }
-  .lp-nav-cta:hover { background: #1446D4; transform: translateY(-1px); color: #fff; }
-  .lp-hamburger { display: none; background: none; border: none; cursor: none; color: #fff; font-size: 22px; padding: 4px; }
-  .lp-mobile-menu { display: flex; flex-direction: column; background: rgba(4,9,18,0.98); border-top: 1px solid rgba(255,255,255,0.07); padding: 16px 32px; }
-  .lp-mobile-menu button, .lp-mobile-menu a { background: none; border: none; cursor: none; color: #fff; font-size: 15px; font-weight: 500; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06); text-decoration: none; text-align: left; }
+  .lp-nav{position:fixed;top:0;left:0;right:0;z-index:500;padding:18px 0;transition:background .4s var(--ease),backdrop-filter .4s,padding .4s,border-color .4s;border-bottom:1px solid transparent;}
+  .lp-nav-scrolled{background:rgba(4,9,18,.75);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);padding:12px 0;border-color:rgba(26,86,255,.14);box-shadow:0 4px 28px rgba(0,0,0,.4),0 0 20px rgba(26,86,255,.04);}
+  .lp-nav-in{max-width:1280px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between;}
+  .lp-brand{display:flex;align-items:center;gap:12px;}
+  .lp-logo{height:34px;width:auto;object-fit:contain;filter:drop-shadow(0 0 8px rgba(26,86,255,.4));transition:transform .3s;}
+  .lp-brand:hover .lp-logo{transform:scale(1.08);}
+  .lp-brand-n{font-family:var(--fd);font-weight:800;font-size:15px;color:#fff;letter-spacing:.1em;line-height:1.2;}
+  .lp-brand-s{font-family:var(--fm);font-size:8px;color:rgba(255,255,255,.2);letter-spacing:.15em;text-transform:uppercase;margin-top:1px;}
+  .lp-links{display:flex;align-items:center;gap:4px;}
+  .lp-nl{background:none;border:none;cursor:none;font-family:var(--fb);font-size:14px;font-weight:500;color:var(--mt);padding:8px 14px;border-radius:6px;transition:color .2s,background .2s;}
+  .lp-nl:hover{color:#fff;background:rgba(255,255,255,.04);}
+  .lp-cta-btn{display:inline-flex;align-items:center;gap:6px;background:var(--bl);color:#fff;font-family:var(--fb);font-size:14px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;margin-left:8px;transition:background .2s,transform .2s;box-shadow:0 4px 16px rgba(26,86,255,.3);}
+  .lp-cta-btn:hover{background:#1446D4;transform:translateY(-1px);color:#fff;}
+  .lp-ham{display:none;background:none;border:none;cursor:none;color:#fff;font-size:22px;padding:4px;}
+  .lp-mob{display:flex;flex-direction:column;background:rgba(4,9,18,.98);border-top:1px solid var(--br);padding:14px 32px;}
+  .lp-mob button,.lp-mob a{background:none;border:none;cursor:none;color:rgba(255,255,255,.7);font-size:15px;font-weight:500;padding:12px 0;border-bottom:1px solid var(--br);text-decoration:none;text-align:left;}
 
   /* Hero */
-  .lp-hero { position: relative; min-height: 100vh; display: flex; align-items: center; padding: 120px 32px 80px; overflow: hidden; }
-  .lp-hero-inner { max-width: 1280px; margin: 0 auto; width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; position: relative; z-index: 10; }
-  .lp-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.45); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 28px; }
-  .lp-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #1A56FF; animation: pulse-dot 2s ease-in-out infinite; }
-  @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 0 0 rgba(26,86,255,0.6); } 50% { box-shadow: 0 0 0 6px rgba(26,86,255,0); } }
-  .lp-h1 { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(3.2rem, 5.5vw, 5.2rem); line-height: 1.02; letter-spacing: -0.03em; color: #fff; margin-bottom: 28px; display: flex; flex-direction: column; }
-  .lp-h1-line { 
-    display: block; opacity: 0; transform: translateY(30px); 
-    background: linear-gradient(90deg, #fff, rgba(26,86,255,0.5), #fff);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: h1-shimmer 8s linear infinite, h1-reveal 0.8s cubic-bezier(0.16,1,0.3,1) forwards; 
-  }
-  .lp-h1-line--1 { animation-delay: 0.1s; } 
-  .lp-h1-line--2 { animation-delay: 0.25s; filter: drop-shadow(0 0 15px rgba(26,86,255,0.15)); } 
-  .lp-h1-line--3 { animation-delay: 0.4s; color: rgba(255,255,255,0.35); font-weight: 400; -webkit-text-fill-color: rgba(255,255,255,0.35); }
-  .lp-h1-accent { color: #1A56FF; position: relative; -webkit-text-fill-color: #1A56FF; }
-  .lp-h1-accent::after { content: ''; position: absolute; bottom: 4px; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #1A56FF, #A78BFA); border-radius: 2px; }
-  @keyframes h1-reveal { to { opacity: 1; transform: translateY(0); } }
-  @keyframes h1-shimmer { to { background-position: 200% center; } }
-  .lp-hero-desc { font-size: 16px; line-height: 1.75; color: rgba(255,255,255,0.5); max-width: 480px; margin-bottom: 36px; opacity: 0; animation: h1-reveal 0.8s 0.55s forwards; }
-  .lp-hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 32px; opacity: 0; animation: h1-reveal 0.8s 0.65s forwards; }
-  .lp-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #1A56FF; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 700; padding: 14px 28px; border-radius: 10px; text-decoration: none; box-shadow: 0 8px 32px rgba(26,86,255,0.35); transition: all .25s; }
-  .lp-btn-primary:hover { background: #1446D4; transform: translateY(-2px); color: #fff; box-shadow: 0 12px 40px rgba(26,86,255,0.45); }
-  .lp-btn-ghost { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.7); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 500; padding: 14px 24px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); cursor: none; transition: all .2s; }
-  .lp-btn-ghost:hover { background: rgba(255,255,255,0.08); color: #fff; }
-  .lp-trust { display: flex; flex-wrap: wrap; gap: 8px; opacity: 0; animation: h1-reveal 0.8s 0.75s forwards; }
-  .lp-trust-tag { display: inline-flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 0.05em; }
-  .lp-trust-tag i { color: #10B981; font-size: 12px; }
-  .lp-hero-visual { opacity: 0; transform: translateX(40px); animation: h1-reveal 1s 0.4s cubic-bezier(0.16,1,0.3,1) forwards; }
+  .lp-hero{position:relative;min-height:100vh;display:flex;align-items:center;padding:120px 32px 80px;overflow:hidden;}
+  .lp-hero-in{max-width:1280px;margin:0 auto;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;position:relative;z-index:10;}
+  .lp-hero-holo{position:absolute;top:8%;right:-5%;width:520px;opacity:.04;pointer-events:none;z-index:0;filter:blur(3px) brightness(1.8);animation:holo 26s ease-in-out infinite;}
+  .lp-hero-holo img{width:100%;height:auto;}
+  @keyframes holo{0%,100%{transform:translate(0,0) scale(1) rotate(0deg);opacity:.04;}50%{transform:translate(-36px,28px) scale(1.07) rotate(2deg);opacity:.07;}}
+
+  .lp-ey{display:inline-flex;align-items:center;gap:8px;font-family:var(--fm);font-size:10px;color:var(--mt);letter-spacing:.14em;text-transform:uppercase;margin-bottom:24px;}
+  .lp-ey-dot{width:6px;height:6px;border-radius:50%;background:var(--bl);animation:pd 2s ease-in-out infinite;display:inline-block;}
+  @keyframes pd{0%,100%{box-shadow:0 0 0 0 rgba(26,86,255,.6);}50%{box-shadow:0 0 0 6px rgba(26,86,255,0);}}
+
+  .lp-h1{font-family:var(--fd);font-weight:800;font-size:clamp(3rem,5.5vw,5.2rem);line-height:1.02;letter-spacing:-.03em;color:#fff;margin-bottom:26px;display:flex;flex-direction:column;}
+  .lp-h1a,.lp-h1b,.lp-h1d{display:block;opacity:0;transform:translateY(28px);animation:rv .8s var(--ease) forwards;}
+  .lp-h1a{animation-delay:.1s;}
+  .lp-h1b{animation-delay:.25s;background:linear-gradient(90deg,#fff 0%,rgba(26,86,255,.7) 50%,#fff 100%);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:rv .8s var(--ease) .25s forwards,shimmer 8s linear 1s infinite;}
+  .lp-h1c{-webkit-text-fill-color:var(--bl);}
+  .lp-h1d{animation-delay:.4s;color:rgba(255,255,255,.28);font-weight:400;-webkit-text-fill-color:rgba(255,255,255,.28);}
+  @keyframes rv{to{opacity:1;transform:translateY(0);}}
+  @keyframes shimmer{to{background-position:200% center;}}
+
+  .lp-desc{font-size:16px;line-height:1.75;color:rgba(255,255,255,.45);max-width:480px;margin-bottom:32px;opacity:0;animation:rv .8s var(--ease) .52s forwards;}
+  .lp-btns{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px;opacity:0;animation:rv .8s var(--ease) .62s forwards;}
+
+  .lp-btn-p{display:inline-flex;align-items:center;gap:8px;background:var(--bl);color:#fff;font-family:var(--fb);font-size:15px;font-weight:700;padding:14px 26px;border-radius:10px;text-decoration:none;box-shadow:0 8px 30px rgba(26,86,255,.35);transition:all .22s;position:relative;overflow:hidden;}
+  .lp-btn-p::before{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(to right,transparent,rgba(255,255,255,.18),transparent);transform:skewX(-20deg);animation:btn-shim 4s ease-in-out 1s infinite;}
+  @keyframes btn-shim{0%,80%{left:-60%;}100%{left:160%;}}
+  .lp-btn-p:hover{background:#1446D4;transform:translateY(-2px);color:#fff;box-shadow:0 14px 40px rgba(26,86,255,.45);}
+  .lp-btn-new{display:inline-flex;align-items:center;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#10B981;font-family:var(--fm);font-size:9px;font-weight:600;padding:2px 7px;border-radius:4px;letter-spacing:.1em;margin-left:4px;}
+
+  .lp-btn-g{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.65);font-family:var(--fb);font-size:15px;font-weight:500;padding:14px 22px;border-radius:10px;border:1px solid rgba(255,255,255,.07);cursor:none;transition:all .2s;}
+  .lp-btn-g:hover{background:rgba(255,255,255,.07);color:#fff;}
+
+  .lp-trust{display:flex;flex-wrap:wrap;gap:8px;opacity:0;animation:rv .8s var(--ease) .72s forwards;}
+  .lp-tag{display:inline-flex;align-items:center;gap:4px;font-family:var(--fm);font-size:10px;color:var(--mt);letter-spacing:.05em;}
+  .lp-tag i{color:var(--gn);font-size:11px;}
+
+  .lp-hero-vis{opacity:0;transform:translateX(36px);animation:rv 1s var(--ease) .4s forwards;}
 
   /* KPI Mockup */
-  .kpi-mockup-shell { background: rgba(8,14,30,0.95); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03); position: relative; backdrop-filter: blur(20px); }
-  .km-topbar { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.3); }
-  .km-dots { display: flex; gap: 6px; }
-  .km-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .km-title { font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.3); flex: 1; text-align: center; letter-spacing: 0.08em; }
-  .km-live { display: flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 10px; color: #10B981; letter-spacing: 0.1em; }
-  .km-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #10B981; animation: pulse-dot 1.5s ease-in-out infinite; }
-  .km-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.05); }
-  .km-card { background: rgba(8,14,30,0.95); padding: 16px 14px 12px; position: relative; overflow: hidden; transition: background .2s; }
-  .km-card:hover { background: rgba(12,20,40,0.98); }
-  .km-card-label { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
-  .km-card-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 20px; line-height: 1; margin-bottom: 10px; transition: all .4s; }
-  .km-spark { height: 36px; display: block; margin-bottom: 6px; }
-  .km-card-delta { font-family: 'DM Mono', monospace; font-size: 10px; display: flex; align-items: center; }
-  .km-chart-area { padding: 16px 20px; }
-  .km-chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .km-chart-title { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.06em; }
-  .km-legend { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.35); display: flex; align-items: center; }
-  .km-main-chart { height: 130px; display: block; }
-  .chart-draw { stroke-dasharray: 1500; stroke-dashoffset: 1500; animation: draw 2.5s cubic-bezier(0.4,0,0.2,1) forwards; }
-  @keyframes draw { to { stroke-dashoffset: 0; } }
-  .km-footer-row { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.2); }
-  .km-footer-stat { padding: 12px 16px; border-right: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column; gap: 2px; }
-  .km-footer-stat:last-child { border: none; }
-  .km-fs-val { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; color: #fff; }
-  .km-fs-lbl { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.28); letter-spacing: 0.07em; text-transform: uppercase; }
-  .km-scanline { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px); }
+  .mock{background:rgba(6,12,26,.97);border:1px solid rgba(255,255,255,.07);border-radius:16px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.03);position:relative;}
+  .mock-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.05);background:rgba(0,0,0,.3);}
+  .mock-dots{display:flex;gap:5px;} .mock-dots span{width:10px;height:10px;border-radius:50%;display:block;}
+  .mock-title{font-family:var(--fm);font-size:10px;color:rgba(255,255,255,.25);flex:1;text-align:center;letter-spacing:.08em;}
+  .mock-live{display:flex;align-items:center;gap:5px;font-family:var(--fm);font-size:9px;color:var(--gn);letter-spacing:.1em;}
+  .mock-dot{width:6px;height:6px;border-radius:50%;background:var(--gn);animation:pd 1.5s ease-in-out infinite;display:inline-block;}
+
+  .mock-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.05);}
+  .mock-tab{flex:1;background:none;border:none;cursor:pointer;font-family:var(--fm);font-size:10px;color:rgba(255,255,255,.28);padding:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:2px solid transparent;transition:all .2s;}
+  .mock-tab-on{color:var(--bl);border-bottom-color:var(--bl);}
+
+  .mock-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.05);}
+  .mock-card{background:rgba(6,12,26,.97);padding:14px 12px 10px;position:relative;overflow:hidden;transition:background .2s;}
+  .mock-card:hover{background:rgba(12,22,44,.98);}
+  .mock-card-lbl{font-family:var(--fm);font-size:8px;color:rgba(255,255,255,.25);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;}
+  .mock-card-val{font-family:var(--fd);font-weight:700;font-size:20px;line-height:1;margin-bottom:8px;transition:all .4s;}
+  .mock-spark{height:34px;display:block;margin-bottom:5px;}
+  .mock-delta{font-family:var(--fm);font-size:9px;display:flex;align-items:center;}
+
+  .mock-chart{padding:14px 18px;}
+  .mock-chart-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .mock-chart-lbl{font-family:var(--fm);font-size:9px;color:rgba(255,255,255,.22);letter-spacing:.07em;text-transform:uppercase;}
+  .mock-legend{display:flex;gap:10px;}
+  .mock-leg{font-family:var(--fm);font-size:9px;color:rgba(255,255,255,.32);display:flex;align-items:center;gap:4px;}
+  .mock-leg span{width:7px;height:7px;border-radius:50%;display:inline-block;}
+  .mock-bars{display:flex;align-items:flex-end;gap:6px;height:80px;}
+  .mock-bar-col{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;height:100%;justify-content:flex-end;}
+  .mock-bar-fill{width:100%;border-radius:3px 3px 0 0;transition:height .5s var(--ease);min-height:4px;}
+  .mock-bar-lbl{font-family:var(--fm);font-size:7px;color:rgba(255,255,255,.22);}
+
+  .mock-foot{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid rgba(255,255,255,.05);background:rgba(0,0,0,.2);}
+  .mock-fs{padding:10px 14px;border-right:1px solid rgba(255,255,255,.04);display:flex;flex-direction:column;gap:2px;}
+  .mock-fs:last-child{border:none;}
+  .mock-fv{font-family:var(--fd);font-weight:700;font-size:15px;color:#fff;}
+  .mock-fl{font-family:var(--fm);font-size:8px;color:rgba(255,255,255,.25);letter-spacing:.07em;text-transform:uppercase;}
+  .mock-scanline{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.009) 3px,rgba(255,255,255,.009) 4px);}
 
   /* Ticker */
-  .ticker-wrap { position: relative; z-index: 10; background: rgba(26,86,255,0.06); border-top: 1px solid rgba(26,86,255,0.15); border-bottom: 1px solid rgba(26,86,255,0.15); overflow: hidden; display: flex; align-items: center; height: 44px; }
-  .ticker-label { font-family: 'DM Mono', monospace; font-size: 9px; color: #1A56FF; letter-spacing: 0.15em; padding: 0 20px; border-right: 1px solid rgba(26,86,255,0.2); flex-shrink: 0; z-index: 2; background: rgba(4,9,18,0.5); }
-  .ticker-track { flex: 1; overflow: hidden; }
-  .ticker-inner { display: flex; align-items: center; white-space: nowrap; animation: ticker-scroll 40s linear infinite; }
-  @keyframes ticker-scroll { to { transform: translateX(-50%); } }
-  .ticker-item { display: inline-flex; align-items: center; gap: 8px; font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.4); padding: 0 32px; letter-spacing: 0.05em; }
-  .ticker-dot { width: 3px; height: 3px; border-radius: 50%; background: rgba(26,86,255,0.5); flex-shrink: 0; }
+  .ticker{position:relative;z-index:10;background:rgba(26,86,255,.06);border-top:1px solid rgba(26,86,255,.14);border-bottom:1px solid rgba(26,86,255,.14);overflow:hidden;display:flex;align-items:center;height:40px;}
+  .ticker-tag{font-family:var(--fm);font-size:9px;color:var(--bl);letter-spacing:.18em;padding:0 18px;border-right:1px solid rgba(26,86,255,.2);flex-shrink:0;z-index:2;background:rgba(4,9,18,.5);}
+  .ticker-track{flex:1;overflow:hidden;}
+  .ticker-inner{display:flex;align-items:center;white-space:nowrap;animation:tick 42s linear infinite;}
+  @keyframes tick{to{transform:translateX(-50%);}}
+  .ticker-item{display:inline-flex;align-items:center;gap:8px;font-family:var(--fm);font-size:10px;color:rgba(255,255,255,.32);padding:0 26px;letter-spacing:.04em;}
+  .ticker-dot{width:3px;height:3px;border-radius:50%;background:rgba(26,86,255,.5);flex-shrink:0;}
 
   /* Sections */
-  .lp-section { padding: 100px 0; position: relative; z-index: 10; }
-  .lp-section--features { background: transparent; }
-  .lp-section--stats { background: linear-gradient(180deg, transparent, rgba(26,86,255,0.04), transparent); }
-  .lp-section--arch { padding: 60px 0; border-top: 1px solid rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.04); }
-  .lp-section--cta { padding: 100px 0 80px; }
-  .lp-section-header { text-align: center; max-width: 640px; margin: 0 auto 72px; }
-  .lp-section-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 16px; }
-  .lp-h2 { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(2.4rem, 4vw, 3.6rem); line-height: 1.08; letter-spacing: -0.02em; color: #fff; margin-bottom: 20px; }
-  .lp-gradient-text { background: linear-gradient(135deg, #1A56FF, #A78BFA, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .lp-section-sub { font-size: 15px; line-height: 1.7; color: rgba(255,255,255,0.4); }
+  .lp-section{padding:96px 0;position:relative;z-index:10;}
+  .lp-sh{text-align:center;max-width:620px;margin:0 auto 64px;}
+  .lp-h2{font-family:var(--fd);font-weight:800;font-size:clamp(2.4rem,4vw,3.6rem);line-height:1.06;letter-spacing:-.02em;color:#fff;margin-bottom:18px;}
+  .lp-accent{background:linear-gradient(135deg,var(--bl),var(--pu),var(--gn));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  .lp-sub{font-size:15px;line-height:1.72;color:rgba(255,255,255,.36);}
 
-  /* Feature Cards */
-  .lp-features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .lp-feat-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; cursor: none; transition: border-color .2s, transform .2s, box-shadow .2s; }
-  .lp-feat-card:hover { border-color: rgba(255,255,255,0.12); }
-  .lp-feat-num { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 56px; color: rgba(255,255,255,0.03); position: absolute; top: 12px; right: 20px; line-height: 1; }
-  .lp-feat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 20px; }
-  .lp-feat-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: #fff; margin-bottom: 10px; }
-  .lp-feat-desc { font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,0.4); margin-bottom: 20px; }
-  .lp-feat-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-  .lp-feat-tag { font-family: 'DM Mono', monospace; font-size: 10px; padding: 4px 10px; border-radius: 4px; border: 1px solid; letter-spacing: 0.05em; }
-  .lp-feat-glow { position: absolute; bottom: 0; left: 0; right: 0; height: 100%; pointer-events: none; opacity: 0; transition: opacity .3s; }
-  .lp-feat-card:hover .lp-feat-glow { opacity: 1; }
-  .tilt-card { transition: transform .4s ease, box-shadow .4s ease; }
+  /* Reveal */
+  .reveal{opacity:0;transform:translateY(24px);transition:opacity .8s var(--ease),transform .8s var(--ease);}
+  .reveal.visible{opacity:1;transform:translateY(0);}
 
-  /* ── PRESENCE INTERNATIONALE ── */
-  .lp-section--presence {
-    background: linear-gradient(180deg, transparent, rgba(26,86,255,0.03) 30%, rgba(16,185,129,0.02) 70%, transparent);
-    border-top: 1px solid rgba(255,255,255,0.04);
-  }
-  .presence-layout {
-    display: grid;
-    grid-template-columns: 1fr 340px;
-    gap: 32px;
-    align-items: start;
-    margin-bottom: 64px;
-  }
-  .presence-map-wrap {
-    position: relative;
-    background: rgba(8,16,36,0.6);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 20px;
-    overflow: hidden;
-    padding: 24px;
-    min-height: 340px;
-  }
-  .presence-map-bg {
-    position: absolute; inset: 0;
-    background: radial-gradient(ellipse at 50% 50%, rgba(26,86,255,0.06), transparent 70%);
-    pointer-events: none;
-  }
-  .world-map-container { position: relative; z-index: 1; }
-  .world-svg { width: 100%; height: auto; display: block; }
+  /* Feature cards */
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .tilt{transition:transform .4s ease,box-shadow .4s ease;}
+  .feat-card{background:rgba(255,255,255,.02);border:1px solid var(--br);border-radius:14px;padding:28px;position:relative;overflow:hidden;cursor:none;transition:border-color .2s;height:100%;}
+  .feat-card:hover{border-color:rgba(255,255,255,.1);}
+  .feat-n{font-family:var(--fd);font-weight:800;font-size:58px;color:rgba(255,255,255,.025);position:absolute;top:10px;right:16px;line-height:1;}
+  .feat-ico{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:18px;}
+  .feat-title{font-family:var(--fd);font-weight:700;font-size:17px;color:#fff;margin-bottom:9px;}
+  .feat-desc{font-size:13px;line-height:1.7;color:rgba(255,255,255,.35);margin-bottom:18px;}
+  .feat-tags{display:flex;flex-wrap:wrap;gap:5px;}
+  .feat-tag{font-family:var(--fm);font-size:9px;padding:3px 9px;border-radius:4px;border:1px solid;letter-spacing:.04em;}
+  .feat-accent-line{position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--ac,#1A56FF);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease);opacity:.8;}
+  .feat-card:hover .feat-accent-line{transform:scaleX(1);}
 
-  /* Tooltip */
-  .map-tooltip {
-    position: absolute;
-    transform: translate(-50%, -140%);
-    pointer-events: none;
-    z-index: 20;
-    animation: tooltip-in 0.2s ease;
-  }
-  @keyframes tooltip-in { from { opacity: 0; transform: translate(-50%, -120%); } to { opacity: 1; transform: translate(-50%, -140%); } }
-  .map-tooltip-inner {
-    background: rgba(8,14,30,0.97);
-    border: 1px solid rgba(26,86,255,0.3);
-    border-radius: 10px;
-    padding: 10px 14px;
-    min-width: 160px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    backdrop-filter: blur(20px);
-  }
-  .map-tt-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; color: #fff; margin-bottom: 3px; }
-  .map-tt-status { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.4); letter-spacing: 0.06em; margin-bottom: 8px; }
-  .map-tt-row { display: flex; gap: 14px; font-family: 'DM Mono', monospace; font-size: 11px; color: #10B981; }
-  .map-tt-row i { margin-right: 4px; }
+  /* Presence */
+  .lp-pres{background:linear-gradient(180deg,transparent,rgba(26,86,255,.03),transparent);border-top:1px solid var(--br);}
+  .pres-grid{display:grid;grid-template-columns:1fr 320px;gap:28px;align-items:start;margin-bottom:48px;}
+  .pres-map{position:relative;background:rgba(6,12,26,.6);border:1px solid var(--br);border-radius:18px;overflow:hidden;padding:20px;min-height:320px;}
+  .pres-map-glow{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,rgba(26,86,255,.06),transparent 70%);pointer-events:none;}
 
-  /* Sidebar */
-  .presence-sidebar {
-    background: rgba(8,14,30,0.8);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-  .ps-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    background: rgba(0,0,0,0.2);
-  }
-  .ps-live { display: flex; align-items: center; gap: 6px; font-family: 'DM Mono', monospace; font-size: 10px; color: #10B981; letter-spacing: 0.08em; }
-  .ps-count { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.08em; }
-  .ps-list { padding: 8px 0; }
-  .ps-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 18px;
-    cursor: pointer;
-    transition: background 0.2s;
-    border-left: 2px solid transparent;
-  }
-  .ps-item:hover { background: rgba(255,255,255,0.03); }
-  .ps-item--active { background: rgba(26,86,255,0.06); border-left-color: #1A56FF; }
-  .ps-item--hq { background: rgba(26,86,255,0.04); }
-  .ps-item--hq.ps-item--active { border-left-color: #1A56FF; }
-  .ps-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transition: background 0.3s; }
-  .ps-info { flex: 1; min-width: 0; }
-  .ps-name { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 500; color: #fff; display: flex; align-items: center; gap: 8px; }
-  .ps-hq-badge { font-family: 'DM Mono', monospace; font-size: 8px; background: rgba(26,86,255,0.2); color: #1A56FF; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.1em; }
-  .ps-sub { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.04em; margin-top: 2px; }
-  .ps-meta { text-align: right; }
-  .ps-devs { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: #fff; display: block; }
-  .ps-devs-lbl { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.25); }
+  .pres-side{background:rgba(6,12,26,.8);border:1px solid var(--br);border-radius:14px;overflow:hidden;}
+  .pres-side-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--br);background:rgba(0,0,0,.2);}
+  .pres-live{display:flex;align-items:center;gap:6px;font-family:var(--fm);font-size:9px;color:var(--gn);letter-spacing:.08em;}
+  .pres-count{font-family:var(--fm);font-size:9px;color:var(--mt);letter-spacing:.08em;}
+  .pres-list{padding:6px 0;list-style:none;}
+  .pres-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;transition:background .2s;border-left:2px solid transparent;}
+  .pres-item:hover{background:rgba(255,255,255,.025);}
+  .pres-act{background:rgba(26,86,255,.06);border-left-color:var(--bl);}
+  .pres-hq{background:rgba(26,86,255,.03);}
+  .pres-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .3s,box-shadow .3s;}
+  .pres-info{flex:1;min-width:0;}
+  .pres-name{font-family:var(--fb);font-size:12px;font-weight:500;color:#fff;display:flex;align-items:center;gap:6px;}
+  .pres-hq-tag{font-family:var(--fm);font-size:8px;background:rgba(26,86,255,.2);color:var(--bl);padding:2px 6px;border-radius:3px;letter-spacing:.1em;}
+  .pres-st{font-family:var(--fm);font-size:9px;color:var(--mt);letter-spacing:.03em;margin-top:1px;}
+  .pres-meta{text-align:right;}
+  .pres-dv{font-family:var(--fd);font-weight:700;font-size:15px;color:#fff;display:block;}
+  .pres-dl{font-family:var(--fm);font-size:8px;color:var(--mt);}
 
-  .ps-detail {
-    border-top: 1px solid rgba(255,255,255,0.05);
-    padding: 16px 18px;
-    background: rgba(26,86,255,0.04);
-  }
-  .ps-detail-name { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 16px; color: #fff; margin-bottom: 12px; }
-  .ps-detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .ps-detail-kpi { text-align: center; }
-  .ps-kpi-val { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 20px; color: #fff; line-height: 1; }
-  .ps-kpi-lbl { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.3); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 4px; }
+  .pres-detail{border-top:1px solid var(--br);padding:14px 16px;background:rgba(26,86,255,.04);}
+  .pres-det-name{font-family:var(--fd);font-weight:800;font-size:15px;color:#fff;margin-bottom:10px;}
+  .pres-det-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .pres-kpi{text-align:center;}
+  .pres-kv{font-family:var(--fd);font-weight:700;font-size:18px;color:#fff;line-height:1;}
+  .pres-kl{font-family:var(--fm);font-size:8px;color:var(--mt);letter-spacing:.06em;text-transform:uppercase;margin-top:3px;}
 
-  /* Bottom stats */
-  .presence-bottom-stats {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 2px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 16px; overflow: hidden;
-  }
-  .pbs-item { background: rgba(4,9,18,0.9); padding: 28px 24px; text-align: center; transition: background 0.2s; }
-  .pbs-item:hover { background: rgba(8,16,32,0.98); }
-  .pbs-val { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 32px; color: #fff; line-height: 1; margin-bottom: 6px; }
-  .pbs-lbl { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.08em; text-transform: uppercase; }
+  .pres-bottom{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:rgba(255,255,255,.04);border:1px solid var(--br);border-radius:14px;overflow:hidden;}
+  .pres-bs{background:var(--bg);padding:28px 20px;text-align:center;transition:background .2s;}
+  .pres-bs:hover{background:rgba(8,16,32,.98);}
+  .pres-bv{font-family:var(--fd);font-weight:800;font-size:30px;color:#fff;line-height:1;margin-bottom:5px;}
+  .pres-bl{font-family:var(--fm);font-size:9px;color:var(--mt);letter-spacing:.08em;text-transform:uppercase;}
 
   /* Stats */
-  .lp-stats-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden; }
-  .stat-block { background: rgba(4,9,18,0.9); padding: 36px 24px; text-align: center; transition: background .2s; }
-  .stat-block:hover { background: rgba(8,16,32,0.98); }
-  .stat-number { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 40px; color: #fff; line-height: 1; margin-bottom: 8px; }
-  .stat-suffix { font-size: 28px; color: #1A56FF; }
-  .stat-label { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.4; }
+  .lp-stats-sec{background:rgba(26,86,255,.025);border-top:1px solid var(--br);border-bottom:1px solid var(--br);}
+  .stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:rgba(255,255,255,.04);border:1px solid var(--br);border-radius:14px;overflow:hidden;}
+  .stat{background:var(--bg);padding:32px 20px;text-align:center;transition:background .2s,border-top-color .2s;border-top:2px solid transparent;}
+  .stat:hover{background:rgba(8,16,32,.98);border-top-color:var(--bl);}
+  .stat-n{font-family:var(--fd);font-weight:800;font-size:38px;color:#fff;line-height:1;margin-bottom:7px;}
+  .stat-s{font-size:28px;color:var(--bl);}
+  .stat-l{font-family:var(--fm);font-size:9px;color:var(--mt);letter-spacing:.08em;text-transform:uppercase;line-height:1.4;}
 
-  /* Architecture Strip */
-  .lp-arch-strip { display: flex; flex-direction: column; gap: 24px; align-items: center; }
-  .lp-arch-label { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.2); letter-spacing: 0.15em; text-transform: uppercase; }
-  .lp-arch-flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
-  .lp-arch-node { display: flex; flex-direction: column; align-items: center; gap: 4px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px 20px; min-width: 100px; transition: border-color .2s, background .2s; }
-  .lp-arch-node:hover { border-color: rgba(26,86,255,0.3); background: rgba(26,86,255,0.04); }
-  .lp-arch-icon { font-size: 22px; color: rgba(255,255,255,0.5); margin-bottom: 2px; }
-  .lp-arch-name { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 13px; color: #fff; }
-  .lp-arch-sub { font-family: 'DM Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.25); letter-spacing: 0.05em; }
-  .lp-arch-arrow { color: rgba(255,255,255,0.15); font-size: 18px; padding: 0 4px; }
+  /* Architecture */
+  .lp-arch-sec{padding:56px 0;border-top:1px solid var(--br);border-bottom:1px solid var(--br);}
+  .arch-lbl{font-family:var(--fm);font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.18em;text-transform:uppercase;text-align:center;margin-bottom:24px;}
+  .arch-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;}
+  .arch-node{display:flex;flex-direction:column;align-items:center;gap:4px;background:rgba(255,255,255,.02);border:1px solid var(--br);border-radius:10px;padding:14px 18px;min-width:90px;transition:border-color .2s,background .2s;}
+  .arch-node:hover{border-color:rgba(26,86,255,.3);background:rgba(26,86,255,.04);}
+  .arch-ico{font-size:20px;color:rgba(255,255,255,.4);margin-bottom:2px;}
+  .arch-nm{font-family:var(--fd);font-weight:700;font-size:12px;color:#fff;}
+  .arch-sb{font-family:var(--fm);font-size:9px;color:var(--mt);letter-spacing:.04em;}
+  .arch-arr{color:rgba(255,255,255,.14);font-size:16px;padding:0 2px;}
 
   /* CTA */
-  .lp-cta-box { background: rgba(26,86,255,0.04); border: 1px solid rgba(26,86,255,0.15); border-radius: 24px; padding: 80px 60px; text-align: center; position: relative; overflow: hidden; }
-  .lp-cta-orb { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(26,86,255,0.08), transparent 65%); pointer-events: none; }
-  .lp-cta-content { position: relative; z-index: 1; }
-  .lp-cta-eyebrow { margin-bottom: 24px; }
-  .lp-live-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); padding: 6px 14px; border-radius: 20px; font-family: 'DM Mono', monospace; font-size: 11px; color: #10B981; letter-spacing: 0.1em; }
-  .lp-live-pulse { width: 6px; height: 6px; border-radius: 50%; background: #10B981; animation: pulse-dot 1.5s ease-in-out infinite; }
-  .lp-cta-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(2rem, 3.5vw, 3rem); line-height: 1.1; letter-spacing: -0.02em; color: #fff; margin-bottom: 20px; }
-  .lp-cta-desc { font-size: 16px; color: rgba(255,255,255,0.4); line-height: 1.7; max-width: 480px; margin: 0 auto 40px; }
-  .lp-btn-cta { display: inline-flex; align-items: center; background: #fff; color: #040912; font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; padding: 16px 40px; border-radius: 10px; text-decoration: none; transition: all .25s; box-shadow: 0 8px 32px rgba(255,255,255,0.1); }
-  .lp-btn-cta:hover { background: #E2E8F0; transform: translateY(-2px); color: #040912; box-shadow: 0 12px 40px rgba(255,255,255,0.15); }
+  .lp-cta-sec{padding:96px 0 72px;}
+  .cta-box{background:rgba(26,86,255,.05);border:1px solid rgba(26,86,255,.16);border-radius:20px;padding:72px 52px;text-align:center;position:relative;overflow:hidden;}
+  .cta-orb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(26,86,255,.09),transparent 65%);pointer-events:none;animation:orb 18s ease-in-out infinite alternate;}
+  .cta-inner{position:relative;z-index:1;}
+  .cta-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.18);padding:5px 13px;border-radius:20px;font-family:var(--fm);font-size:10px;color:var(--gn);letter-spacing:.1em;margin-bottom:22px;}
+  .cta-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--gn);animation:pd 1.5s ease-in-out infinite;}
+  .cta-title{font-family:var(--fd);font-weight:800;font-size:clamp(2rem,3.5vw,3rem);line-height:1.08;letter-spacing:-.02em;color:#fff;margin-bottom:18px;}
+  .cta-desc{font-size:15px;color:rgba(255,255,255,.36);line-height:1.72;max-width:460px;margin:0 auto 36px;}
+  .cta-btn{display:inline-flex;align-items:center;background:#fff;color:var(--bg);font-family:var(--fd);font-size:16px;font-weight:800;padding:15px 38px;border-radius:10px;text-decoration:none;transition:all .22s;box-shadow:0 8px 28px rgba(255,255,255,.08);letter-spacing:.01em;}
+  .cta-btn:hover{background:#E2E8F0;transform:translateY(-2px);color:var(--bg);box-shadow:0 14px 38px rgba(255,255,255,.14);}
 
   /* Footer */
-  .lp-footer { border-top: 1px solid rgba(255,255,255,0.05); padding: 32px 0; position: relative; z-index: 10; }
-  .lp-footer-inner { display: flex; align-items: center; justify-content: space-between; }
-  .lp-footer-copy { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.2); margin-top: 2px; letter-spacing: 0.08em; }
-  .lp-footer-meta { font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.2); display: flex; gap: 10px; align-items: center; }
-  .lp-footer-sep { opacity: 0.3; }
-
-  /* Scroll reveals */
-  .scroll-reveal-up { opacity: 0; transform: translateY(28px); transition: opacity .8s cubic-bezier(0.16,1,0.3,1), transform .8s cubic-bezier(0.16,1,0.3,1); }
-  .revealed .scroll-reveal-up, .scroll-reveal-up.revealed { opacity: 1; transform: translateY(0); }
+  .lp-footer{border-top:1px solid var(--br);padding:48px 0 32px;position:relative;z-index:10;}
+  .foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:40px;margin-bottom:40px;}
+  .foot-brand{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .foot-logo{height:24px;width:auto;opacity:.55;filter:grayscale(1) brightness(2);}
+  .foot-bname{font-family:var(--fd);font-weight:800;font-size:16px;color:#fff;letter-spacing:.08em;}
+  .foot-copy{font-family:var(--fm);font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.04em;line-height:1.7;}
+  .foot-h{font-family:var(--fm);font-size:9px;color:rgba(255,255,255,.2);letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;font-weight:600;}
+  .foot-l{font-family:var(--fb);font-size:13px;color:var(--mt);margin-bottom:8px;transition:color .2s;cursor:default;}
+  .foot-l:hover{color:#fff;}
+  .foot-bottom{display:flex;align-items:center;gap:10px;border-top:1px solid var(--br);padding-top:24px;font-family:var(--fm);font-size:10px;color:rgba(255,255,255,.2);}
+  .foot-sep{opacity:.3;}
 
   /* Responsive */
-  @media (max-width: 1024px) {
-    .lp-hero-inner { grid-template-columns: 1fr; gap: 48px; }
-    .lp-hero-visual { display: none; }
-    .lp-features-grid { grid-template-columns: repeat(2, 1fr); }
-    .lp-stats-grid { grid-template-columns: repeat(3, 1fr); }
-    .presence-layout { grid-template-columns: 1fr; }
-    .presence-bottom-stats { grid-template-columns: repeat(2, 1fr); }
-    .lp-arch-arrow { display: none; }
-  }
-  @media (max-width: 768px) {
-    .lp-hero { padding: 100px 20px 60px; }
-    .lp-features-grid { grid-template-columns: 1fr; }
-    .lp-stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .lp-nav-links { display: none; }
-    .lp-hamburger { display: flex; }
-    .lp-cta-box { padding: 48px 24px; }
-    .lp-container { padding: 0 20px; }
-    .lp-footer-inner { flex-direction: column; gap: 12px; text-align: center; }
-    .km-cards { grid-template-columns: repeat(2, 1fr); }
-    .km-footer-row { grid-template-columns: repeat(2, 1fr); }
-    .cursor-dot, .cursor-ring { display: none; }
-    .lp-root { cursor: auto; }
-    .presence-bottom-stats { grid-template-columns: repeat(2, 1fr); }
-    .ps-detail-grid { grid-template-columns: repeat(3, 1fr); }
-  }
-
-  /* Brand Logo Styles */
-  .lp-brand-logo { width: 100px; height: auto; display: block; filter: drop-shadow(0 0 8px rgba(26,86,255,0.4)); transition: transform 0.3s ease; }
-  .lp-brand:hover .lp-brand-logo { transform: scale(1.1) rotate(5deg); }
-  
-  .lp-hero-hologram { position: absolute; top: 8%; right: -5%; width: 550px; opacity: 0.04; pointer-events: none; z-index: 0; filter: blur(3px) brightness(1.8) contrast(1.1); animation: holo-float 25s ease-in-out infinite; }
-  .lp-hero-hologram img { width: 100%; height: auto; }
-  
-  @keyframes holo-float { 
-    0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 0.04; }
-    50% { transform: translate(-40px, 30px) scale(1.08) rotate(2deg); opacity: 0.07; }
-  }
-
-  .lp-footer-brand-top { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-  .lp-footer-logo { width: 24px; height: auto; opacity: 0.5; filter: grayscale(1) brightness(2); }
+  @media(max-width:1100px){.lp-hero-in{grid-template-columns:1fr;gap:48px;}.lp-hero-vis{display:none;}.feat-grid{grid-template-columns:repeat(2,1fr);}.stats-grid{grid-template-columns:repeat(3,1fr);}.pres-grid{grid-template-columns:1fr;}.foot-grid{grid-template-columns:1fr 1fr;gap:28px;}}
+  @media(max-width:768px){.lp-hero{padding:100px 20px 60px;}.feat-grid{grid-template-columns:1fr;}.stats-grid{grid-template-columns:repeat(2,1fr);}.lp-links{display:none;}.lp-ham{display:flex;}.lp-container{padding:0 20px;}.cta-box{padding:48px 24px;}.foot-grid{grid-template-columns:1fr;}.lp-footer{padding:32px 0 24px;}.arch-arr{display:none;}.pres-bottom{grid-template-columns:repeat(2,1fr);}.c-dot,.c-ring{display:none;}.lp-root{cursor:auto;}}
 `;

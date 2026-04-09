@@ -220,15 +220,21 @@ class ProjectRepository(BaseRepository[Project]):
         _apply_enrichment(project, _build_enrichment_maps(db, [project.id]))
         return project
 
-    def create_from_import(self, db: Session, name: str) -> Project:
+    def create_from_import(
+        self,
+        db: Session,
+        name: str,
+        gitlab_project_id: Optional[int] = None,
+        gitlab_config_id: Optional[int] = None,
+    ) -> Project:
         """
         ✅ NOUVEAU : Crée un projet minimal depuis un import CSV.
 
         Règles métier :
           - name              → conservé tel quel (casse du CSV)
           - description       → message invitant l'admin à compléter
-          - gitlab_project_id → None (à renseigner dans Admin → Projets
-                                pour que l'extraction GitLab fonctionne)
+          - gitlab_project_id → Renseigné si transmis, sinon None
+          - gitlab_config_id  → Renseigné si transmis, sinon None
           - is_active         → True
           - archived          → False
 
@@ -244,12 +250,23 @@ class ProjectRepository(BaseRepository[Project]):
         # Vérification race condition (même nom, autre ligne du CSV)
         existing = self.get_by_name_ilike(db, name)
         if existing:
+            # Si le projet existe mais n'a pas d'ID, on le met à jour si des IDs sont fournis
+            updated = False
+            if gitlab_project_id is not None and existing.gitlab_project_id is None:
+                existing.gitlab_project_id = gitlab_project_id
+                updated = True
+            if gitlab_config_id is not None and existing.gitlab_config_id is None:
+                existing.gitlab_config_id = gitlab_config_id
+                updated = True
+            if updated:
+                db.flush()
             return existing
 
         project = Project(
             name              = name.strip(),
             description       = "Créé depuis l'import CSV développeurs — à compléter dans Administration → Projets",
-            gitlab_project_id = None,
+            gitlab_project_id = gitlab_project_id,
+            gitlab_config_id  = gitlab_config_id,
             is_active         = True,
             archived          = False,
         )

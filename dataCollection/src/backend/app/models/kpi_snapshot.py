@@ -42,6 +42,15 @@ class KpiSnapshot(Base):
     total_mrs_merged   = Column(Integer, default=0,   nullable=False)
     nb_developers      = Column(Integer, default=0,   nullable=False)  # devs validés, non-bots
     review_time_hours  = Column(Float,   default=0.0, nullable=False)  # somme brute (heures)
+    
+    # ✅ METRIQUES SENIOR (Collaboration) 🚀
+    total_comments     = Column(Integer, default=0,   nullable=False)
+    total_reviews      = Column(Integer, default=0,   nullable=False)
+
+    # ✅ ACTIVITÉ LATENTE : MRs brouillons (Draft) en cours de développement
+    # Non comptabilisées dans les KPIs de production car pas encore soumises à relecture.
+    # Permet d'identifier les développeurs actifs mais sans production finalisée ce mois.
+    total_mrs_draft    = Column(Integer, default=0,   nullable=False)
 
     # ── KPI #1 : MR Rate par site ────────────────────────────────────────────
     # Formule : total_mrs_created / nb_developers

@@ -16,7 +16,10 @@ def list_lots(db: Session = Depends(get_db), current_user: AppUser = Depends(get
     project_id: Optional[int] = Query(default=None), period_id: Optional[int] = Query(default=None)):
     if project_id and period_id:
         return repo.get_by_period_project(db, period_id, project_id)
+    if project_id:
+        return repo.get_by_project(db, project_id)
     return repo.get_all(db)
+
 
 @router.get("/{lot_id}", response_model=ExtractionLotResponse)
 def get_lot(lot_id: int, db: Session = Depends(get_db), current_user: AppUser = Depends(get_current_user)):

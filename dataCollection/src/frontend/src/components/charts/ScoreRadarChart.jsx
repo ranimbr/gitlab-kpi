@@ -11,11 +11,11 @@ export default function ScoreRadarChart({ snapshot, height = 300 }) {
         dropShadow: { enabled: true, blur: 5, left: 1, top: 1, color: '#4F46E5', opacity: 0.1 }
       },
       labels: [
-        'MR Rate',
-        'Approbations',
-        'Merges',
-        'Commits',
-        'Relecture',
+        'Mentorat (Commentaires)',
+        'Expertise (Revues)',
+        'Qualité (Approbation)',
+        'Production (MRs/Commits)',
+        'Vélocité (Merges)'
       ],
       stroke: { width: 2, colors: ['#4F46E5'] },
       fill: { opacity: 0.3, colors: ['#4F46E5'] },
@@ -47,26 +47,20 @@ export default function ScoreRadarChart({ snapshot, height = 300 }) {
     if (!snapshot) return [{ name: "Score", data: [0, 0, 0, 0, 0] }];
     
     // Normaliser les valeurs sur 100 pour le radar
-    // 1. MR Rate (target: ex: 2.0 -> 100)
-    const mrScore = Math.min((snapshot.mr_rate_per_site / 2) * 100, 100) || 0;
-    // 2. Approved MR Rate (déjà en %, 1.0 = 100%)
-    const appScore = (snapshot.approved_mr_rate || 0) * 100;
-    // 3. Merged MR Rate (déjà en %, 1.0 = 100%)
-    const mrgScore = (snapshot.merged_mr_rate || 0) * 100;
-    // 4. Commit Rate (target: ex: 10 -> 100)
-    const comScore = Math.min((snapshot.commit_rate_per_site / 10) * 100, 100) || 0;
-    // 5. Avg Review Time (< 24h = 100, > 72h = 0)
-    const rvwTime = snapshot.avg_review_time_hours || 0;
-    const rvwScore = rvwTime <= 0 ? 0 : Math.max(100 - (rvwTime / 72) * 100, 0);
+    const mentorScore = Math.min((snapshot.total_comments || 0) * 10, 100);
+    const expertScore = Math.min((snapshot.total_reviews || 0) * 33.3, 100);
+    const qualityScore = (snapshot.approved_mr_rate || 0) * 100;
+    const prodScore = Math.min(((snapshot.total_mrs_created || 0) * 20) + ((snapshot.total_commits || 0) * 2), 100);
+    const velocityScore = (snapshot.merged_mr_rate || 0) * 100;
 
     return [{
-      name: "Score (normalisé)",
+      name: "Profil Expert (%)",
       data: [
-        Math.round(mrScore),
-        Math.round(appScore),
-        Math.round(mrgScore),
-        Math.round(comScore),
-        Math.round(rvwScore)
+        Math.round(mentorScore),
+        Math.round(expertScore),
+        Math.round(qualityScore),
+        Math.round(prodScore),
+        Math.round(velocityScore)
       ]
     }];
   }, [snapshot]);

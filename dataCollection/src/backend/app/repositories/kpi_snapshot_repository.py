@@ -288,13 +288,14 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
 
     def get_developers_ranking(
         self,
-        db:           Session,
-        project_id:   int,
-        period_id:    int,
-        kpi_field:    str           = "mr_rate_per_site",
-        site_id:      Optional[int] = None,
-        limit:        int           = 10,
-        ascending:    bool          = False,
+        db:         Session,
+        project_id: int,
+        period_id:  int,
+        kpi_field:  str           = "mr_rate_per_site",
+        site_id:    Optional[int] = None,
+        group_id:   Optional[int] = None,
+        limit:      int           = 10,
+        ascending:  bool          = False,
     ) -> List[KpiSnapshot]:
         """
         ✅ NOUVEAU — Classement des développeurs par KPI.
@@ -333,6 +334,8 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
         )
         if site_id is not None:
             q = q.filter(KpiSnapshot.site_id == site_id)
+        if group_id is not None:
+            q = q.filter(KpiSnapshot.group_id == group_id)
 
         return q.order_by(order).limit(limit).all()
 

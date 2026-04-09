@@ -58,10 +58,11 @@ const developerService = {
   getHeatmap: (id, months = 12) =>
     api.get(`/analytics/developer/${id}/heatmap`, { params: { months } }).then(r => r.data),
 
-  getLeaderboard: (projectId, { siteId = null, periodId = null, limit = 20 } = {}) => {
+  getLeaderboard: (projectId, { siteId = null, periodId = null, lotId = null, limit = 20 } = {}) => {
     const params = { project_id: projectId };
     if (siteId)   params.site_id   = siteId;
     if (periodId) params.period_id = periodId;
+    if (lotId)    params.lot_id    = lotId;
     if (limit)    params.limit     = limit;
     return api.get("/kpis/leaderboard", { params }).then(r => r.data);
   },

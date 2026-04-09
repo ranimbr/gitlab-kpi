@@ -20,7 +20,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import distinct, func
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -83,11 +83,12 @@ def get_dashboard_kpis(
     site_id:      Optional[int] = Query(default=None),
     group_id:     Optional[int] = Query(default=None),
     developer_id: Optional[int] = Query(default=None),
+    lot_id:       Optional[int] = Query(default=None),
     db:           Session       = Depends(get_db),
     current_user: AppUser       = Depends(get_current_user),
 ):
     service = AnalyticsService(db)
-    result  = service.get_dashboard_summary(project_id, site_id, group_id, developer_id)
+    result  = service.get_dashboard_summary(project_id, site_id, group_id, developer_id, lot_id)
 
     # ⚠️  On NE fait PAS de fallback silencieux vers les données globales du projet.
     # Si le filtre (developer_id, site_id, group_id) ne retourne aucun snapshot,
@@ -126,6 +127,95 @@ def get_developer_kpi_view(
     return result
 
 
+@router.get("/developer/{developer_id}/summary", summary="Résumé global d'un développeur (toutes périodes)")
+def get_developer_global_summary(
+    developer_id: int,
+    project_id:   int     = Query(...),
+    db:           Session = Depends(get_db)
+):
+    print(f"DEBUG: Endpoint Summary appelé pour dev={developer_id}, proj={project_id}")
+    """
+    Retourne les totaux ALL-TIME (depuis le début) d'un développeur sur le projet.
+    Idéal pour la page de profil afin d'éviter d'afficher 0 si le développeur 
+    n'a rien fait le mois dernier.
+    """
+    from app.models.commit import Commit
+    from app.models.merge_request import MergeRequest
+    from app.models.comment import Comment
+    
+    total_commits = db.query(func.count(Commit.id)).filter(
+        Commit.project_id == project_id,
+        Commit.developer_id == developer_id
+    ).scalar() or 0
+
+    total_mrs_created = db.query(func.count(MergeRequest.id)).filter(
+        MergeRequest.project_id == project_id,
+        MergeRequest.developer_id == developer_id
+    ).scalar() or 0
+
+    total_comments = (
+        db.query(func.count(Comment.id))
+        .join(MergeRequest, Comment.merge_request_id == MergeRequest.id)
+        .filter(
+            MergeRequest.project_id == project_id,
+            Comment.developer_id == developer_id
+        )
+        .scalar() or 0
+    )
+
+    # Enterprise Metric: "Active Review Involvement"
+    # Includes explicit assignments AND organic reviews (comments left by the developer)
+    mr_with_comments_by_dev = db.query(Comment.merge_request_id).filter(
+        Comment.developer_id == developer_id
+    ).subquery()
+
+    total_reviews = db.query(func.count(MergeRequest.id)).filter(
+        MergeRequest.project_id == project_id,
+        MergeRequest.developer_id.is_distinct_from(developer_id),
+        (
+            (MergeRequest.reviewer_id == developer_id) | 
+            (MergeRequest.assignee_id == developer_id) | 
+            MergeRequest.id.in_(select(mr_with_comments_by_dev))
+        )
+    ).scalar() or 0
+
+    total_mrs_approved = db.query(func.count(MergeRequest.id)).filter(
+        MergeRequest.project_id == project_id,
+        MergeRequest.developer_id == developer_id,
+        MergeRequest.approved.is_(True)
+    ).scalar() or 0
+
+    total_mrs_merged = db.query(func.count(MergeRequest.id)).filter(
+        MergeRequest.project_id == project_id,
+        MergeRequest.developer_id == developer_id,
+        MergeRequest.state == "merged"
+    ).scalar() or 0
+
+    latest_snap = db.query(KpiSnapshot).filter(
+        KpiSnapshot.project_id == project_id,
+        KpiSnapshot.developer_id == developer_id
+    ).order_by(KpiSnapshot.snapshot_date.desc()).first()
+
+    # Ratios ALL-TIME (Calculés dynamiquement par le Senior Engineer)
+    approved_mr_rate = round(total_mrs_approved / total_mrs_created, 4) if total_mrs_created > 0 else 0.0
+    merged_mr_rate   = round(total_mrs_merged / total_mrs_approved, 4) if total_mrs_approved > 0 else 0.0
+
+    return {
+        "developer_id": developer_id,
+        "project_id": project_id,
+        "total_commits": total_commits,
+        "total_mrs_created": total_mrs_created,
+        "total_mrs_approved": total_mrs_approved,
+        "total_mrs_merged": total_mrs_merged,
+        "total_comments": total_comments,
+        "total_reviews": total_reviews,
+        "approved_mr_rate": approved_mr_rate,
+        "merged_mr_rate": merged_mr_rate,
+        "developer_score": latest_snap.developer_score if latest_snap else 0.0,
+        "score_rank_in_site": latest_snap.score_rank_in_site if latest_snap else None
+    }
+
+
 # ── Leaderboard ───────────────────────────────────────────────────────────────
 
 @router.get("/leaderboard", response_model=DeveloperLeaderboardResponse)
@@ -133,11 +223,13 @@ def get_leaderboard(
     project_id: int           = Query(...),
     period_id:  Optional[int] = Query(default=None),
     site_id:    Optional[int] = Query(default=None),
+    group_id:   Optional[int] = Query(default=None),
     limit:      int           = Query(default=20, ge=1, le=50),
+    lot_id:     Optional[int] = Query(default=None),
     db:         Session       = Depends(get_db),
     _:          AppUser       = Depends(get_current_user),
 ):
-    """Leaderboard développeurs pour un site et une période."""
+    """Leaderboard développeurs pour un site, un groupe et une période."""
     if period_id is None:
         snap = (
             db.query(KpiSnapshot)
@@ -149,12 +241,12 @@ def get_leaderboard(
             .first()
         )
         if not snap:
-            return {"site_id": site_id, "period_label": "—", "total_devs": 0, "entries": []}
+            return {"site_id": site_id, "group_id": group_id, "period_label": "—", "total_devs": 0, "entries": []}
         period_id = snap.period_id
 
     service = AnalyticsService(db)
     return service.get_leaderboard(
-        project_id=project_id, period_id=period_id, site_id=site_id, limit=limit
+        project_id=project_id, period_id=period_id, site_id=site_id, group_id=group_id, limit=limit, lot_id=lot_id
     )
 
 
@@ -376,9 +468,17 @@ def compare_sites(
     project_id: int           = Query(...),
     period_id:  Optional[int] = Query(default=None),
     kpi_field:  str           = Query(default="mr_rate_per_site"),
+    lot_id:     Optional[int] = Query(default=None),
     db:         Session       = Depends(get_db),
     _:          AppUser       = Depends(get_current_user),
 ):
+    service = AnalyticsService(db)
+
+    # 1. Mode Session (Real-time Isolation par Lot)
+    if lot_id:
+        return service.get_site_comparison_for_lot(project_id, lot_id, kpi_field)
+
+    # 2. Mode Période (Données archivées)
     if period_id is None:
         latest_date = db.query(func.max(KpiSnapshot.snapshot_date)).filter(
             KpiSnapshot.project_id == project_id
@@ -413,6 +513,17 @@ def compare_sites(
 
     if not snapshots:
         raise HTTPException(status_code=404, detail="Aucun snapshot inter-sites trouvé.")
+
+    # ── Peuplement dynamique des noms (pour le frontend) ──────────
+    from app.models.developer import Developer
+    for snap in snapshots:
+        if snap.site_id:
+            site_obj = db.query(Site).filter(Site.id == snap.site_id).first()
+            snap.site_name = site_obj.name if site_obj else f"Site {snap.site_id}"
+        if snap.developer_id:
+            dev_obj = db.query(Developer).filter(Developer.id == snap.developer_id).first()
+            snap.developer_name = dev_obj.name if dev_obj else f"Dev {snap.developer_id}"
+
     return snapshots
 
 
@@ -430,9 +541,46 @@ def get_top_developers(
     kpi_field:  str           = Query(default="mr_rate_per_site"),
     limit:      int           = Query(default=10, ge=1, le=50),
     ascending:  bool          = Query(default=False),
+    lot_id:     Optional[int] = Query(default=None),
     db:         Session       = Depends(get_db),
     _:          AppUser       = Depends(get_current_user),
 ):
+    service = AnalyticsService(db)
+
+    # 1. Mode Session (Real-time Leaderboard par Lot)
+    if lot_id:
+        # On réutilise le leaderboard dynamique mais on ne renvoie que les entries
+        # pour respecter le format List[KpiSnapshotResponse] de cet endpoint.
+        lb = service.get_leaderboard(
+            project_id=project_id, period_id=0, site_id=site_id, limit=limit, lot_id=lot_id
+        )
+        # Mapping manuel des entries vers des objets compatibles snapshot (pour le frontend)
+        results = []
+        for entry in lb["entries"]:
+            results.append(KpiSnapshot(
+                project_id=project_id,
+                developer_id=entry["developer_id"],
+                total_commits=entry["commit_count"],
+                total_mrs_created=entry["mr_count"],
+                total_mrs_approved=entry["approved_mr_count"],
+                approved_mr_rate=entry["approved_rate"],
+                avg_review_time_hours=entry["avg_review_time_hours"],
+                developer_score=entry["developer_score"],
+                site_id=site_id
+            ))
+        
+        # Peuplement des noms pour le frontend
+        from app.models.developer import Developer
+        for snap in results:
+            dev_obj = db.query(Developer).filter(Developer.id == snap.developer_id).first()
+            snap.developer_name = dev_obj.name if dev_obj else f"Dev {snap.developer_id}"
+            if site_id:
+                site_obj = db.query(Site).filter(Site.id == site_id).first()
+                snap.site_name = site_obj.name if site_obj else f"Site {site_id}"
+        
+        return results
+
+    # 2. Mode Période (Données archivées)
     if period_id is None:
         snap = db.query(KpiSnapshot).filter(
             KpiSnapshot.project_id   == project_id,
@@ -450,4 +598,17 @@ def get_top_developers(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return snapshots or []
+    if not snapshots:
+        return []
+
+    # ── Peuplement dynamique des noms (pour le frontend) ──────────
+    from app.models.developer import Developer
+    for snap in snapshots:
+        if snap.site_id:
+            site_obj = db.query(Site).filter(Site.id == snap.site_id).first()
+            snap.site_name = site_obj.name if site_obj else f"Site {snap.site_id}"
+        if snap.developer_id:
+            dev_obj = db.query(Developer).filter(Developer.id == snap.developer_id).first()
+            snap.developer_name = dev_obj.name if dev_obj else f"Dev {snap.developer_id}"
+
+    return snapshots

@@ -28,6 +28,7 @@ from app.models.developer import Developer
 from app.models.developer_project import DeveloperProject
 from app.models.developer_site import DeveloperSite
 from app.models.merge_request import MergeRequest
+from app.models.comment import Comment
 
 
 class KpiCalculator:
@@ -106,6 +107,13 @@ class KpiCalculator:
         nb_mrs_merged      = self._count_merged_mrs(project_id, start_date, end_date, site_id, developer_id)
         sum_review_time    = self._sum_review_time(project_id, start_date, end_date, site_id, developer_id)
 
+        # ✅ KPIs SENIOR (Collaboration)
+        nb_comments        = self._count_comments(project_id, start_date, end_date, developer_id)
+        nb_reviews         = self._count_reviews_involved(project_id, start_date, end_date, developer_id)
+
+        # ✅ ACTIVITÉ LATENTE : brouillons en cours (Draft MRs)
+        nb_mrs_draft       = self._count_draft_mrs(project_id, start_date, end_date, site_id, developer_id)
+
         denom = max(nb_devs, 1)
 
         mr_rate_per_site      = round(nb_mrs / denom, 4)
@@ -127,6 +135,9 @@ class KpiCalculator:
             "total_mrs_approved":      nb_mrs_approved,
             "total_mrs_merged":        nb_mrs_merged,
             "review_time_hours":       round(sum_review_time, 2),
+            "total_comments":          nb_comments,
+            "total_reviews":           nb_reviews,
+            "total_mrs_draft":         nb_mrs_draft,
             "site_id":                 site_id,
             "developer_id":            developer_id,
             "project_id":              project_id,
@@ -288,6 +299,29 @@ class KpiCalculator:
             .scalar() or 0
         )
 
+    def _count_draft_mrs(
+        self, project_id: int, start_date: datetime, end_date: datetime,
+        site_id: Optional[int], developer_id: Optional[int],
+    ) -> int:
+        """
+        Compte les MRs en brouillon (Draft) créées sur la période.
+        Ces MRs représentent du travail en cours non encore soumis à relecture.
+        Elles ne sont PAS comptées dans les KPIs de production (total_mrs_created)
+        mais permettent de détecter les développeurs actifs sans production finalisée.
+        """
+        valid_ids = self._active_dev_ids_query(project_id, site_id, developer_id).subquery()
+        return (
+            self.db.query(func.count(MergeRequest.id))
+            .filter(
+                MergeRequest.project_id        == project_id,
+                MergeRequest.created_at_gitlab >= start_date,
+                MergeRequest.created_at_gitlab <  end_date,
+                MergeRequest.is_draft.is_(True),
+                MergeRequest.developer_id.in_(select(valid_ids)),
+            )
+            .scalar() or 0
+        )
+
     def _count_approved_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], developer_id: Optional[int],
@@ -345,3 +379,41 @@ class KpiCalculator:
             .scalar()
         )
         return float(result or 0.0)
+
+    def _count_comments(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
+        """Compte les commentaires faits par le(s) dev(s)."""
+        q = self.db.query(func.count(Comment.id)).filter(
+            Comment.created_at >= start_date,
+            Comment.created_at <  end_date
+        )
+        if developer_id:
+            q = q.filter(Comment.developer_id == developer_id)
+        # On pourrait aussi filtrer par projet via une jointure sur MergeRequest
+        return q.scalar() or 0
+
+    def _count_reviews_involved(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
+        """
+        Compte les MRs où le dev est impliqué en tant que Reviewer ou Assignee
+        (et n'est PAS l'auteur).
+        """
+        if not developer_id:
+            return 0 # Global reviews count needs more logic (count unique MRs with any non-author reviewer)
+            
+        # Enterprise Metric: Active Review Involvement
+        # Counts MRs where dev is Reviewer, Assignee, OR actively participated via Comments
+        mr_with_comments_by_dev = self.db.query(Comment.merge_request_id).filter(
+            Comment.developer_id == developer_id
+        ).subquery()
+
+        q = self.db.query(func.count(MergeRequest.id)).filter(
+            MergeRequest.project_id        == project_id,
+            MergeRequest.created_at_gitlab >= start_date,
+            MergeRequest.created_at_gitlab <  end_date,
+            MergeRequest.developer_id.is_distinct_from(developer_id), # Pas l'auteur
+            (
+                (MergeRequest.reviewer_id == developer_id) | 
+                (MergeRequest.assignee_id == developer_id) |
+                MergeRequest.id.in_(select(mr_with_comments_by_dev))
+            )
+        )
+        return q.scalar() or 0

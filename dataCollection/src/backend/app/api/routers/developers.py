@@ -191,8 +191,8 @@ def download_import_template():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["name", "email", "gitlab_username", "sites", "projects", "group"])
-    writer.writerow(["Ahmed Ben Ali",  "ahmed.benali@example.com",  "ahmed.benali",  "Tunis,Paris", "backend-api,frontend", "Équipe A"])
-    writer.writerow(["Sara Trabelsi",  "sara.trabelsi@example.com", "sara.trabelsi", "Tunis",       "backend-api",          "Équipe B"])
+    writer.writerow(["Ahmed Ben Ali",  "ahmed.benali@example.com",  "ahmed.benali",  "Tunis,Paris", "backend-api:1234,frontend:5678", "Équipe A"])
+    writer.writerow(["Sara Trabelsi",  "sara.trabelsi@example.com", "sara.trabelsi", "Tunis",       "backend-api:1234",             "Équipe B"])
     output.seek(0)
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -259,6 +259,7 @@ async def import_developers(
     file:                    UploadFile    = File(..., description="Fichier CSV ou Excel"),
     default_site_id:         Optional[int] = Form(default=None),
     default_group_id:        Optional[int] = Form(default=None),
+    default_gitlab_config_id: Optional[int] = Form(default=None),
     dry_run:                 bool          = Form(default=False),
     # ✅ NOUVEAU : paramètres enterprise auto-création
     create_missing_sites:    bool          = Form(
@@ -276,6 +277,10 @@ async def import_developers(
             "Même comportement que create_missing_sites."
         ),
     ),
+    create_missing_groups: bool            = Form(
+        default=False,
+        description="Si True : les groupes du CSV absents en base sont créés automatiquement.",
+    ),
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
@@ -285,10 +290,11 @@ async def import_developers(
     Paramètres enterprise :
         create_missing_sites    → crée les sites inconnus automatiquement.
         create_missing_projects → crée les projets inconnus automatiquement.
+        create_missing_groups   → crée les groupes inconnus automatiquement.
 
     Si ces paramètres sont False (défaut), les entités inconnues sont listées
-    dans unknown_sites / unknown_projects dans la réponse, avec des warnings
-    par ligne dans rows[].warnings.
+    dans unknown_sites / unknown_projects / unknown_groups dans la réponse,
+    avec des warnings par ligne dans rows[].warnings.
 
     Téléchargez le template via GET /developers/import/template.
     """
@@ -301,6 +307,15 @@ async def import_developers(
     content = await file.read()
     service = DeveloperService()
 
+    # ✅ LOGIQUE SENIOR : Résilience — Si aucun domaine n'est spécifié, on prend le premier disponible
+    # pour éviter de créer des projets orphelins (gitlab_config_id=None).
+    if default_gitlab_config_id is None:
+        from app.models.gitlab_config import GitLabConfig
+        first_config = db.query(GitLabConfig).first()
+        if first_config:
+            default_gitlab_config_id = first_config.id
+            logger.info("Import: Aucun domaine spécifié, utilisation automatique du Domaine ID %d", default_gitlab_config_id)
+
     return service.import_from_file(
         db                      = db,
         file_content            = content,
@@ -308,9 +323,11 @@ async def import_developers(
         imported_by             = current_admin.id,
         default_site_id         = default_site_id,
         default_group_id        = default_group_id,
+        default_gitlab_config_id = default_gitlab_config_id,
         dry_run                 = dry_run,
         create_missing_sites    = create_missing_sites,
         create_missing_projects = create_missing_projects,
+        create_missing_groups   = create_missing_groups,
     )
 
 

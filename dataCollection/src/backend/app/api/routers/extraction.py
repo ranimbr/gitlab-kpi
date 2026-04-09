@@ -19,7 +19,7 @@ AVANTAGES :
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path as FPath, Query, status
 from fastapi.responses import FileResponse
@@ -63,7 +63,8 @@ async def _background_extraction(
     gitlab_config_id:  int,
     triggered_by_user: int,
     gitlab_project_id: Optional[int] = None,
-    developer_id:      Optional[int] = None,
+    developer_ids:     Optional[List[int]] = None,
+    fast_mode:         bool          = False,
 ) -> None:
     """
     Cœur de l'extraction — tourne en arrière-plan, durée illimitée.
@@ -96,8 +97,22 @@ async def _background_extraction(
         else:
             # Extraction globale (par instance ou par développeur)
             projects_to_process = project_repo.get_by_gitlab_config(db, gitlab_config_id)
-            # Optionnel : si developer_id est présent, on pourrait filtrer sur les projets
-            # où le développeur a déjà été vu. Pour l'instant, on scanne tous les projets actifs.
+            
+            # ✅ OPTIMISATION SENIOR : Si on cible des développeurs, on ne scanne QUE leurs projets affectés
+            if developer_ids:
+                from app.models.project import Project
+                from app.models.developer_project import DeveloperProject
+                
+                dev_projects = db.query(Project).join(
+                    DeveloperProject, (DeveloperProject.project_id == Project.id)
+                ).filter(
+                    DeveloperProject.developer_id.in_(developer_ids),
+                    Project.gitlab_config_id == gitlab_config_id
+                ).all()
+                if dev_projects:
+                    projects_to_process = dev_projects
+                    logger.info(f"Extraction Ciblée — {len(projects_to_process)} projets trouvés pour les développeurs {developer_ids}")
+
             projects_to_process = [p for p in projects_to_process if p.is_active and not p.archived]
 
         if not projects_to_process:
@@ -121,8 +136,7 @@ async def _background_extraction(
                 "step_index": 1, 
                 "step_label": f"{proj_prefix} : Récupération des commits…"
             }
-            # Note: il faut mettre à jour ExtractionService pour accepter developer_id
-            await service._extract_commits(db, project, lot, client, developer_id=developer_id)
+            await service._extract_commits(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
             db.flush()
             logger.info(f"[lot={lot_id}] {proj_prefix} — commits extraits")
 
@@ -131,7 +145,7 @@ async def _background_extraction(
                 "step_index": 2, 
                 "step_label": f"{proj_prefix} : Récupération des Merge Requests…"
             }
-            await service._extract_merge_requests(db, project, lot, client, developer_id=developer_id)
+            await service._extract_merge_requests(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
             db.flush()
             logger.info(f"[lot={lot_id}] {proj_prefix} — MRs extraites")
 
@@ -144,19 +158,22 @@ async def _background_extraction(
             service._update_project_last_commit(db, project.id)
             db.flush()
 
-            # ── Étape 4 : Calcul KPI snapshot (si MONTHLY) ──────────────────
-            if lot.extraction_type == ExtractionTypeEnum.MONTHLY:
-                _job_progress[lot_id] = {
-                    "step_index": 4, 
-                    "step_label": f"{proj_prefix} : Calcul des KPIs…"
-                }
-                kpi_service = KpiService()
-                await kpi_service.generate_snapshot(
-                    db         = db,
-                    project_id = project.id,
-                    period_id  = lot.period_id,
-                    lot_id     = lot.id,
-                )
+            # ── Étape 4 : Calcul des KPIs ──────────────────────────────────────
+            # On lance le calcul systématiquement pour que le dashboard soit à jour
+            _job_progress[lot_id] = {
+                "step_index": 4, 
+                "step_label": f"{proj_prefix} : Calcul des KPIs…"
+            }
+            kpi_service = KpiService()
+            await kpi_service.generate_snapshot(
+                db         = db,
+                project_id = project.id,
+                period_id  = lot.period_id,
+                lot_id     = lot.id,
+                developer_ids = developer_ids,
+            )
+            db.flush()
+            logger.info(f"[lot={lot_id}] {proj_prefix} — KPI snapshot généré")
 
         # MONTHLY uniquement : génération du dump JSON
         if lot.extraction_type == ExtractionTypeEnum.MONTHLY:
@@ -166,30 +183,15 @@ async def _background_extraction(
             db.flush()
             logger.info(f"[lot={lot_id}] Dump JSON généré → {file_path}")
 
-        # Marquer le lot comme completed AVANT le calcul KPI
+        # Marquer le lot comme completed
         lot.status        = ExtractionStatusEnum.completed
         lot.completed_at  = datetime.now(timezone.utc)
         lot.error_message = None
         db.commit()
-        logger.info(f"[lot={lot_id}] Étape 3/4 — données commitées")
-
-        # ── Étape 4 : Calcul KPI snapshot ────────────────────────────────────
-        _job_progress[lot_id] = {"step_index": 4, "step_label": "Calcul des KPIs…"}
-        kpi_service = KpiService()
-        await kpi_service.generate_snapshot(
-            db         = db,
-            project_id = project.id,
-            period_id  = lot.period_id,
-            lot_id     = lot.id,
-        )
-        logger.info(f"[lot={lot_id}] Étape 4/4 — KPI snapshot généré")
 
         # ── Terminé ───────────────────────────────────────────────────────────
         _job_progress[lot_id] = {"step_index": 5, "step_label": "Extraction terminée ✓"}
-        logger.info(
-            f"Background extraction completed — lot={lot_id} "
-            f"project={project.name} type={lot.extraction_type.value}"
-        )
+        logger.info(f"Background extraction completed — lot={lot_id}")
 
     except (GitLabAPIError, SQLAlchemyError, ValueError, Exception) as e:
         db.rollback()
@@ -297,12 +299,17 @@ async def run_extraction(
                 detail=f"Un lot MONTHLY existe déjà pour ce projet et cette période.",
             )
 
+    # Si un seul développeur est ciblé, on le renseigne dans le lot pour l'audit/stats
+    dev_id = None
+    if request.developer_ids and len(request.developer_ids) == 1:
+        dev_id = request.developer_ids[0]
+
     lot = ExtractionLot(
         extraction_type = request.extraction_type,
         status          = ExtractionStatusEnum.running,
         period_id       = period.id,
         project_id      = project.id if project else None,
-        developer_id    = request.developer_id,
+        developer_id    = dev_id,
         triggered_by    = current_admin.id,
         gitlab_config_id = gitlab_config_id,
     )
@@ -319,13 +326,14 @@ async def run_extraction(
         gitlab_config_id  = gitlab_config.id,
         triggered_by_user = current_admin.id,
         gitlab_project_id = project.gitlab_project_id if project else None,
-        developer_id      = request.developer_id,
+        developer_ids     = request.developer_ids,
+        fast_mode         = getattr(request, "fast_mode", False) or (request.developer_ids is not None),
     )
 
     logger.info(
         f"Extraction launched (background) — lot={lot.id} "
-        f"project={project.name} type={lot.extraction_type.value} "
-        f"admin={current_admin.id}"
+        f"project={project.name if project else 'ALL'} type={lot.extraction_type.value} "
+        f"admin={current_admin.id} targets={request.developer_ids}"
     )
 
     # ── Réponse 202 immédiate (< 500ms) ──────────────────────────────────────
@@ -333,7 +341,7 @@ async def run_extraction(
         "lot_id":         lot.id,
         "status":         "running",
         "project_id":     lot.project_id,
-        "developer_id":   lot.developer_id,
+        "developer_ids":  request.developer_ids,
         "period_id":      lot.period_id,
         "extraction_type": lot.extraction_type.value,
         "message":        "Extraction démarrée en arrière-plan. Suivez la progression via GET /extraction/jobs/{lot_id}.",
@@ -476,6 +484,7 @@ def list_lots(
             "extraction_type": lot.extraction_type.value,
             "status":          lot.status.value,
             "step_index":      _job_progress.get(lot.id, {}).get("step_index", -1),
+            "step_label":      _job_progress.get(lot.id, {}).get("step_label", ""),
             "project_id":      lot.project_id,
             "period_id":       lot.period_id,
             "triggered_by":    lot.triggered_by,
@@ -488,3 +497,203 @@ def list_lots(
         }
         for lot in lots
     ]
+
+
+# =============================================================================
+# POST /extraction/by-team — PHASE 2 — Vision centrée-développeur
+#
+# Le manager sélectionne son équipe (par site, groupe ou liste explicite)
+# et lance l'extraction de TOUS ses développeurs en une seule requête.
+# Chaque développeur reçoit son propre ExtractionLot pour une traçabilité
+# individuelle et une progression indépendante.
+# =============================================================================
+
+@router.post(
+    "/by-team",
+    status_code = status.HTTP_202_ACCEPTED,
+    summary     = "Extraction centrée-developer : lancer l'extraction pour toute une équipe",
+)
+async def run_extraction_by_team(
+    gitlab_config_id:  int,
+    background_tasks:  BackgroundTasks,
+    db:                Session       = Depends(get_db),
+    current_admin:     AppUser       = Depends(get_current_admin),
+    site_id:           Optional[int] = Query(default=None, description="Extraire tous les devs du site"),
+    group_id:          Optional[int] = Query(default=None, description="Extraire tous les devs du groupe"),
+    developer_ids:     str           = Query(default=None, description="Liste d'IDs séparés par virgule (ex: '1,2,3')"),
+    project_ids:       str           = Query(default=None, description="Projets GitLab à scanner (ex: '10,11'). Vide = tous les projets actifs."),
+    extraction_type:   str           = Query(default="REALTIME", description="REALTIME ou MONTHLY"),
+    period_id:         Optional[int] = Query(default=None, description="Requis si extraction_type=MONTHLY"),
+    all_developers:    bool          = Query(default=False, description="Extraire tous les devs actifs"),
+    fast_mode:         bool          = Query(default=False, description="Mode Rapide : filtrage par auteur GitLab"),
+):
+    """
+    Lance une extraction GitLab ciblée sur une équipe de développeurs.
+
+    **4 modes de sélection :**
+    - `all_developers` → tous les développeurs actifs validés
+    - `site_id`        → tous les développeurs actifs validés du site
+    - `group_id`       → tous les développeurs validés du groupe  
+    - `developer_ids`  → liste explicite d'IDs (ex: "1,2,5,8")
+    """
+    from app.models.developer      import Developer
+    from app.models.developer_site import DeveloperSite
+    from app.models.gitlab_config  import GitLabConfig
+
+    # ── 1. Valider la config GitLab ──────────────────────────────────────────
+    gitlab_config = config_repo.get_by_id(db, gitlab_config_id)
+    if not gitlab_config or not gitlab_config.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Configuration GitLab inactive ou introuvable.",
+        )
+
+    # ── 2. Valider le type d'extraction et la période ─────────────────────────
+    try:
+        ext_type = ExtractionTypeEnum(extraction_type.upper())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="extraction_type doit être REALTIME ou MONTHLY.")
+
+    now    = datetime.now(timezone.utc)
+    period = None
+    if ext_type == ExtractionTypeEnum.MONTHLY:
+        if not period_id:
+            raise HTTPException(status_code=400, detail="period_id requis pour MONTHLY.")
+        period = period_repo.get_by_id(db, period_id)
+        if not period:
+            raise HTTPException(status_code=404, detail="Période introuvable.")
+    else:
+        period = period_repo.get_or_create(db, now.year, now.month)
+        if not period_repo.is_open(db, period.id):
+            raise HTTPException(
+                status_code=409,
+                detail=f"La période {period.year}/{period.month:02d} est clôturée.",
+            )
+
+    # ── 3. Résoudre la liste des développeurs ────────────────────────────────
+    dev_query = db.query(Developer).filter(
+        Developer.is_bot.is_(False),
+        Developer.is_active.is_(True),
+        Developer.is_validated.is_(True),
+    )
+
+    if all_developers:
+        pass # The query already filters for active, validated, non-bot developers
+    elif developer_ids:
+        # Mode explicite : liste d'IDs
+        id_list = []
+        for raw in developer_ids.split(","):
+            raw = raw.strip()
+            if raw.isdigit():
+                id_list.append(int(raw))
+        if not id_list:
+            raise HTTPException(status_code=400, detail="developer_ids invalides.")
+        dev_query = dev_query.filter(Developer.id.in_(id_list))
+
+    elif group_id:
+        # Mode groupe
+        dev_query = dev_query.filter(Developer.group_id == group_id)
+
+    elif site_id:
+        # Mode site : via la table M2M DeveloperSite
+        dev_ids_in_site = (
+            db.query(DeveloperSite.developer_id)
+            .filter(DeveloperSite.site_id == site_id)
+            .subquery()
+        )
+        dev_query = dev_query.filter(Developer.id.in_(dev_ids_in_site))
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Spécifiez au moins un critère : all_developers, site_id, group_id ou developer_ids.",
+        )
+
+    developers = dev_query.order_by(Developer.name).all()
+
+    if not developers:
+        raise HTTPException(
+            status_code=404,
+            detail="Aucun développeur actif et validé trouvé pour ces critères.",
+        )
+
+    # ── 4. Résoudre les projets GitLab à scanner ──────────────────────────────
+    gitlab_project_ids: list[Optional[int]] = [None]  # None = tous les projets actifs
+    if project_ids:
+        proj_id_list = []
+        for raw in project_ids.split(","):
+            raw = raw.strip()
+            if raw.isdigit():
+                proj_id_list.append(int(raw))
+        if proj_id_list:
+            # Vérifier que ces projets existent et sont liés à la config
+            db_projects = project_repo.get_by_gitlab_config(db, gitlab_config_id)
+            valid_ids = {p.gitlab_project_id for p in db_projects}
+            gitlab_project_ids = [pid for pid in proj_id_list if pid in valid_ids]
+            if not gitlab_project_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Aucun des project_ids fournis n'est lié à cette configuration GitLab.",
+                )
+
+    # ── 5. Créer un lot par développeur et lancer les background tasks ────────
+    launched = []
+
+    for dev in developers:
+        # Un lot par développeur (traçabilité individuelle)
+        lot = ExtractionLot(
+            extraction_type  = ext_type,
+            status           = ExtractionStatusEnum.running,
+            period_id        = period.id,
+            project_id       = None,           # pas limité à un seul projet
+            developer_id     = dev.id,
+            triggered_by     = current_admin.id,
+            gitlab_config_id = gitlab_config_id,
+        )
+        db.add(lot)
+        db.flush()  # obtenir lot.id sans commit global
+
+        _job_progress[lot.id] = {
+            "step_index": 0,
+            "step_label": f"En attente — {dev.name}",
+        }
+
+        # Lancer le background task pour ce développeur
+        # On passe gitlab_project_id=None pour scanner tous les projets actifs
+        # (le background task filtre sur developer_id)
+        background_tasks.add_task(
+            _background_extraction,
+            lot_id            = lot.id,
+            gitlab_config_id  = gitlab_config_id,
+            triggered_by_user = current_admin.id,
+            gitlab_project_id = None,
+            developer_id      = dev.id,
+            fast_mode         = fast_mode,
+        )
+
+        launched.append({
+            "lot_id":       lot.id,
+            "developer_id": dev.id,
+            "developer_name": dev.name,
+            "gitlab_username": dev.gitlab_username,
+            "status":       "running",
+        })
+
+        logger.info(
+            f"[by-team] Extraction lancée — dev={dev.name} lot={lot.id} "
+            f"admin={current_admin.id}"
+        )
+
+    db.commit()
+
+    return {
+        "status":          "launched",
+        "total_developers": len(launched),
+        "period_id":       period.id,
+        "extraction_type": ext_type.value,
+        "message": (
+            f"{len(launched)} extraction(s) lancée(s) en arrière-plan. "
+            "Polling individuel via GET /extraction/jobs/{lot_id}."
+        ),
+        "jobs": launched,
+    }

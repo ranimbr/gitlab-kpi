@@ -98,6 +98,11 @@ class Developer(Base):
         back_populates="reviewer",
         foreign_keys="MergeRequest.reviewer_id",
     )
+    assigned_merge_requests = relationship(
+        "MergeRequest",
+        back_populates="assignee",
+        foreign_keys="MergeRequest.assignee_id",
+    )
     commit_merge_requests = relationship(
         "CommitMergeRequest",
         back_populates="developer",
@@ -112,6 +117,11 @@ class Developer(Base):
     )
     extraction_lots = relationship(
         "ExtractionLot",
+        back_populates="developer",
+        cascade="all, delete-orphan",
+    )
+    comments = relationship(
+        "Comment",
         back_populates="developer",
         cascade="all, delete-orphan",
     )

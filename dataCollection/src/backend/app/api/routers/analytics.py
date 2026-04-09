@@ -189,3 +189,23 @@ def get_developer_heatmap(
         "max_day_count":     max_day_count,
         "activity":          activity,
     }
+
+
+# ── Insights de performance (Manager Only) ───────────────────────────────────
+
+@router.get("/developer/{developer_id}/insights")
+def get_developer_insights(
+    developer_id: int,
+    project_id:   int           = Query(...),
+    period_id:    Optional[int] = Query(default=None),
+    db:           Session       = Depends(get_db),
+    current_user: AppUser       = Depends(get_current_user),
+):
+    """
+    Analyse comparative du développeur par rapport aux moyennes de son site.
+    Réservé aux Managers / Admins dans la logique métier.
+    """
+    # Note : La vérification de rôle Manager/Admin peut être faite ici 
+    # ou gérée nativement via current_user.role
+    service = AnalyticsService(db)
+    return service.get_developer_insights(developer_id, project_id, period_id)

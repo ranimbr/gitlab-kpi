@@ -189,7 +189,8 @@ class GitLabMapper:
         review_time_hours = None
         if approved_at and created_at:
             delta             = approved_at - created_at
-            review_time_hours = round(delta.total_seconds() / 3600, 2)
+            # ✅ FIX [SENIOR] : On ne peut pas avoir un temps de revue négatif (timezone/bot drift)
+            review_time_hours = max(0.0, round(delta.total_seconds() / 3600, 2))
 
         # ✅ AJOUT : auteur brut (fallback)
         author = data.get("author") or {}
@@ -201,6 +202,7 @@ class GitLabMapper:
             "state":             data.get("state", "opened"),
             "is_draft":          is_draft,
             "created_at_gitlab": created_at,
+            "updated_at_gitlab": parse_dt(data.get("updated_at")),
             "merged_at":         merged_at,
             "closed_at":         closed_at,
             "approved_at":       approved_at,
@@ -209,6 +211,9 @@ class GitLabMapper:
             "additions":         data.get("additions",     0),
             "deletions":         data.get("deletions",     0),
             "total_changes":     data.get("total_changes", 0),
+            # ✅ AJOUT [SENIOR] : Métriques de profondeur et complexité
+            "user_notes_count":  data.get("user_notes_count", 0),
+            "commits_count":     data.get("commits_count") or 0,
             # ✅ AJOUT : branches
             "source_branch":     data.get("source_branch") or None,
             "target_branch":     data.get("target_branch") or None,

@@ -17,7 +17,7 @@ CORRECTIONS :
     5. AJOUT — ExtractionLotResponse inclut completed_at et error_message.
 """
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 from app.schemas.enums import ExtractionTypeEnum
@@ -30,9 +30,9 @@ class ExtractionLotCreate(BaseModel):
     period_id obligatoire si MONTHLY.
     is_backfill optionnel — si True + MONTHLY : recalcule sans lever 409.
     """
-    project_id:      Optional[int] = None
-    developer_id:    Optional[int] = Field(default=None, description="Axe optionnel : extraire pour un contributeur spécifique")
-    gitlab_config_id: Optional[int] = Field(default=None, description="Requis si project_id est absent pour identifier l'instance GitLab")
+    project_id:       Optional[int]       = None
+    developer_ids:    Optional[List[int]] = Field(default=None, description="Axe optionnel : extraire pour un ou plusieurs contributeurs spécifiques")
+    gitlab_config_id: Optional[int]       = Field(default=None, description="Requis si project_id est absent pour identifier l'instance GitLab")
     
     extraction_type: ExtractionTypeEnum = Field(
         description="REALTIME = extraction manuelle | MONTHLY = clôture mensuelle"

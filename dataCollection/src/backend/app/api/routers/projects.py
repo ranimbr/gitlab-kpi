@@ -23,7 +23,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import get_current_admin, get_current_user
 from app.core.security import decrypt_token
@@ -274,36 +274,57 @@ def remove_site_from_project(
 @router.get("/{project_id}/commits", response_model=List[CommitResponse])
 def get_project_commits(
     project_id:   int,
-    limit:        int     = Query(50, ge=1, le=200),
-    offset:       int     = Query(0, ge=0),
-    db:           Session = Depends(get_db),
-    current_user: AppUser = Depends(get_current_user),
+    limit:        int           = Query(2000, ge=1, le=5000),
+    offset:       int           = Query(0, ge=0),
+    lot_id:       Optional[int] = Query(None, description="Filtrer par session d'extraction"),
+    db:           Session       = Depends(get_db),
+    current_user: AppUser       = Depends(get_current_user),
 ):
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
-    return commit_repo.get_project_commits_paginated(db, project_id, limit, offset)
+    return commit_repo.get_project_commits_paginated(db, project_id, limit, offset, lot_id=lot_id)
 
 
 @router.get("/{project_id}/merge-requests", response_model=List[MergeRequestResponse])
 def get_project_mrs(
     project_id:    int,
-    limit:         int  = Query(50, ge=1, le=200),
+    limit:         int  = Query(2000, ge=1, le=5000),
     offset:        int  = Query(0, ge=0),
     exclude_draft: bool = Query(True),
+    lot_id:        Optional[int] = Query(None, description="Filtrer par session d'extraction"),
     db:            Session = Depends(get_db),
     current_user:  AppUser = Depends(get_current_user),
 ):
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
-    if exclude_draft:
-        from app.models.merge_request import MergeRequest
-        return (
-            db.query(MergeRequest)
-            .filter(MergeRequest.project_id == project_id, MergeRequest.is_draft.is_(False))
-            .order_by(MergeRequest.created_at_gitlab.desc())
-            .limit(limit).offset(offset).all()
+    
+    # Si on demande un lot spécifique, on ignore le filtre simple de mr_repo
+    # et on utilise la logique avancée avec joinedload
+    from app.models.merge_request import MergeRequest
+    query = (
+        db.query(MergeRequest)
+        .options(
+            joinedload(MergeRequest.developer),
+            joinedload(MergeRequest.reviewer),
+            joinedload(MergeRequest.assignee)
         )
-    return mr_repo.get_project_mrs_paginated(db, project_id, limit, offset)
+        .filter(MergeRequest.project_id == project_id)
+    )
+    
+    if exclude_draft:
+        query = query.filter(MergeRequest.is_draft.is_(False))
+    
+    if lot_id is not None:
+        query = query.filter(MergeRequest.extraction_lot_id == lot_id)
+        
+    return (
+        query
+        .order_by(MergeRequest.created_at_gitlab.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
 
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────

@@ -24,6 +24,8 @@ import projectService   from "../services/projectService";
 import analyticsService from "../services/analyticsService";
 import siteService  from "../services/siteService";
 import periodService from "../services/periodService";
+import developerService from "../services/developerService";
+import extractionLotService from "../services/extractionLotService";
 import {
   generateInsights,
   calculateScore,
@@ -215,6 +217,7 @@ function ComparisonPanel({ rows, selectedLabel, kpiField, title, higherIsBetter 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const VIEW_MODES = [
   { key: "site",      label: "Par site",       icon: "ri-map-pin-line"  },
+  { key: "group",     label: "Par équipe",     icon: "ri-group-line"    },
   { key: "developer", label: "Par développeur", icon: "ri-user-line"     },
 ];
 
@@ -234,14 +237,17 @@ export default function KpiAnalysisPage() {
   // Listes de sélection
   const [projects,     setProjects]     = useState([]);
   const [sites,        setSites]        = useState([]);
+  const [groups,       setGroups]       = useState([]);
   const [developers,   setDevelopers]   = useState([]);
   const [periods,      setPeriods]      = useState([]);
+  const [lots,         setLots]         = useState([]);
 
   // Sélections actives
   const [projectId,   setProjectId]    = useState(searchParams.get("project_id") || "");
   const [viewMode,    setViewMode]     = useState("site");
   const [entityId,    setEntityId]     = useState("");
   const [periodId,    setPeriodId]     = useState("");
+  const [lotId,       setLotId]        = useState("");
 
   // Données KPI
   const [currentSnap,  setCurrentSnap]  = useState(null);
@@ -317,10 +323,28 @@ export default function KpiAnalysisPage() {
       }
     };
 
-    Promise.all([loadSites(), loadDevs()])
-      .then(([sitesArr, devsArr]) => {
+    const loadGroups = async () => {
+      try {
+        return toArr(await developerService.getGroups());
+      } catch (_) {
+        return [];
+      }
+    };
+
+    const loadLots = async () => {
+      try {
+        return toArr(await extractionLotService.getAll(parseInt(projectId)));
+      } catch (_) {
+        return [];
+      }
+    };
+
+    Promise.all([loadLots(), loadSites(), loadGroups(), loadDevs()])
+      .then(([lotsArr, sitesArr, groupsArr, devsArr]) => {
         if (!mounted) return;
+        setLots(lotsArr);
         setSites(sitesArr);
+        setGroups(groupsArr);
         setDevelopers(devsArr);
       })
       .finally(() => { if (mounted) setLoadingLists(false); });
@@ -343,16 +367,20 @@ export default function KpiAnalysisPage() {
     setPreviousSnap(null);
     setAllSnaps([]);
 
-    const entityParams = { siteId: null, developerId: null };
+    const entityParams = { siteId: null, groupId: null, developerId: null };
     if (viewMode === "site")      entityParams.siteId      = parseInt(entityId);
+    if (viewMode === "group")     entityParams.groupId     = parseInt(entityId);
     if (viewMode === "developer") entityParams.developerId = parseInt(entityId);
+
+    const commonParams = { 
+      ...entityParams, 
+      lotId: lotId ? parseInt(lotId) : null 
+    };
 
     try {
       // Appel direct avec le filtre précis (site_id ou developer_id)
-      // On NE fait PAS de fallback silencieux vers les données globales —
-      // ce serait tromper l'utilisateur en affichant les mêmes KPIs pour tous les devs.
-      const dashData = await analyticsService.getKpiDashboard(parseInt(projectId), entityParams);
-      console.log("[KpiAnalysis] ✅ Données avec filtre entité:", dashData);
+      const dashData = await analyticsService.getKpiDashboard(parseInt(projectId), commonParams);
+      console.log("[KpiAnalysis] ✅ Données dashboard (isolation lot?):", dashData);
 
       // Normalise la réponse
       const latest  = dashData?.latest_metrics || dashData?.latest || dashData?.data || dashData;
@@ -364,7 +392,9 @@ export default function KpiAnalysisPage() {
       // Comparaison inter-sites (indépendant du filtre developer)
       const compareData = await analyticsService.compareSites(
         parseInt(projectId),
-        periodId ? parseInt(periodId) : null
+        periodId ? parseInt(periodId) : null,
+        periodId ? activeKpi : null, // kpiField only if period
+        lotId ? parseInt(lotId) : null
       ).catch(() => []);
       setAllSnaps(Array.isArray(compareData) ? compareData : []);
 
@@ -373,6 +403,7 @@ export default function KpiAnalysisPage() {
         const devs = await analyticsService.getTopDevelopers(parseInt(projectId), {
           siteId: parseInt(entityId),
           limit:  5,
+          lotId:  lotId ? parseInt(lotId) : null
         }).catch(() => []);
         setTopDevs(Array.isArray(devs) ? devs : []);
       }
@@ -396,7 +427,7 @@ export default function KpiAnalysisPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, entityId, viewMode, periodId]);
+  }, [projectId, entityId, viewMode, periodId, lotId]);
 
   useEffect(() => { loadKpis(); }, [loadKpis]);
 
@@ -408,15 +439,15 @@ export default function KpiAnalysisPage() {
   // ── Données dérivées ────────────────────────────────────────────────────────
   const selectedEntity = useMemo(() => {
     if (!entityId) return null;
-    const list = viewMode === "site" ? sites : developers;
+    const list = viewMode === "site" ? sites : (viewMode === "group" ? groups : developers);
     return list.find(e => String(e.id) === entityId);
-  }, [entityId, viewMode, sites, developers]);
+  }, [entityId, viewMode, sites, groups, developers]);
 
   const entityLabel = useMemo(() => {
     if (!selectedEntity) return "cette entité";
-    return viewMode === "site"
-      ? `le site ${selectedEntity.name}`
-      : `le développeur @${selectedEntity.username || selectedEntity.name}`;
+    if (viewMode === "site") return `le site ${selectedEntity.name}`;
+    if (viewMode === "group") return `l'équipe ${selectedEntity.name}`;
+    return `le développeur @${selectedEntity.username || selectedEntity.name}`;
   }, [selectedEntity, viewMode]);
 
   const insights = useMemo(() =>
@@ -433,9 +464,9 @@ export default function KpiAnalysisPage() {
 
   const selectedLabel = useMemo(() => {
     if (!selectedEntity) return "";
-    return viewMode === "site"
-      ? (selectedEntity.name)
-      : (selectedEntity.username || selectedEntity.name);
+    return viewMode === "developer"
+      ? (selectedEntity.username || selectedEntity.name)
+      : (selectedEntity.name);
   }, [selectedEntity, viewMode]);
 
   const avgForCurrentSnap = useCallback((field) => {
@@ -525,10 +556,12 @@ export default function KpiAnalysisPage() {
                   onChange={e => setEntityId(e.target.value)}
                   disabled={!projectId || loadingLists}>
                   <option value="">
-                    {loadingLists ? "Chargement…" : `— Choisir un ${viewMode === "site" ? "site" : "développeur"} —`}
+                    {loadingLists ? "Chargement…" : `— Choisir un(e) ${viewMode === "site" ? "site" : (viewMode === "group" ? "équipe" : "développeur")} —`}
                   </option>
                   {viewMode === "site"
                     ? sites.map(s => <option key={s.id} value={s.id}>{s.name}{s.country ? ` (${s.country})` : ""}</option>)
+                    : viewMode === "group"
+                    ? groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)
                     : developers.map(d => <option key={d.id} value={d.id}>@{d.username}{d.name ? ` — ${d.name}` : ""}</option>)
                   }
                 </select>
@@ -541,11 +574,29 @@ export default function KpiAnalysisPage() {
                 </label>
                 <select className="form-select form-select-sm"
                   value={periodId}
-                  onChange={e => setPeriodId(e.target.value)}>
+                  onChange={e => { setPeriodId(e.target.value); if(e.target.value) setLotId(""); }}>
                   <option value="">— Toutes les périodes —</option>
                   {periods.map(p => (
                     <option key={p.id} value={p.id}>
                       {p.year}/{String(p.month).padStart(2, "0")}{p.status === "open" ? " (ouverte)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Session (Lot) */}
+              <div className="col-md-3">
+                <label className="form-label fw-medium fs-12 mb-1" title="Isolation par session d'extraction (Senior Mode)">
+                  <i className="ri-history-line me-1 text-primary"></i>Session (Lot)
+                </label>
+                <select className="form-select form-select-sm"
+                  style={{ border: lotId ? "1px solid #405189" : "1px solid #ced4da", background: lotId ? "#eef0f7" : "#fff" }}
+                  value={lotId}
+                  onChange={e => { setLotId(e.target.value); if(e.target.value) setPeriodId(""); }}>
+                  <option value="">— Mode Temps Réel (All) —</option>
+                  {lots.map(l => (
+                    <option key={l.id} value={l.id}>
+                      #{l.id} - {l.extraction_type} ({new Date(l.created_at).toLocaleDateString()})
                     </option>
                   ))}
                 </select>
@@ -557,8 +608,8 @@ export default function KpiAnalysisPage() {
         {/* ── État : pas de sélection ── */}
         {!entityId && !loading && (
           <EmptyState
-            icon={viewMode === "site" ? "ri-map-pin-line" : "ri-user-line"}
-            title={`Sélectionnez un ${viewMode === "site" ? "site" : "développeur"}`}
+            icon={viewMode === "site" ? "ri-map-pin-line" : (viewMode === "group" ? "ri-group-line" : "ri-user-line")}
+            title={`Sélectionnez un(e) ${viewMode === "site" ? "site" : (viewMode === "group" ? "équipe" : "développeur")}`}
             description="Choisissez un projet et une entité pour analyser les KPIs et obtenir des recommandations."
             compact
           />
@@ -587,8 +638,13 @@ export default function KpiAnalysisPage() {
             <div className="d-flex align-items-center gap-3 mb-4 flex-wrap">
               <div className="d-flex align-items-center gap-2 px-3 py-2 rounded-3"
                 style={{ background: "var(--color-background-info)", border: "0.5px solid var(--color-border-info)" }}>
-                <i className={`${viewMode === "site" ? "ri-map-pin-line" : "ri-user-line"} text-info`}></i>
+                <i className={`${viewMode === "site" ? "ri-map-pin-line" : (viewMode === "group" ? "ri-group-line" : "ri-user-line")} text-info`}></i>
                 <span className="fs-13 fw-medium" style={{ color: "var(--color-text-info)" }}>{entityLabel}</span>
+                {viewMode === "developer" && currentSnap && currentSnap.total_mrs_draft > 0 && currentSnap.total_mrs_created === 0 && (
+                  <span className="badge bg-warning text-dark ms-2" title="Ce développeur prépare des changements qui ne sont pas encore finalisés (brouillons).">
+                    👷 Travail en cours
+                  </span>
+                )}
               </div>
               {selectedProject && (
                 <span className="badge fs-12" style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-tertiary)" }}>
@@ -597,7 +653,12 @@ export default function KpiAnalysisPage() {
               )}
               {selectedPeriod && (
                 <span className="badge fs-12" style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", border: "0.5px solid var(--color-border-tertiary)" }}>
-                  <i className="ri-calendar-2-line me-1"></i>{selectedPeriod.year}/{String(selectedPeriod.month).padStart(2, "0")}
+                  <i className="ri-calendar-2-line me-1"></i>Période: {selectedPeriod.year}/{String(selectedPeriod.month).padStart(2, "0")}
+                </span>
+              )}
+              {lotId && (
+                <span className="badge fs-12 bg-primary-subtle text-primary border border-primary-subtle">
+                  <i className="ri-history-line me-1"></i>Session: #{lotId}
                 </span>
               )}
             </div>

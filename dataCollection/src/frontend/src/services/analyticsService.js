@@ -46,6 +46,15 @@ const analyticsService = {
   },
 
   /**
+   * GET /kpis/developer/{developerId}/summary
+   * Résumé global d'un développeur, toutes périodes confondues.
+   */
+  getDeveloperSummary: async (projectId, developerId) => {
+    const { data } = await api.get(`/kpis/developer/${developerId}/summary`, { params: { project_id: projectId } });
+    return data;
+  },
+
+  /**
    * GET /analytics/{projectId}/history
    * Historique des snapshots (pour graphiques timeline).
    */
@@ -82,12 +91,13 @@ const analyticsService = {
    * GET /kpis/dashboard
    * Endpoint principal du dashboard frontend.
    */
-  getKpiDashboard: async (projectId, { siteId, groupId, developerId } = {}) => {
+  getKpiDashboard: async (projectId, { siteId, groupId, developerId, lotId } = {}) => {
     const params = buildParams({
       project_id:   projectId,
       site_id:      siteId,
       group_id:     groupId,
       developer_id: developerId,
+      lot_id:       lotId,
     });
     const { data } = await api.get("/kpis/dashboard", { params });
     return data;
@@ -180,12 +190,14 @@ const analyticsService = {
    * @param {number}  projectId
    * @param {number}  [periodId]  - Défaut = dernière période disponible
    * @param {string}  [kpiField]  - KPI pour le tri des résultats
+   * @param {number}  [lotId]     - Isolation par session (Senior Mode)
    */
-  compareSites: async (projectId, periodId = null, kpiField = null) => {
+  compareSites: async (projectId, periodId = null, kpiField = null, lotId = null) => {
     const params = buildParams({
       project_id: projectId,
       period_id:  periodId,
       kpi_field:  kpiField,
+      lot_id:     lotId,
     });
     const { data } = await api.get("/kpis/compare", { params });
     return data;
@@ -202,6 +214,7 @@ const analyticsService = {
    * @param {string}  [options.kpiField]   - KPI pour le classement
    * @param {number}  [options.limit]      - Nombre de résultats (défaut 10)
    * @param {boolean} [options.ascending]  - false = top, true = bottom performers
+   * @param {number}  [options.lotId]      - Isolation par session (Senior Mode)
    */
   getTopDevelopers: async (
     projectId,
@@ -211,6 +224,7 @@ const analyticsService = {
       kpiField  = "mr_rate_per_site",
       limit     = 10,
       ascending = false,
+      lotId     = null,
     } = {}
   ) => {
     const params = buildParams({
@@ -220,6 +234,7 @@ const analyticsService = {
       kpi_field:  kpiField,
       limit,
       ascending,
+      lot_id:     lotId,
     });
     const { data } = await api.get("/kpis/top-developers", { params });
     return data;
@@ -256,6 +271,16 @@ const analyticsService = {
       null,
       { params }
     );
+    return data;
+  },
+
+  /**
+   * GET /analytics/developer/{developer_id}/insights
+   * Analyse comparative vs moyenne du site (Manager Only).
+   */
+  getDeveloperInsights: async (developerId, projectId, periodId = null) => {
+    const params = buildParams({ project_id: projectId, period_id: periodId });
+    const { data } = await api.get(`/analytics/developer/${developerId}/insights`, { params });
     return data;
   },
 };

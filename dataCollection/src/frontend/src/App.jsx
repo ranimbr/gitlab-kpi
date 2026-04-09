@@ -5,7 +5,7 @@ import { useAuth, ROLES } from "./context/AuthContext";
 import Sidebar         from "./components/layout/Sidebar";
 import Topbar          from "./components/layout/Topbar";
 import Footer          from "./components/layout/Footer";
-import ThemeCustomizer from "./components/layout/ThemeCustomizer";
+
 
 // ── pages/ (racine) ──────────────────────────────────────────────────────────
 import LandingPage           from "./pages/LandingPage";
@@ -22,7 +22,13 @@ import KpiAnalysisPage     from "./pages/KpiAnalysisPage";
 // [NEW] Page profil développeur — heatmap + KPIs individuels
 import DeveloperProfilePage from "./pages/DeveloperProfilePage";
 // [NEW] Hub développeurs — vue developer-centrique (réponse remarque encadrant)
-import DevelopersHubPage    from "./pages/DevelopersHubPage";
+import DevelopersHubPage      from "./pages/DevelopersHubPage";
+// [PHASE-1] Team Management — workflow manager : constituer équipe, assigner site/groupe
+import TeamManagementPage     from "./pages/TeamManagementPage";
+// [NEW] Fast-Track Onboarding Wizard
+import SetupWizardPage        from "./pages/SetupWizardPage";
+// [NEW] Phase 6: Comparaison côte-à-côte de 2 développeurs
+import DeveloperComparisonPage from "./pages/DeveloperComparisonPage";
 
 // ── pages/admin/ ─────────────────────────────────────────────────────────────
 import DevelopersPage       from "./pages/admin/DevelopersPage";
@@ -40,22 +46,11 @@ import DevelopersImportPage from "./pages/admin/DevelopersImportPage";
 function AppLayout() {
   return (
     <div id="layout-wrapper">
-      <div className="tactical-grid" />
-      <div className="orbital-env-pro">
-        <div className="orb-pro orb-pro-1" />
-        <div className="orb-pro orb-pro-2" />
-      </div>
-
       <Topbar />
       <Sidebar />
-      <ThemeCustomizer />
 
       <div className="main-content">
-        <div className="page-content">
-          <div className="container-fluid">
-            <Outlet />
-          </div>
-        </div>
+        <Outlet />
         <Footer />
       </div>
     </div>
@@ -131,6 +126,9 @@ export default function App() {
             {/* Réponse directe à la remarque encadrant : focus sur les développeurs */}
             <Route path="/developers" element={<DevelopersHubPage />} />
 
+            {/* [NEW] Phase 6: Comparaison côte-à-côte de 2 développeurs */}
+            <Route path="/developers/compare" element={<DeveloperComparisonPage />} />
+
             {/* [NEW] Profil développeur — heatmap + KPIs individuels */}
             {/* Accessible à tous les rôles connectés */}
             {/* URL : /developers/42?project_id=1 */}
@@ -148,10 +146,13 @@ export default function App() {
             {/* ── Site Manager ou supérieur ── */}
             <Route element={<ManagerRoute />}>
               <Route path="/extraction"           element={<ExtractionPage />} />
+              <Route path="/setup"                element={<SetupWizardPage />} />
               <Route path="/admin/periods"        element={<PeriodsPage />} />
               <Route path="/admin/projects"       element={<AdminProjectsPage />} />
               <Route path="/admin/kpi-thresholds" element={<KpiThresholdPage />} />
               <Route path="/admin/dashboards"     element={<DashboardsAdminPage />} />
+              {/* [PHASE-1] Gestion d'équipe — vision centrée-développeur */}
+              <Route path="/team"                 element={<TeamManagementPage />} />
             </Route>
 
             {/* ── Super Admin uniquement ── */}

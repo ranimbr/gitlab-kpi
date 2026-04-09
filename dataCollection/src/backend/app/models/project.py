@@ -23,9 +23,9 @@ class Project(Base):
     __tablename__ = "project"
 
     id                = Column(Integer, primary_key=True)
-    gitlab_project_id = Column(Integer, unique=True, nullable=False)
+    gitlab_project_id = Column(Integer, unique=True, nullable=True)
     name              = Column(String(255), nullable=False)
-    path              = Column(String(255), nullable=False)
+    path              = Column(String(255), nullable=True)
     namespace         = Column(String(255), nullable=True)
     description       = Column(String,      nullable=True)
     visibility        = Column(Enum(VisibilityEnum), nullable=True)

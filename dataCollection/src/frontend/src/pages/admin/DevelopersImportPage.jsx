@@ -266,6 +266,7 @@ export default function DevelopersImportPage() {
   const [dryRun,                setDryRun]                = useState(true);
   const [createMissingSites,    setCreateMissingSites]    = useState(false);
   const [createMissingProjects, setCreateMissingProjects] = useState(false);
+  const [createMissingGroups,  setCreateMissingGroups]   = useState(false);
   const [loading,               setLoading]              = useState(false);
   const [result,                setResult]               = useState(null);
   const [error,                 setError]                = useState("");
@@ -341,6 +342,7 @@ export default function DevelopersImportPage() {
         // Lors d'un dry-run, on ne crée jamais rien — détection uniquement
         createMissingSites:    forceDryRun ? false : createMissingSites,
         createMissingProjects: forceDryRun ? false : createMissingProjects,
+        createMissingGroups:   forceDryRun ? false : createMissingGroups,
       });
 
       setResult(res);
@@ -397,6 +399,7 @@ export default function DevelopersImportPage() {
         // aussi chercher par nom pour les trouver → create_missing=true en sécurité
         createMissingSites:    hadCreations || createMissingSites,
         createMissingProjects: hadCreations || createMissingProjects,
+        createMissingGroups:   createMissingGroups,
       });
 
       setResult(res);
@@ -636,7 +639,18 @@ export default function DevelopersImportPage() {
                         colorOn="#059669"
                       />
                     </div>
-                    {(createMissingSites || createMissingProjects) && (
+                    <div className="mb-0">
+                      <EnterpriseToggle
+                        checked={createMissingGroups}
+                        onChange={() => setCreateMissingGroups(v => !v)}
+                        labelOn="Créer automatiquement les groupes manquants"
+                        labelOff="Groupes manquants ignorés (listés dans le rapport)"
+                        descOn="Les groupes du CSV absents en base seront créés automatiquement"
+                        descOff="Les développeurs seront créés sans groupe — réassignez manuellement"
+                        colorOn="#059669"
+                      />
+                    </div>
+                    {(createMissingSites || createMissingProjects || createMissingGroups) && (
                       <div className="mt-3 d-flex align-items-start gap-2 p-3 rounded-3"
                         style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
                         <i className="ri-shield-check-line text-warning flex-shrink-0 fs-16 mt-1"></i>
@@ -644,8 +658,9 @@ export default function DevelopersImportPage() {
                           <strong style={{ color: "#92400E" }}>Vérifiez votre fichier source.</strong>{" "}
                           L'auto-création génère des entités avec des données minimales.
                           Complétez-les après l'import dans{" "}
-                          <Link to="/admin/sites" className="text-warning fw-medium">Sites</Link>{" "}et{" "}
-                          <Link to="/admin/projects" className="text-warning fw-medium">Projets</Link>.
+                          <Link to="/admin/sites" className="text-warning fw-medium">Sites</Link>{" "},{" "}
+                          <Link to="/admin/projects" className="text-warning fw-medium">Projets</Link>{" "}et{" "}
+                          <Link to="/admin/developers" className="text-warning fw-medium">Groupes</Link>.
                         </p>
                       </div>
                     )}

@@ -46,16 +46,28 @@ class CommitRepository(BaseRepository[Commit]):
         project_id: int,
         limit:      int = 50,
         offset:     int = 0,
+        lot_id:     Optional[int] = None,
+        exclude_merge_commits: bool = True,
     ) -> List[Commit]:
-        return (
+        query = (
             db.query(Commit)
             .options(joinedload(Commit.developer))
             .filter(Commit.project_id == project_id)
+        )
+        if exclude_merge_commits:
+            query = query.filter(Commit.is_merge_commit.is_(False))
+            
+        if lot_id is not None:
+            query = query.filter(Commit.extraction_lot_id == lot_id)
+
+        return (
+            query
             .order_by(Commit.authored_date.desc())
             .limit(limit)
             .offset(offset)
             .all()
         )
+
 
     def count_by_project(self, db: Session, project_id: int) -> int:
         return (

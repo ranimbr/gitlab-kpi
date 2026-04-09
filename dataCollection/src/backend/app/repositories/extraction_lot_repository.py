@@ -44,6 +44,22 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
             .all()
         )
 
+    def get_by_project(
+        self,
+        db:         Session,
+        project_id: int,
+    ) -> List[ExtractionLot]:
+        """✅ AJOUT : liste tous les lots d'un projet donnés (pour le sélecteur de lots)."""
+        from sqlalchemy.orm import joinedload
+        return (
+            db.query(ExtractionLot)
+            .options(joinedload(ExtractionLot.period))
+            .filter(ExtractionLot.project_id == project_id)
+            .order_by(ExtractionLot.created_at.desc())
+            .all()
+        )
+
+
     def get_latest_monthly(
         self,
         db:         Session,

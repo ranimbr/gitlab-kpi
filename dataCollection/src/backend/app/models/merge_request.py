@@ -49,6 +49,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 import enum
+from typing import Optional
 
 from app.models.base import Base
 
@@ -79,6 +80,7 @@ class MergeRequest(Base):
 
     # ── Dates ────────────────────────────────────────────────────────────────
     created_at_gitlab = Column(DateTime(timezone=True), nullable=False)
+    updated_at_gitlab = Column(DateTime(timezone=True), nullable=True)
     merged_at         = Column(DateTime(timezone=True), nullable=True)
     closed_at         = Column(DateTime(timezone=True), nullable=True)
     approved_at       = Column(DateTime(timezone=True), nullable=True)
@@ -93,6 +95,12 @@ class MergeRequest(Base):
     additions     = Column(Integer, default=0, nullable=True)
     deletions     = Column(Integer, default=0, nullable=True)
     total_changes = Column(Integer, default=0, nullable=True)
+    
+    # ✅ AJOUT : Statistiques d'activité MR
+    # user_notes_count : nombre de commentaires de discussion (profondeur de revue)
+    # commits_count    : nombre de commits dans la MR (complexité du travail)
+    user_notes_count = Column(Integer, default=0, nullable=True)
+    commits_count    = Column(Integer, default=0, nullable=True)
 
     # ── Auteur brut (fallback quand developer_id est NULL) ───────────────────
     # ✅ AJOUT : nom brut de l'auteur retourné par l'API GitLab
@@ -118,11 +126,22 @@ class MergeRequest(Base):
         ForeignKey("developer.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # ✅ AJOUT : assigné principal de la MR
+    assignee_id = Column(
+        Integer,
+        ForeignKey("developer.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     extraction_lot_id = Column(
         Integer,
         ForeignKey("extraction_lot.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    # ── Property for Frontend Compatibility ──────────────────────────────
+    @property
+    def time_to_approve(self) -> Optional[float]:
+        return self.review_time_hours
 
     # ── Relations ────────────────────────────────────────────────────────────
     project        = relationship("Project",       back_populates="merge_requests")
@@ -138,9 +157,20 @@ class MergeRequest(Base):
         back_populates="reviewed_merge_requests",
         foreign_keys=[reviewer_id],
     )
+    # ✅ AJOUT : assigné de la MR
+    assignee       = relationship(
+        "Developer",
+        back_populates="assigned_merge_requests",
+        foreign_keys=[assignee_id],
+    )
     extraction_lot = relationship("ExtractionLot", back_populates="merge_requests")
     commit_mrs     = relationship(
         "CommitMergeRequest",
+        back_populates="merge_request",
+        cascade="all, delete-orphan",
+    )
+    comments       = relationship(
+        "Comment",
         back_populates="merge_request",
         cascade="all, delete-orphan",
     )

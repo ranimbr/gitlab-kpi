@@ -35,6 +35,9 @@ class KpiSnapshotResponse(BaseModel):
     total_mrs_created:  int
     total_mrs_approved: int
     total_mrs_merged:   int
+    total_comments:     int = 0
+    total_reviews:      int = 0
+    total_mrs_draft:    int = 0
     nb_developers:      int
     review_time_hours:  float
 
@@ -88,6 +91,10 @@ class KpiSnapshotResponse(BaseModel):
     site_id:      Optional[int] = None
     group_id:     Optional[int] = None
     developer_id: Optional[int] = None
+
+    # ── Champs enrichis (pour le frontend) ──────────────────────────────────
+    site_name:      Optional[str] = None
+    developer_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -168,7 +175,8 @@ class DeveloperLeaderboardResponse(BaseModel):
     Leaderboard complet d'un site pour une période.
     Retourné par GET /kpis/leaderboard?site_id=X&period_id=Y.
     """
-    site_id:      Optional[int]
+    site_id:      Optional[int] = None
+    group_id:     Optional[int] = None
     site_name:    Optional[str] = None
     period_label: str           # ex: "Mars 2025"
     total_devs:   int
