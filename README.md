@@ -15,7 +15,35 @@ Projet de Fin d'Études
 
 ---
 
-## 1. Récupérer le code source
+## 🚀 Déploiement avec Docker (Recommandé pour test)
+
+Vous pouvez lancer l'application entière en une seule commande grâce à Docker.
+
+1. **Cloner le projet** :
+   ```bash
+   git clone https://gitlab.com/rami07/kpi-gitlab.git
+   cd kpi-gitlab
+   git checkout feature/sprint1
+   ```
+
+2. **Configurer l'environnement** :
+   Le fichier `.env.docker` est déjà présent à la racine. Ouvrez-le et renseignez votre `GITLAB_TOKEN` :
+   ```env
+   GITLAB_TOKEN=glpat-votre-token-ici
+   ```
+
+3. **Lancer les conteneurs** :
+   ```bash
+   docker compose up --build -d
+   ```
+
+L'application sera disponible sur :
+- **Frontend** : http://localhost:5173
+- **Backend (API Docs)** : http://localhost:8000/docs
+
+---
+
+## 🛠️ Installation Classique (Manuelle)
 
 ```bash
 git clone https://gitlab.com/rami07/kpi-gitlab.git
