@@ -17,7 +17,7 @@ Projet de Fin d'Études
 
 ## 🚀 Déploiement avec Docker (Recommandé pour test)
 
-Vous pouvez lancer l'application entière en une seule commande grâce à Docker.
+Vous pouvez lancer l'application entière en une seule commande grâce à Docker. **Aucune installation de base de données (PostgreSQL), de Python ou de Node.js n'est requise sur votre machine**, Docker s'occupe de tout automatiquement.
 
 1. **Cloner le projet** :
    ```bash

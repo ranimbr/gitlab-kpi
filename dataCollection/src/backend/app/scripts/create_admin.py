@@ -22,7 +22,7 @@ def create_admin():
 
         admin = AppUser(
             email="admin@test.com",
-            hashed_password=hash_password("Admin1234!"),
+            hashed_password=hash_password("admin123"),
             role=UserRoleEnum.super_admin,
             is_active=True,
             name="Super Admin",
@@ -32,7 +32,7 @@ def create_admin():
         db.commit()
         print("✅ Super admin created successfully.")
         print("   Email    : admin@test.com")
-        print("   Password : Admin1234!")
+        print("   Password : admin123")
 
     except Exception as e:
         db.rollback()
