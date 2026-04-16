@@ -130,10 +130,10 @@ app = FastAPI(
     strict_slashes = False,
 )
 
-# ── CORS (PRIORITY MOVED TO TOP) ──────────────────────────────────────────────
+# ── CORS (FORCED "*" FOR PFE DEMO RELIABILITY) ────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = settings.ALLOWED_ORIGINS,
+    allow_origins     = ["*"],  # ✅ FIX: Allow all for zero-friction Docker demo
     allow_credentials = True,
     allow_methods     = ["*"],
     allow_headers     = ["*"],

@@ -42,6 +42,10 @@ def setup_db():
                 logger.info("✅ Database stamped to head.")
             else:
                 logger.error(f"❌ Alembic failed: {result.stderr}")
+                logger.info("👉 Emergency fallback: Running SQLAlchemy create_all()...")
+                from app.database.init_db import init_db
+                init_db()
+                logger.info("✅ Tables forced via create_all.")
         else:
             logger.info("✅ Migrations completed successfully.")
         
