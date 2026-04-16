@@ -1,9 +1,0 @@
-{
-  "lot_id": 3,
-  "project_id": 1,
-  "period_id": 1,
-  "extraction_type": "MONTHLY",
-  "generated_at": "2026-03-22T23:48:21.088659+00:00",
-  "commits": [],
-  "merge_requests": []
-}

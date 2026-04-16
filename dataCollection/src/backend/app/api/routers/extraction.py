@@ -65,6 +65,7 @@ async def _background_extraction(
     gitlab_project_id: Optional[int] = None,
     developer_ids:     Optional[List[int]] = None,
     fast_mode:         bool          = False,
+    allowed_gitlab_project_ids: Optional[List[int]] = None,
 ) -> None:
     """
     Cœur de l'extraction — tourne en arrière-plan, durée illimitée.
@@ -103,15 +104,21 @@ async def _background_extraction(
                 from app.models.project import Project
                 from app.models.developer_project import DeveloperProject
                 
-                dev_projects = db.query(Project).join(
+                dev_projects_query = db.query(Project).join(
                     DeveloperProject, (DeveloperProject.project_id == Project.id)
                 ).filter(
                     DeveloperProject.developer_id.in_(developer_ids),
                     Project.gitlab_config_id == gitlab_config_id
-                ).all()
+                )
+                
+                # ✅ RESTRICTION CHIRURGICALE (SENIOR) : Filtrer par les projets demandés si spécifiés
+                if allowed_gitlab_project_ids:
+                    dev_projects_query = dev_projects_query.filter(Project.gitlab_project_id.in_(allowed_gitlab_project_ids))
+                
+                dev_projects = dev_projects_query.all()
                 if dev_projects:
                     projects_to_process = dev_projects
-                    logger.info(f"Extraction Ciblée — {len(projects_to_process)} projets trouvés pour les développeurs {developer_ids}")
+                    logger.info(f"Extraction Ciblée — {len(projects_to_process)} projets trouvés pour les développeurs {developer_ids} (Restriction: {allowed_gitlab_project_ids})")
 
             projects_to_process = [p for p in projects_to_process if p.is_active and not p.archived]
 
@@ -132,6 +139,18 @@ async def _background_extraction(
             proj_prefix = f"[{idx+1}/{total_projects}] {project.name}"
             
             # ── Étape 1 : Commits ─────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────
+            # ✅ FIX SENIOR : Smart Auto-Mapping
+            # Si le lot a été créé sans project_id (extraction par Squad),
+            # on le rattache automatiquement au premier projet traité pour 
+            # garantir la visibilité dans le dashboard (filtres par projet).
+            # ─────────────────────────────────────────────────────────────────────────
+            if lot.project_id is None:
+                lot.project_id = project.id
+                db.add(lot)
+                db.flush()
+                logger.info(f"[lot={lot_id}] Lot auto-rattaché au projet {project.name} (fix #null)")
+
             _job_progress[lot_id] = {
                 "step_index": 1, 
                 "step_label": f"{proj_prefix} : Récupération des commits…"
@@ -175,7 +194,26 @@ async def _background_extraction(
             db.flush()
             logger.info(f"[lot={lot_id}] {proj_prefix} — KPI snapshot généré")
 
+        # ── Étape 5 : Agrégation Stratégique (Sites & Squads) ──────────────────
+        # ✅ AJOUT SENIOR : On force l'agrégation globale pour peupler le dashboard
+        # de pilotage (comparaison Paris/Tunis) immédiatement après l'extraction.
+        _job_progress[lot_id] = {
+            "step_index": 4, 
+            "step_label": "Agrégation stratégique (Sites & Squads)…"
+        }
+        from app.services.kpi.kpi_aggregator import KpiAggregator
+        aggregator = KpiAggregator(db)
+        for project in projects_to_process:
+            aggregator.generate_monthly_snapshots(
+                project_id = project.id,
+                year       = lot.period.year,
+                month      = lot.period.month,
+                lot_id     = lot.id
+            )
+        logger.info(f"[lot={lot_id}] Agrégation stratégique terminée pour {len(projects_to_process)} projets")
+
         # MONTHLY uniquement : génération du dump JSON
+
         if lot.extraction_type == ExtractionTypeEnum.MONTHLY:
             file_path, md5       = service._generate_dump_file(db, lot)
             lot.generated_file   = file_path
@@ -526,6 +564,7 @@ async def run_extraction_by_team(
     period_id:         Optional[int] = Query(default=None, description="Requis si extraction_type=MONTHLY"),
     all_developers:    bool          = Query(default=False, description="Extraire tous les devs actifs"),
     fast_mode:         bool          = Query(default=False, description="Mode Rapide : filtrage par auteur GitLab"),
+    is_backfill:       bool          = Query(default=False, description="Mode Backfill : permet d'écraser un snapshot mensuel"),
 ):
     """
     Lance une extraction GitLab ciblée sur une équipe de développeurs.
@@ -617,7 +656,20 @@ async def run_extraction_by_team(
             detail="Aucun développeur actif et validé trouvé pour ces critères.",
         )
 
-    # ── 4. Résoudre les projets GitLab à scanner ──────────────────────────────
+    # ── 4. Vérification existence MONTHLY (si pas Backfill) ─────────────────
+    if ext_type == ExtractionTypeEnum.MONTHLY and not is_backfill:
+        existing_names = []
+        for dev in developers:
+            if lot_repo.monthly_exists(db, period.id, developer_id=dev.id):
+                existing_names.append(dev.name)
+        
+        if existing_names:
+            detail = f"Un lot MONTHLY existe déjà pour : {', '.join(existing_names[:5])}"
+            if len(existing_names) > 5:
+                detail += f" et {len(existing_names)-5} autres."
+            raise HTTPException(status_code=409, detail=detail)
+
+    # ── 5. Résoudre les projets GitLab à scanner ──────────────────────────────
     gitlab_project_ids: list[Optional[int]] = [None]  # None = tous les projets actifs
     if project_ids:
         proj_id_list = []
@@ -663,12 +715,13 @@ async def run_extraction_by_team(
         # (le background task filtre sur developer_id)
         background_tasks.add_task(
             _background_extraction,
-            lot_id            = lot.id,
-            gitlab_config_id  = gitlab_config_id,
-            triggered_by_user = current_admin.id,
-            gitlab_project_id = None,
-            developer_id      = dev.id,
-            fast_mode         = fast_mode,
+            lot_id                     = lot.id,
+            gitlab_config_id           = gitlab_config_id,
+            triggered_by_user          = current_admin.id,
+            gitlab_project_id          = None,
+            developer_ids              = [dev.id],
+            fast_mode                  = fast_mode,
+            allowed_gitlab_project_ids = gitlab_project_ids if project_ids else None
         )
 
         launched.append({

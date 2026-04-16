@@ -40,6 +40,14 @@ class ProjectCreate(BaseModel):
     )
 
 
+class ProjectImportCreate(BaseModel):
+    """Schéma pour la création 'placeholder' lors d'un import (sans sync GitLab forcée)."""
+    name:              str
+    gitlab_project_id: Optional[int] = None
+    gitlab_config_id:  Optional[int] = None
+    site_ids:          List[int]     = Field(default_factory=list)
+
+
 class ProjectUpdate(BaseModel):
     name:           Optional[str]      = Field(default=None, max_length=255)
     is_active:      Optional[bool]     = None

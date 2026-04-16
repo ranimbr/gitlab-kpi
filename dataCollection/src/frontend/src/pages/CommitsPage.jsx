@@ -611,11 +611,18 @@ export default function CommitsPage() {
   const [sortKey,            setSortKey]           = useState("date");   
   const [page,               setPage]              = useState(1);
   const [detailCommit,       setDetailCommit]      = useState(null);
+  
+  // [NEW] States pour Equipe et Développeur
+  const [developers,         setDevelopers]        = useState([]);
+  const [groups,             setGroups]            = useState([]);
+  const [selectedGroup,      setSelectedGroup]     = useState("all");
+  const [authorFilter,       setAuthorFilter]      = useState("all");
+
   const perPage = 8;
 
   const isInitialized = useRef(false);
 
-  // Chargement projets
+  // Chargement projets, développeurs et groupes
   useEffect(() => {
     projectService.getAll()
       .then((data) => {
@@ -628,6 +635,9 @@ export default function CommitsPage() {
         if (urlLotId)    setSelectedLotId(urlLotId);
       })
       .catch(() => {});
+      
+    api.get("/developers/").then(res => setDevelopers(Array.isArray(res.data) ? res.data : (res.data?.items ?? []))).catch(()=>{});
+    api.get("/developer-groups").then(res => setGroups(Array.isArray(res.data) ? res.data : (res.data?.items ?? []))).catch(()=>{});
   }, []); 
 
   // [NEW] Charger les lots quand le projet change
@@ -689,6 +699,23 @@ export default function CommitsPage() {
       result = result.filter((c) => getSite(c) === siteFilter);
     }
 
+    // [NEW] Filtre Equipe
+    if (selectedGroup !== "all") {
+      const gId = parseInt(selectedGroup);
+      const groupDevs = developers.filter(d => d.group_id === gId);
+      const groupNames = groupDevs.flatMap(d => [(d.name || "").toLowerCase(), (d.gitlab_username || "").toLowerCase()]).filter(Boolean);
+      result = result.filter(c => {
+         const author = getAuthor(c).toLowerCase();
+         return groupNames.some(n => author.includes(n));
+      });
+    }
+
+    // [NEW] Filtre Auteur
+    if (authorFilter !== "all") {
+      const target = authorFilter.toLowerCase().trim();
+      result = result.filter(c => getAuthor(c).toLowerCase().trim() === target);
+    }
+
     // [NEW] Tri
     return [...result].sort((a, b) => {
       if (sortKey === "date")    return new Date(b.authored_date) - new Date(a.authored_date);
@@ -696,31 +723,48 @@ export default function CommitsPage() {
       if (sortKey === "changes") return (b.total_changes || 0) - (a.total_changes || 0);
       return 0;
     });
-  }, [commits, search, siteFilter, sortKey]);
+  }, [commits, search, siteFilter, sortKey, selectedGroup, authorFilter, developers]);
 
   // Reset page sur tout changement de filtre
-  useEffect(() => { setPage(1); }, [search, siteFilter, sortKey]);
+  useEffect(() => { setPage(1); }, [search, siteFilter, sortKey, selectedGroup, authorFilter]);
 
   // [NEW] Stats en useMemo — pas de recalcul inutile
   const sites = useMemo(
     () => [...new Set(commits.map(getSite).filter(Boolean))].sort(),
     [commits]
   );
+  const authorsList = useMemo(() => {
+    let devs = developers;
+    if (selectedGroup !== "all") {
+      const gId = parseInt(selectedGroup);
+      devs = developers.filter(d => d.group_id === gId);
+    }
+    const extractedAuthors = [...new Set(commits.map(getAuthor))];
+    
+    // Si on a des devs chargés via API
+    if (developers.length > 0) {
+      const validNames = new Set(devs.flatMap(d => [d.name, d.gitlab_username]).filter(Boolean));
+      // S'il n'y a pas de filtre groupe, les commits suffisent, mais on filtre pour exclure les bots/externes
+      return extractedAuthors.filter(a => validNames.has(a)).sort();
+    }
+    return extractedAuthors.sort();
+  }, [commits, developers, selectedGroup]);
+
   const stats = useMemo(() => ({
-    totalAdditions: commits.reduce((s, c) => s + (c.additions    || 0), 0),
-    totalDeletions: commits.reduce((s, c) => s + (c.deletions    || 0), 0),
-    uniqueAuthors:  new Set(commits.map(getAuthor)).size,
-    avgChanges:     commits.length
-      ? Math.round(commits.reduce((s, c) => s + (c.total_changes || 0), 0) / commits.length)
+    totalAdditions: filtered.reduce((s, c) => s + (c.additions    || 0), 0),
+    totalDeletions: filtered.reduce((s, c) => s + (c.deletions    || 0), 0),
+    uniqueAuthors:  new Set(filtered.map(getAuthor)).size,
+    avgChanges:     filtered.length
+      ? Math.round(filtered.reduce((s, c) => s + (c.total_changes || 0), 0) / filtered.length)
       : 0,
-  }), [commits]);
+  }), [filtered]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const totalPages      = Math.ceil(filtered.length / perPage);
   const paginated       = filtered.slice((page - 1) * perPage, page * perPage);
-  const hasActiveFilter = search || siteFilter !== "all";
+  const hasActiveFilter = search || siteFilter !== "all" || selectedGroup !== "all" || authorFilter !== "all";
 
-  const resetFilters = () => { setSearch(""); setSiteFilter("all"); setSortKey("date"); };
+  const resetFilters = () => { setSearch(""); setSiteFilter("all"); setSortKey("date"); setSelectedGroup("all"); setAuthorFilter("all"); };
 
   return (
     <div className="page-content">
@@ -739,9 +783,9 @@ export default function CommitsPage() {
                 <i className="ri-git-commit-line me-2 text-primary"></i>
                 Commits
                 {/* [NEW] Badge total visible */}
-                {commits.length > 0 && (
+                {filtered.length > 0 && (
                   <span className="badge bg-primary-subtle text-primary ms-2 fs-13 fw-normal align-middle">
-                    {commits.length}
+                    {filtered.length}
                   </span>
                 )}
               </h4>
@@ -756,7 +800,7 @@ export default function CommitsPage() {
         {/* Toolbar */}
         <div className="row g-2 mb-3 align-items-center">
           <div className="col-sm-auto">
-            <select className="form-select" style={{ width: 230 }}
+            <select className="form-select" style={{ width: 220 }}
               value={selectedProjectId || ""}
               onChange={(e) => {
                 const id = parseInt(e.target.value);
@@ -771,7 +815,7 @@ export default function CommitsPage() {
 
           {/* [NEW] Sélecteur de Lot */}
           <div className="col-sm-auto">
-            <select className="form-select" style={{ width: 230 }}
+            <select className="form-select" style={{ width: 220 }}
               value={selectedLotId}
               onChange={(e) => setSelectedLotId(e.target.value)}>
               <option value="">Toutes les extractions</option>
@@ -784,9 +828,27 @@ export default function CommitsPage() {
           </div>
 
 
+          {/* [NEW] Filtre Equipe */}
+          <div className="col-sm-auto">
+            <select className="form-select" value={selectedGroup} style={{ width: 140 }}
+              onChange={(e) => {setSelectedGroup(e.target.value); setAuthorFilter("all");}}>
+              <option value="all">Équipe : Toutes</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </div>
+
+          {/* [NEW] Filtre Auteur */}
+          <div className="col-sm-auto">
+            <select className="form-select" value={authorFilter} style={{ width: 140 }}
+              onChange={(e) => setAuthorFilter(e.target.value)}>
+              <option value="all">Développeur : Tous</option>
+              {authorsList.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+
           {sites.length > 0 && (
             <div className="col-sm-auto">
-              <select className="form-select" value={siteFilter}
+              <select className="form-select" value={siteFilter} style={{ width: 140 }}
                 onChange={(e) => setSiteFilter(e.target.value)}>
                 <option value="all">Tous les sites</option>
                 {sites.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -796,7 +858,7 @@ export default function CommitsPage() {
 
           {/* [NEW] Tri */}
           <div className="col-sm-auto">
-            <select className="form-select" value={sortKey}
+            <select className="form-select" value={sortKey} style={{ width: 150 }}
               onChange={(e) => setSortKey(e.target.value)}>
               <option value="date">Plus récents</option>
               <option value="changes">+ de changements</option>
@@ -846,10 +908,10 @@ export default function CommitsPage() {
         </div>
 
         {/* Stat Cards */}
-        {commits.length > 0 && (
+        {filtered.length > 0 && (
           <div className="row mb-3">
             {[
-              { label: "Total Commits",   value: commits.length,                                     color: "primary", icon: "ri-git-commit-line", sub: `${stats.uniqueAuthors} développeurs`  },
+              { label: "Total Commits",   value: filtered.length,                                     color: "primary", icon: "ri-git-commit-line", sub: `${stats.uniqueAuthors} développeurs`  },
               { label: "Total Additions", value: `+${stats.totalAdditions.toLocaleString("fr-FR")}`, color: "success", icon: "ri-add-circle-line",  sub: "Lignes ajoutées"                      },
               { label: "Total Deletions", value: `-${stats.totalDeletions.toLocaleString("fr-FR")}`, color: "danger",  icon: "ri-subtract-line",    sub: "Lignes supprimées"                    },
               { label: "Moy. changes",    value: stats.avgChanges.toLocaleString("fr-FR"),           color: "info",    icon: "ri-file-code-line",   sub: "Par commit"                           },
@@ -878,8 +940,8 @@ export default function CommitsPage() {
 
 
         {/* Charts — Sous-titres dynamiques via ChartSection (Top N sur Total) */}
-        {commits.length > 0 && (
-          <ChartSection commits={commits} stats={stats} />
+        {filtered.length > 0 && (
+          <ChartSection commits={filtered} stats={stats} />
         )}
 
         {loading && <LoadingSpinner text="Chargement des commits..." />}

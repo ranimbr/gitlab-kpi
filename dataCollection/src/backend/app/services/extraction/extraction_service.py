@@ -23,6 +23,7 @@ CORRECTIFS ACTIFS :
     tous les commits de toutes les branches. ExtractionService consomme
     cette liste sans modification supplémentaire.
 """
+import asyncio
 import hashlib
 import json
 import logging
@@ -37,6 +38,7 @@ from app.core.config import get_settings
 from app.models.extraction_lot import ExtractionLot, ExtractionStatusEnum, ExtractionTypeEnum
 from app.models.gitlab_config import GitLabConfig
 from app.models.developer import Developer
+from app.models.period import Period
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.commit_repository import CommitRepository
 from app.repositories.developer_repository import DeveloperRepository
@@ -47,7 +49,7 @@ from app.repositories.merge_request_repository import MergeRequestRepository
 from app.repositories.comment_repository import CommentRepository
 from app.repositories.period_repository import PeriodRepository
 from app.repositories.project_repository import ProjectRepository
-from app.services.gitlab.gitlab_client import GitLabAPIError, GitLabClient
+from app.services.gitlab.gitlab_client import GitLabAPIError, GitLabClient, GitLabProjectNotFoundError
 from app.services.gitlab.gitlab_mapper import GitLabMapper
 
 logger   = logging.getLogger(__name__)
@@ -187,6 +189,18 @@ class ExtractionService:
             db.commit()
             logger.info(f"REALTIME extraction completed — lot={lot.id} project={project.name}")
 
+        except GitLabProjectNotFoundError as e:
+            db.rollback()
+            error_msg = f"CRITICAL: Project not found/accessible on GitLab. Reason: {e.message}"
+            try:
+                lot.status = ExtractionStatusEnum.failed
+                lot.completed_at = datetime.now(timezone.utc)
+                lot.error_message = error_msg
+                db.commit()
+            except Exception:
+                pass
+            logger.error(f"REALTIME extraction failed (404) — lot={lot.id}: {error_msg}")
+            raise
         except (GitLabAPIError, SQLAlchemyError) as e:
             db.rollback()
             error_msg = str(e)[:1000]
@@ -220,6 +234,15 @@ class ExtractionService:
         project = self.project_repo.get_by_id(db, project_id)
         if not project:
             raise ValueError(f"Project id={project_id} not found")
+            
+        period = db.query(Period).filter(Period.id == period_id).first()
+        if not period:
+            raise ValueError(f"Period id={period_id} not found")
+        if period.status == "closed":
+            raise HTTPException(
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=f"Period {period.year}/{period.month} is closed. Extraction locked."
+            )
 
         existing_lot = self.lot_repo.get_monthly(db, period_id, project_id)
 
@@ -266,12 +289,30 @@ class ExtractionService:
             lot.error_message  = None
             db.flush()
 
+        except GitLabProjectNotFoundError as e:
+            db.rollback()
+            error_msg = f"ERROR: Target project ID is inaccessible (404). Check API permissions. Details: {e.message}"
+            try:
+                lot.status = ExtractionStatusEnum.failed
+                lot.completed_at = datetime.now(timezone.utc)
+                lot.error_message = error_msg
+                db.add(lot)
+                db.commit()
+            except Exception:
+                pass
+            logger.error(f"MONTHLY extraction failed (404) — lot={lot.id}: {error_msg}")
+            raise
         except (GitLabAPIError, SQLAlchemyError) as e:
+            db.rollback()
             error_msg         = str(e)[:1000]
-            lot.status        = ExtractionStatusEnum.failed
-            lot.completed_at  = datetime.now(timezone.utc)
-            lot.error_message = error_msg
-            db.flush()
+            try:
+                lot.status        = ExtractionStatusEnum.failed
+                lot.completed_at  = datetime.now(timezone.utc)
+                lot.error_message = error_msg
+                db.add(lot)
+                db.commit()
+            except Exception:
+                pass
             logger.error(f"MONTHLY extraction failed — lot={lot.id}: {error_msg}")
             raise
 
@@ -290,9 +331,39 @@ class ExtractionService:
         developer_ids: Optional[List[int]] = None, 
         fast_mode: bool = False
     ) -> None:
-        await self._extract_commits(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
+        c_count = await self._extract_commits(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
         db.flush()
-        await self._extract_merge_requests(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
+        m_count = await self._extract_merge_requests(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
+        db.flush()
+
+        if (c_count + m_count) == 0:
+            msg = "Warning: 0 items matched your filters (check Date/Authors)."
+            lot.error_message = msg
+            logger.warning(f"Lot {lot.id} extracted 0 items.")
+
+    async def _ensure_developers_ids(self, db: Session, target_devs: List[Developer], client) -> None:
+        """
+        [FIX-ID-RESHAPE] Vérifie et résout les gitlab_user_id manquants via l'API GitLab.
+        Crucial pour les imports CSV qui ne contiennent que le username.
+        [SENIOR] Version Robuste : si GitLab bloque (429), on arrête d'insister et on passe à la suite.
+        """
+        for dev in target_devs:
+            if not dev.gitlab_user_id and dev.gitlab_username:
+                logger.debug(f"Resolving GitLab ID for {dev.gitlab_username}...")
+                try:
+                    # On utilise fast_fail pour ne pas geler l'extraction pendant 10min
+                    user_data = await client.get_user_by_username(dev.gitlab_username)
+                    if user_data and "id" in user_data:
+                        dev.gitlab_user_id = user_data["id"]
+                        logger.info(f"Matched {dev.gitlab_username} to ID {dev.gitlab_user_id}")
+                    else:
+                        logger.warning(f"Could not find GitLab ID for username: {dev.gitlab_username}")
+                except Exception as e:
+                    # Si c'est un rate limit (429), on arrête tout le loop de résolution
+                    if hasattr(e, 'status_code') and e.status_code == 429:
+                        logger.warning(f"Aborting ID resolution for this session: GitLab Rate Limit hit.")
+                        break
+                    logger.error(f"Error resolving GitLab ID for {dev.gitlab_username}: {e}")
         db.flush()
 
     # =========================================================================
@@ -312,37 +383,39 @@ class ExtractionService:
         [FIX-DEDUP-3] Pré-charge les membres avec emails officiels GitLab
         avant d'extraire les commits.
         """
-        members_map: Dict[int, dict] = {}
-        # On charge les membres sauf si extraction ultra-ciblée (1 seul dev)
-        if not developer_ids or len(developer_ids) > 1:
-            try:
-                members_map = await client.get_project_members_with_emails(project.gitlab_project_id)
-                logger.info(f"Pre-loaded {len(members_map)} members for project={project.name}")
-            except Exception as e:
-                logger.warning(f"Could not pre-load members: {e}")
-
-        # 🎯 STRATÉGIE SENIOR : Extraction groupée par auteurs si possible
-        # GitLab API ne permet pas une liste d'auteurs dans un seul appel. 
-        # Si developer_ids est fourni, on peut soit boucler, soit tout récupérer et filtrer.
-        # Pour une équipe CSV (4 devs), boucler est plus précis.
-        
+        # 🎯 STRATÉGIE SENIOR : Extraction Robuste
         target_devs = []
         if developer_ids:
             target_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
+            # [FIX-ID-SYNC] S'assure que les IDs GitLab numériques sont présents
+            await self._ensure_developers_ids(db, target_devs, client)
 
-        author_filters = [None]
+        members_map: Dict[int, dict] = {}
+        # [SENIOR Optimization] On évite le fetch des membres si on est en mode ciblé.
+        # Pourquoi ? car la boucle `_extract_commits` a désormais un raccourci `matched_dev`
+        # qui utilise directement les `target_devs` pré-chargés par ID/Email sans avoir
+        # besoin du mapping membre global. Evite les 429 sur les gros repos.
+        if not developer_ids:
+            try:
+                members_map = await client.get_project_members_with_emails(
+                    project.gitlab_project_id
+                )
+                logger.info(f"Pre-loaded {len(members_map)} members for project={project.name}")
+            except Exception as e:
+                logger.warning(f"Could not pre-load members: {e}")
+        else:
+            logger.info(f"Targeted mode: skipping global member pre-load for project={project.name}")
+
+        # [SENIOR Optimization] Préparation des filtres auteurs pour l'API
+        # On envoie les signatures connues à GitLab pour filtrer à la source
+        api_author_filters = [None]
         if target_devs:
-            author_filters = []
-            for d in target_devs:
-                # [SENIOR FIX]: On utilise le "Nom" au lieu de l'Email pour l'API GitLab.
-                # Pourquoi ? L'email local du dev est souvent un email corporate (ex: telnet.tn),
-                # alors que ses commits open-source utilisent son email perso ou public.
-                # Le paramètre 'author' de l'API GitLab matche parfaitement sur le 'name'.
-                f = d.name or d.gitlab_username
-                if f: author_filters.append(f)
-            
-        if not author_filters: author_filters = [None]
-
+            api_author_filters = []
+            for t_dev in target_devs:
+                if t_dev.gitlab_username: api_author_filters.append(t_dev.gitlab_username)
+                if t_dev.email: api_author_filters.append(t_dev.email)
+            api_author_filters = list(set(api_author_filters))
+        
         # Filtre temporel
         since = until = None
         if lot.period:
@@ -355,23 +428,60 @@ class ExtractionService:
             except Exception as e:
                 logger.warning(f"Calcul période échoué: {e}")
 
-        all_commits_data = []
-        for a_filter in author_filters:
-            commits = await client.get_project_commits(
-                project.gitlab_project_id, 
-                author=a_filter,
-                since=since,
-                until=until
-            )
-            all_commits_data.extend(commits)
+        # [SENIOR - Surgical Discovery] 
+        # On découvre les branches réellement touchées par les dev sélectionnés via l'API Events.
+        target_branches = set()
+        
+        try:
+            proj_info = await client.get_project(project.gitlab_project_id)
+            if proj_info and proj_info.get("default_branch"):
+                target_branches.add(proj_info["default_branch"])
+        except Exception:
+             pass
 
-        # Déduplication des commits reçus (si plusieurs filtres matchent le même commit)
+        try:
+            # On cherche les événements de 'push' pour voir qui a travaillé où
+            events = await client.get_project_events(
+                project_id=project.gitlab_project_id, 
+                action="pushed", 
+                after=since.split('T')[0] if since else None,
+                before=until.split('T')[0] if until else None
+            )
+            for ev in events:
+                push_data = ev.get("push_data")
+                if push_data and push_data.get("ref"):
+                    # refs/heads/nom -> nom
+                    b_name = push_data["ref"].replace("refs/heads/", "")
+                    target_branches.add(b_name)
+            logger.info(f"Surgical Discovery: Found {len(target_branches)} branches with recent activity.")
+        except Exception as e:
+            logger.warning(f"Surgical Discovery failed, fallback to active branches: {e}")
+            # Fallback simple si l'API events est restreinte
+            branches_data = await client.get_project_branches(project.gitlab_project_id)
+            target_branches.update([b["name"] for b in branches_data])
+
+        all_commits_data = []
         seen_shas = set()
-        unique_commits = []
-        for c in all_commits_data:
-            if c["id"] not in seen_shas:
-                seen_shas.add(c["id"])
-                unique_commits.append(c)
+        for branch in target_branches:
+            for a_filter in api_author_filters:
+                # with_stats=False pour que l'API réponde instantanément
+                commits = await client.get_project_commits(
+                    project_id=project.gitlab_project_id, 
+                    ref_name=branch,
+                    author=a_filter,
+                    since=since,
+                    until=until,
+                    with_stats=False
+                )
+                
+                # [SENIOR] Dédoublonnage au fil de l'eau
+                for c in commits:
+                    if c["id"] not in seen_shas:
+                        seen_shas.add(c["id"])
+                        all_commits_data.append(c)
+
+        unique_commits = all_commits_data
+        logger.info(f"Project {project.name} - Extracted {len(unique_commits)} unique commits across {len(target_branches)} relevant branches.")
 
         created = skipped = 0
         for commit_data in unique_commits:
@@ -385,17 +495,33 @@ class ExtractionService:
             author_name  = commit_data.get("author_name")
             author_username = commit_data.get("author_username")
 
-            # [STRICT TEAM ISOLATION]
-            # Si targeting mode, on ignore tout ce qui ne matche pas un de nos devs
+            # [STRICT TEAM ISOLATION] - LOGIQUE DURCIE (SENIOR)
+            # Si targeting mode, on ignore tout ce qui ne matche pas un de nos devs.
+            # On utilise une normalisation agressive pour éviter les faux-négatifs.
             if target_devs:
                 is_match = False
                 matched_dev = None
+                
+                c_email = _normalize_email(author_email)
+                c_uname = _normalize_username(author_username)
+                c_name  = author_name.lower().strip() if author_name else ""
+                c_gid   = gitlab_id
+                
                 for t_dev in target_devs:
-                    if (gitlab_id and gitlab_id == t_dev.gitlab_user_id) or \
-                       (_normalize_email(author_email) == _normalize_email(t_dev.email)) or \
-                       (_normalize_username(author_username) == _normalize_username(t_dev.gitlab_username)) or \
-                       (author_name and t_dev.name and author_name.lower() == t_dev.name.lower()):
+                    # Match par ID GitLab (Le plus fiable, grâce à notre sync préliminaire)
+                    if c_gid and c_gid == t_dev.gitlab_user_id:
                         is_match = True
+                    # Match par Email (Normalisé)
+                    elif c_email and c_email == _normalize_email(t_dev.email):
+                        is_match = True
+                    # Match par Username (Normalisé)
+                    elif c_uname and c_uname == _normalize_username(t_dev.gitlab_username):
+                        is_match = True
+                    # Match par Nom (Fuzzy/Lower)
+                    elif c_name and t_dev.name and c_name == t_dev.name.lower().strip():
+                        is_match = True
+                    
+                    if is_match:
                         matched_dev = t_dev
                         break
                 
@@ -426,6 +552,12 @@ class ExtractionService:
             if not developer:
                 skipped += 1
                 continue
+                
+            # [SENIOR HOTFIX] Fetch stats only for this specific matched commit
+            detailed_commit = await client.get_commit_detail(project.gitlab_project_id, commit_data["id"])
+            if detailed_commit:
+                commit_data = detailed_commit
+                
             mapped = GitLabMapper.map_commit(
                 data=commit_data,
                 project_id=project.id,
@@ -436,6 +568,7 @@ class ExtractionService:
             created += 1
 
         db.commit()
+        return created
 
     async def _extract_merge_requests(
         self, 
@@ -449,9 +582,17 @@ class ExtractionService:
         import calendar
         
         target_usernames = []
+        # [FIX-N+1] Pré-charger les devs cibles en dict UNE SEULE FOIS
+        target_devs_map: Dict[int, Developer] = {}
         if developer_ids:
-            target_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
-            target_usernames = [d.gitlab_username for d in target_devs if d.gitlab_username]
+            _loaded_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
+            target_devs_map = {d.id: d for d in _loaded_devs}
+            # [FIX-ID-SYNC] S'assure que les IDs GitLab numériques sont présents avant d'extraire les MRs
+            await self._ensure_developers_ids(db, list(target_devs_map.values()), client)
+            target_usernames = [_normalize_username(d.gitlab_username) for d in _loaded_devs if d.gitlab_username]
+            
+            if not target_usernames:
+                logger.warning(f"[lot={lot.id}] Targeted developers have NO gitlab_username in DB. Fetching might yield 0 results.")
 
         # Filtre temporel
         updated_after = updated_before = None
@@ -480,11 +621,25 @@ class ExtractionService:
             
             for role_params in roles:
                 try:
+                    # Senior Logic: Use ID if we have it, else Username
+                    req_params = role_params.copy()
+                    if username:
+                        # Find the developer in target_devs_map to see if we have an ID
+                        dev_obj = next((d for d in target_devs_map.values() if _normalize_username(d.gitlab_username) == username), None)
+                        if dev_obj and dev_obj.gitlab_user_id:
+                            # Remplace l'username par l'ID dans les filtres pour plus de fiabilité
+                            if "author_username" in req_params:
+                                req_params.pop("author_username"); req_params["author_id"] = dev_obj.gitlab_user_id
+                            if "reviewer_username" in req_params:
+                                req_params.pop("reviewer_username"); req_params["reviewer_id"] = dev_obj.gitlab_user_id
+                            if "assignee_username" in req_params:
+                                req_params.pop("assignee_username"); req_params["assignee_id"] = dev_obj.gitlab_user_id
+
                     fetched = await client.get_project_merge_requests(
                         project.gitlab_project_id, 
                         updated_after=updated_after,
                         updated_before=updated_before,
-                        **role_params
+                        **req_params
                     )
                     for m in fetched: mrs_dict[m["iid"]] = m
                 except Exception as e:
@@ -497,31 +652,38 @@ class ExtractionService:
             existing_mr = self.mr_repo.get_by_gitlab_mr_id(db, mr_data["iid"], project.id)
             
             author = mr_data.get("author") or {}
-            # Strict isolation : ignore si pas dans la team cible
+            mr_iid = mr_data.get("iid")
+            
+            # [FIX-N+1] Strict isolation — utilise le dict pré-chargé, ZÉRO requête DB en boucle
             if developer_ids:
                 is_match = False
-                for t_id in developer_ids:
-                    t_dev = db.query(Developer).filter(Developer.id == t_id).first()
-                    # Check author, reviewer, or assignee match
-                    if (author.get("id") == t_dev.gitlab_user_id) or \
-                       (author.get("username") == t_dev.gitlab_username):
+                author_uname = _normalize_username(author.get("username"))
+                
+                for t_dev in target_devs_map.values():
+                    t_uname = _normalize_username(t_dev.gitlab_username)
+                    
+                    # 1. Author Match
+                    if (t_dev.gitlab_user_id and author.get("id") == t_dev.gitlab_user_id) or \
+                       (author_uname and author_uname == t_uname):
                         is_match = True; break
                     
-                    # Reviewers
+                    # 2. Reviewers Match
                     for r in (mr_data.get("reviewers") or []):
-                        if r.get("username") == t_dev.gitlab_username:
+                        if _normalize_username(r.get("username")) == t_uname:
                             is_match = True; break
                     if is_match: break
                     
-                    # Assignees
+                    # 3. Assignees Match
                     for a in (mr_data.get("assignees") or [mr_data.get("assignee")]):
-                        if a and a.get("username") == t_dev.gitlab_username:
+                        if a and _normalize_username(a.get("username")) == t_uname:
                             is_match = True; break
                     if is_match: break
                 
                 if not is_match:
                     skipped += 1
                     continue
+                else:
+                    logger.info(f"[lot={lot.id}] MR !{mr_iid} MATCHED for targeted developer(s).")
 
             author_data = mr_data.get("author") or {}
             reviewers_list = mr_data.get("reviewers") or []
@@ -562,60 +724,92 @@ class ExtractionService:
 
             # [SENIOR LOGIC] — DEEP EXTRACTION
             # Le listing MR ne renvoie pas commits_count. On fetch le détail complet + les commits.
+            mr_notes: list = []
+            approvals_data = {}
             try:
-                full_mr_data = await client.get_merge_request_detail(project.gitlab_project_id, mr_data["iid"])
+                # [SENIOR FIX 1.1] Appels parallèles pour diviser le temps par 3 !
+                full_mr_data, mr_commits, mr_notes_data, approvals_data = await asyncio.gather(
+                    client.get_merge_request_detail(project.gitlab_project_id, mr_data["iid"]),
+                    client.get_merge_request_commits(project.gitlab_project_id, mr_data["iid"]),
+                    client.get_merge_request_notes(project.gitlab_project_id, mr_data["iid"]),
+                    client.get_merge_request_approvals(project.gitlab_project_id, mr_data["iid"])
+                )
+                
                 if full_mr_data:
                     mr_data.update(full_mr_data)
                 
                 # [SENIOR LOGIC] — HIGH PRECISION TEMPORAL FILTERING
                 # 1. Commits : Only those by author AND within this period
-                mr_commits = await client.get_merge_request_commits(project.gitlab_project_id, mr_data["iid"])
-                
-                author_data = full_mr_data.get("author", {})
-                a_name = author_data.get("name")
-                a_email = author_data.get("email")
+                author_data = full_mr_data.get("author", {}) if full_mr_data else {}
+                a_name    = author_data.get("name")
+                a_email   = author_data.get("email")
                 a_username = author_data.get("username")
                 
-                # ✅ [SENIOR] Target-centric filtering
-                target_ids, target_names, target_emails, target_usernames = [], [], [], []
-                if developer_ids:
-                    target_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
-                    target_ids = [d.gitlab_user_id for d in target_devs if d.gitlab_user_id]
-                    target_names = [d.name for d in target_devs if d.name]
-                    target_emails = [d.email for d in target_devs if d.email]
-                    target_usernames = [d.gitlab_username for d in target_devs if d.gitlab_username]
-                else: # Fallback to MR Author
+                # [FIX-N+1] Utiliser le dict pré-chargé target_devs_map — ZÉRO requête DB ici
+                target_ids, target_names, target_emails, target_unames = [], [], [], []
+                if developer_ids and target_devs_map:
+                    for d in target_devs_map.values():
+                        if d.gitlab_user_id: target_ids.append(d.gitlab_user_id)
+                        if d.name:            target_names.append(d.name)
+                        if d.email:           target_emails.append(d.email)
+                        if d.gitlab_username: target_unames.append(d.gitlab_username)
+                else:  # Fallback : auteur de la MR
                     if author_data.get("id"): target_ids.append(author_data.get("id"))
-                    if a_name: target_names.append(a_name)
-                    if a_email: target_emails.append(a_email)
-                    if a_username: target_usernames.append(a_username)
+                    if a_name:     target_names.append(a_name)
+                    if a_email:    target_emails.append(a_email)
+                    if a_username: target_unames.append(a_username)
 
                 def is_in_period(dt_str: str) -> bool:
                     try:
+                        if not dt_str: return False
                         dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
                         return lot_start <= dt <= lot_end
-                    except: return False
+                    except Exception:
+                        return False
                     
                 def is_target_author_commit(c: dict) -> bool:
-                    return (c.get("author_name") in target_names) or (c.get("author_email") in target_emails)
+                    # [SENIOR MATCHING] Utilise TOUS les vecteurs d'identité
+                    if not any([target_ids, target_names, target_emails, target_unames]): 
+                        return True
                     
+                    c_name  = _normalize_name(c.get("author_name"))
+                    c_email = _normalize_email(c.get("author_email"))
+                    # Note: Les commits Git bruts n'ont pas toujours l'ID GitLab, mais si on l'a, on l'utilise
+                    return (c_name in target_names) or (c_email in target_emails)
+
                 def is_target_author_note(n: dict) -> bool:
                     n_auth = n.get("author", {})
-                    return (n_auth.get("id") in target_ids) or (n_auth.get("username") in target_usernames)
+                    if not any([target_ids, target_unames]): return True
+                    return (n_auth.get("id") in target_ids) or (_normalize_username(n_auth.get("username")) in target_unames)
 
                 filtered_commits = [
-                    c for c in mr_commits 
+                    c for c in mr_commits
                     if (not (c.get("title", "").lower().startswith("merge branch"))) and
                     is_target_author_commit(c) and
                     is_in_period(c.get("authored_date", ""))
                 ]
                 mr_data["commits_count"] = len(filtered_commits)
 
+                # [SENIOR FIX 1.3] Cycle Time calculation (Merge Date - First Commit Date)
+                if mr_data.get("state") == "merged" and mr_data.get("merged_at"):
+                    try:
+                        if mr_commits:
+                            # Les commits sont souvent triés du plus récent au plus ancien, le premier commit = dernier élément
+                            first_commit_date_str = mr_commits[-1].get("authored_date")
+                            if first_commit_date_str:
+                                first_commit_date = datetime.fromisoformat(first_commit_date_str.replace("Z", "+00:00"))
+                                merged_at = datetime.fromisoformat(mr_data["merged_at"].replace("Z", "+00:00"))
+                                cycle_time_hours = (merged_at - first_commit_date).total_seconds() / 3600
+                                if cycle_time_hours > 0:
+                                    mr_data["cycle_time_hours"] = round(cycle_time_hours, 2)
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate cycle time for MR !{mr_data['iid']}: {e}")
+
                 # 2. Comments (Notes) : Only those by TARGET developers AND within this period
-                mr_notes = await client.get_merge_request_notes(project.gitlab_project_id, mr_data["iid"])
+                mr_notes = mr_notes_data
                 filtered_notes = [
                     n for n in mr_notes
-                    if not n.get("system", False) and 
+                    if not n.get("system", False) and
                     is_target_author_note(n) and
                     is_in_period(n.get("created_at", ""))
                 ]
@@ -623,9 +817,6 @@ class ExtractionService:
 
             except Exception as e:
                 logger.warning(f"Could not fetch/filter MR detail/commits/notes for !{mr_data['iid']}: {e}")
-
-            # Approvals
-            approvals_data = await client.get_merge_request_approvals(project.gitlab_project_id, mr_data["iid"])
 
             # Map Data
             mapped = GitLabMapper.map_merge_request(
@@ -647,10 +838,10 @@ class ExtractionService:
                 current_mr = self.mr_repo.create(db, mapped)
                 created += 1
 
-            # Notes / Comments
+            # [FIX-DOUBLE-CALL] Réutilise mr_notes déjà chargé — aucun appel API supplémentaire
+            # [FIX-SILENT] Exception loggée (warning) au lieu d'être silencieusement ignorée
             try:
-                notes = await client.get_merge_request_notes(project.gitlab_project_id, mr_data["iid"])
-                for note in notes:
+                for note in mr_notes:
                     if note.get("system"): continue
                     n_author = note.get("author") or {}
                     commenter = self._resolve_developer(
@@ -665,10 +856,13 @@ class ExtractionService:
                             "created_at": note.get("created_at"), "developer_id": commenter.id,
                             "merge_request_id": current_mr.id
                         })
-            except Exception: pass
+            except Exception as e:
+                logger.warning(f"Could not persist notes for MR !{mr_data.get('iid', '?')}: {e}")
             db.commit()
 
         logger.info(f"MRs — created:{created} updated:{updated} skipped:{skipped} project={project.name}")
+        return created + updated
+
 
     # =========================================================================
     # [FIX-DEDUP-1] RESOLVE DEVELOPER — lookup strict avec normalisation

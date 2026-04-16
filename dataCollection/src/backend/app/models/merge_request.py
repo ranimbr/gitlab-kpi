@@ -91,6 +91,10 @@ class MergeRequest(Base):
     # KPI #7 : utilisé directement par KpiCalculator sans recalcul
     review_time_hours = Column(Float, nullable=True)
 
+    # ✅ AJOUT SENIOR FIX 1.3 : Cycle Time
+    # (merged_at - first_commit_date) en heures
+    cycle_time_hours = Column(Float, nullable=True)
+
     # ── Statistiques de code ─────────────────────────────────────────────────
     additions     = Column(Integer, default=0, nullable=True)
     deletions     = Column(Integer, default=0, nullable=True)
@@ -228,6 +232,11 @@ class MergeRequest(Base):
         CheckConstraint(
             "(review_time_hours IS NULL) OR (review_time_hours >= 0)",
             name="chk_mr_review_time_positive",
+        ),
+        # cycle_time_hours >= 0 si renseigné
+        CheckConstraint(
+            "(cycle_time_hours IS NULL) OR (cycle_time_hours >= 0)",
+            name="chk_mr_cycle_time_positive",
         ),
         # approved_at >= created_at_gitlab (on ne peut pas approuver avant de créer)
         CheckConstraint(

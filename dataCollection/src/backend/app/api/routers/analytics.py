@@ -209,3 +209,150 @@ def get_developer_insights(
     # ou gérée nativement via current_user.role
     service = AnalyticsService(db)
     return service.get_developer_insights(developer_id, project_id, period_id)
+
+
+# ── Team Velocity (Manager Only) ──────────────────────────────────────────────
+
+@router.get("/team/velocity")
+def get_team_velocity(
+    project_id: int           = Query(..., description="ID du projet"),
+    weeks:      int           = Query(default=12, ge=1, le=52,
+                                      description="Nombre de semaines à analyser"),
+    site_id:    Optional[int] = Query(default=None),
+    db:         Session       = Depends(get_db),
+    _:          AppUser       = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    [SENIOR] Vélocité hebdomadaire de l'équipe — pour les rétrospectives de sprint.
+
+    Retourne, pour chaque semaine, le nombre de :
+      - commits réalisés
+      - MRs ouvertes
+      - MRs mergées (= livrables réels)
+
+    Permet au manager de détecter :
+      - Les semaines de creux (vacances, blocages techniques)
+      - La tendance globale (équipe qui accélère ou ralentit)
+      - Les sprints surchargés (MRs ouvertes >> MRs mergées)
+
+    Réponse :
+      {
+        "project_id": 1,
+        "weeks": 12,
+        "data": [
+          { "week_start": "2025-01-06", "commits": 42, "mrs_opened": 8, "mrs_merged": 6 },
+          ...
+        ],
+        "summary": { "avg_commits_week": 38.5, "avg_mrs_merged_week": 5.2 }
+      }
+    """
+    from sqlalchemy import func, case
+    from app.models.commit import Commit
+    from app.models.merge_request import MergeRequest
+
+    end_date   = datetime.now()
+    start_date = end_date - timedelta(weeks=weeks)
+
+    # ── Commits par semaine ──
+    commits_by_week = (
+        db.query(
+            func.date_trunc("week", Commit.committed_date).label("week_start"),
+            func.count(Commit.id).label("commits"),
+        )
+        .filter(
+            Commit.project_id    == project_id,
+            Commit.committed_date >= start_date,
+            Commit.is_merge_commit == False,
+        )
+    )
+    if site_id:
+        from app.models.developer_site import DeveloperSite
+        commits_by_week = commits_by_week.join(
+            DeveloperSite, DeveloperSite.developer_id == Commit.developer_id
+        ).filter(DeveloperSite.site_id == site_id)
+
+    commits_by_week = (
+        commits_by_week
+        .group_by(func.date_trunc("week", Commit.committed_date))
+        .order_by(func.date_trunc("week", Commit.committed_date))
+        .all()
+    )
+    commits_map = {str(row.week_start.date()): row.commits for row in commits_by_week}
+
+    # ── MRs par semaine ──
+    mrs_by_week = (
+        db.query(
+            func.date_trunc("week", MergeRequest.created_at).label("week_start"),
+            func.count(MergeRequest.id).label("mrs_opened"),
+            func.sum(
+                case((MergeRequest.state == "merged", 1), else_=0)
+            ).label("mrs_merged"),
+        )
+        .filter(
+            MergeRequest.project_id == project_id,
+            MergeRequest.created_at >= start_date,
+        )
+        .group_by(func.date_trunc("week", MergeRequest.created_at))
+        .order_by(func.date_trunc("week", MergeRequest.created_at))
+        .all()
+    )
+    mrs_map = {
+        str(row.week_start.date()): {
+            "mrs_opened": row.mrs_opened,
+            "mrs_merged": int(row.mrs_merged or 0),
+        }
+        for row in mrs_by_week
+    }
+
+    # ── Fusion par semaine ──
+    all_weeks = sorted(set(list(commits_map.keys()) + list(mrs_map.keys())))
+    data = [
+        {
+            "week_start":  w,
+            "commits":     commits_map.get(w, 0),
+            "mrs_opened":  mrs_map.get(w, {}).get("mrs_opened", 0),
+            "mrs_merged":  mrs_map.get(w, {}).get("mrs_merged", 0),
+        }
+        for w in all_weeks
+    ]
+
+    # ── Résumé ──
+    n = len(data) or 1
+    summary = {
+        "avg_commits_week":    round(sum(d["commits"]    for d in data) / n, 1),
+        "avg_mrs_merged_week": round(sum(d["mrs_merged"] for d in data) / n, 1),
+        "total_commits":       sum(d["commits"]    for d in data),
+        "total_mrs_merged":    sum(d["mrs_merged"] for d in data),
+    }
+
+    return {
+        "project_id": project_id,
+        "site_id":    site_id,
+        "weeks":      weeks,
+        "summary":    summary,
+        "data":       data,
+    }
+
+
+@router.get("/{project_id}/trends/comparative", response_model=List[Dict])
+def get_comparative_trends(
+    project_id:   int,
+    site_ids:     List[int]      = Query(default=[]),
+    group_ids:    List[int]      = Query(default=[]),
+    start_date:   Optional[date] = Query(default=None),
+    end_date:     Optional[date] = Query(default=None),
+    db:           Session        = Depends(get_db),
+    current_user: AppUser        = Depends(get_current_user),
+):
+    """
+    [SENIOR] Endpoint pour la comparaison multi-séries (Sites ou Équipes).
+    Utilisé par la page 'Pilotage' pour l'analyse multidimensionnelle.
+    """
+    service = AnalyticsService(db)
+    return service.get_comparative_trends(
+        project_id=project_id,
+        site_ids=site_ids if site_ids else None,
+        group_ids=group_ids if group_ids else None,
+        start_date=start_date,
+        end_date=end_date
+    )

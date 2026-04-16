@@ -1,0 +1,25 @@
+﻿"""
+services/gitlab/gitlab_client.py
+
+[FIX] __init__ : config.encrypted_token â†’ config.token
+      (le champ dans GitLabConfig s'appelle 'token', pas 'encrypted_token')
+"""
+import asyncio
+import logging
+from typing import Any, Dict, List, Optional, Set
+
+import httpx
+
+from app.models.gitlab_config import GitLabConfig
+
+logger = logging.getLogger(__name__)
+
+MAX_BRANCHES = 50
+
+
+class GitLabAPIError(Exception):
+    pass
+
+
+class GitLabClient:
+

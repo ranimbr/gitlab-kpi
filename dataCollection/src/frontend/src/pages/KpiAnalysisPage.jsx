@@ -20,6 +20,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import projectService   from "../services/projectService";
 import analyticsService from "../services/analyticsService";
 import siteService  from "../services/siteService";
@@ -254,6 +255,7 @@ export default function KpiAnalysisPage() {
   const [previousSnap, setPreviousSnap] = useState(null);
   const [allSnaps,     setAllSnaps]     = useState([]);
   const [topDevs,      setTopDevs]      = useState([]);
+  const [velocityData, setVelocityData] = useState(null);
 
   // UI
   const [loading,      setLoading]      = useState(false);
@@ -366,6 +368,7 @@ export default function KpiAnalysisPage() {
     setCurrentSnap(null);
     setPreviousSnap(null);
     setAllSnaps([]);
+    setVelocityData(null);
 
     const entityParams = { siteId: null, groupId: null, developerId: null };
     if (viewMode === "site")      entityParams.siteId      = parseInt(entityId);
@@ -389,7 +392,7 @@ export default function KpiAnalysisPage() {
       setCurrentSnap(latest);
       if (history.length >= 2) setPreviousSnap(history[history.length - 2]);
 
-      // Comparaison inter-sites (indépendant du filtre developer)
+      // Compares sites
       const compareData = await analyticsService.compareSites(
         parseInt(projectId),
         periodId ? parseInt(periodId) : null,
@@ -398,7 +401,7 @@ export default function KpiAnalysisPage() {
       ).catch(() => []);
       setAllSnaps(Array.isArray(compareData) ? compareData : []);
 
-      // Top développeurs si mode site
+      // Top développeurs et vélocité si mode site
       if (viewMode === "site") {
         const devs = await analyticsService.getTopDevelopers(parseInt(projectId), {
           siteId: parseInt(entityId),
@@ -406,6 +409,13 @@ export default function KpiAnalysisPage() {
           lotId:  lotId ? parseInt(lotId) : null
         }).catch(() => []);
         setTopDevs(Array.isArray(devs) ? devs : []);
+
+        // Vélocité de l'équipe (site)
+        const velData = await analyticsService.getTeamVelocity(parseInt(projectId), {
+          siteId: parseInt(entityId),
+          weeks: 12
+        }).catch(() => null);
+        setVelocityData(velData);
       }
     } catch (err) {
       // Erreur 404 = pas de snapshot KPI pour ce développeur → message clair
@@ -777,6 +787,75 @@ export default function KpiAnalysisPage() {
                           })}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Graphique de Vélocité d'Équipe (Mode Site/Equipe) */}
+                {viewMode === "site" && velocityData?.data && velocityData.data.length > 0 && (
+                  <div className="card border-0 mt-4" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
+                    <div className="card-header bg-white" style={{ borderBottom: "1px solid #f0f2f5" }}>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <h6 className="mb-0 fw-semibold">
+                          <i className="ri-line-chart-line me-2 text-primary"></i>
+                          Vélocité Hebdomadaire
+                        </h6>
+                        <span className="badge bg-light text-secondary border">12 dernières semaines</span>
+                      </div>
+                      <p className="text-muted fs-12 mb-0 mt-1">Commits et Merge Requests mergées au fil du temps</p>
+                    </div>
+                    <div className="card-body">
+                      {velocityData.summary && (
+                        <div className="d-flex gap-4 mb-4 pb-3 border-bottom">
+                          <div>
+                            <p className="fs-11 text-muted mb-1 text-uppercase fw-semibold">Moy. Commits/Semaine</p>
+                            <h5 className="mb-0 fw-bold">{velocityData.summary.avg_commits_week?.toFixed(1) || "0"}</h5>
+                          </div>
+                          <div>
+                            <p className="fs-11 text-muted mb-1 text-uppercase fw-semibold">Moy. MRs Mergées/Semaine</p>
+                            <h5 className="mb-0 fw-bold">{velocityData.summary.avg_mrs_merged_week?.toFixed(1) || "0"}</h5>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div style={{ width: '100%', height: 300 }}>
+                        <ResponsiveContainer>
+                          <ComposedChart data={velocityData.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                            <XAxis 
+                              dataKey="week_start" 
+                              tickFormatter={(val) => {
+                                const d = new Date(val);
+                                return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+                              }}
+                              tick={{ fontSize: 11, fill: '#6B7280' }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis 
+                              yAxisId="left" 
+                              tick={{ fontSize: 11, fill: '#6B7280' }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis 
+                              yAxisId="right" 
+                              orientation="right" 
+                              tick={{ fontSize: 11, fill: '#6B7280' }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <Tooltip 
+                              contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                              labelStyle={{ fontWeight: 'bold', color: '#111827', marginBottom: 4 }}
+                              labelFormatter={(lbl) => "Semaine du " + lbl}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
+                            <Bar yAxisId="left" dataKey="commits" name="Commits" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                            <Line yAxisId="right" type="monotone" dataKey="mrs_merged" name="MRs Mergées" stroke="#10B981" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   </div>
                 )}

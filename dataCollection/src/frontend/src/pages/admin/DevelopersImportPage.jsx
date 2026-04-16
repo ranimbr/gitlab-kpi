@@ -37,6 +37,7 @@ import { Link } from "react-router-dom";
 import developerService from "../../services/developerService";
 import siteService      from "../../services/siteService";
 import projectService   from "../../services/projectService";
+import gitlabConfigService from "../../services/gitlabConfigService";
 import ImportResolutionStep from "../../components/common/ImportResolutionStep";
 
 const ACCEPTED_EXTS = [".csv", ".xlsx", ".xls"];
@@ -142,7 +143,7 @@ function ImportResultBanners({ result }) {
         </div>
       )}
 
-      {(hasUnknownSites || hasUnknownProjects) && (
+      {(hasUnknownSites || hasUnknownProjects || result.unknown_groups?.length > 0) && (
         <div className="d-flex align-items-start gap-3 p-3 rounded-3"
           style={{ background: "#FFFBEB", border: "1px solid #FCD34D" }}>
           <i className="ri-alert-line text-warning fs-20 flex-shrink-0 mt-1"></i>
@@ -176,6 +177,15 @@ function ImportResultBanners({ result }) {
                 </Link>
               </p>
             )}
+            {result.unknown_groups?.length > 0 && (
+              <p className="fs-12 text-muted mb-1">
+                <strong>Groupes introuvables :</strong>{" "}
+                {result.unknown_groups.map((g, i) => (
+                  <span key={i} className="badge me-1 fs-10"
+                    style={{ background: "#FEF3C7", color: "#92400E" }}>{g}</span>
+                ))}
+              </p>
+            )}
             <p className="fs-12 mb-0" style={{ color: "#78350F" }}>
               <i className="ri-information-line me-1"></i>
               Utilisez l'étape de résolution ci-dessous pour résoudre les conflits avant l'import réel.
@@ -183,6 +193,7 @@ function ImportResultBanners({ result }) {
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -268,6 +279,8 @@ export default function DevelopersImportPage() {
   const [createMissingProjects, setCreateMissingProjects] = useState(false);
   const [createMissingGroups,  setCreateMissingGroups]   = useState(false);
   const [loading,               setLoading]              = useState(false);
+  const [gitlabConfigs,         setGitlabConfigs]        = useState([]);
+  const [defaultGitlabConfigId, setDefaultGitlabConfigId] = useState("");
   const [result,                setResult]               = useState(null);
   const [error,                 setError]                = useState("");
   const [importLogs,            setImportLogs]           = useState([]);
@@ -276,11 +289,15 @@ export default function DevelopersImportPage() {
   const [resolutions,           setResolutions]          = useState(null);
   const [showResolutionStep,    setShowResolutionStep]   = useState(false);
   const fileInputRef = useRef();
+  const resultsRef   = useRef(null);
+  const actionRef    = useRef(null);
+
+  // ── Indique si le dry-run a des entités à résoudre ──────────────────────────
 
   // ── Indique si le dry-run a des entités à résoudre ──────────────────────────
   const hasPendingResolutions = Boolean(
     result?.dry_run &&
-    ((result?.unknown_sites?.length > 0) || (result?.unknown_projects?.length > 0))
+    ((result?.unknown_sites?.length > 0) || (result?.unknown_projects?.length > 0) || (result?.unknown_groups?.length > 0))
   );
 
   const refreshLogs = useCallback(() => {
@@ -291,22 +308,53 @@ export default function DevelopersImportPage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      siteService.getAll(false),           // tous les sites (actifs + inactifs)
-      projectService.getAll?.() || Promise.resolve([]),
-      developerService.getGroups(),
-      developerService.getImportLogs(10, 0),
-    ])
-      .then(([s, p, g, logs]) => {
+    const refreshData = async () => {
+      try {
+        const [sitesData, projectsData, groupsData, configsData, logsData] = await Promise.allSettled([
+          siteService.getAll(false),
+          projectService.getAll?.() || Promise.resolve([]),
+          developerService.getGroups(),
+          gitlabConfigService.getAll(),
+          developerService.getImportLogs(10, 0),
+        ]);
+
         if (cancelled) return;
-        setSites     (Array.isArray(s)    ? s    : []);
-        setProjects  (Array.isArray(p)    ? p    : []);
-        setGroups    (Array.isArray(g)    ? g    : []);
-        setImportLogs(Array.isArray(logs) ? logs : []);
-      })
-      .catch(() => {});
+
+        setSites(sitesData.status === 'fulfilled' ? sitesData.value : []);
+        setProjects(projectsData.status === 'fulfilled' ? projectsData.value : []);
+        setGroups(groupsData.status === 'fulfilled' ? groupsData.value : []);
+        setGitlabConfigs(configsData.status === 'fulfilled' ? configsData.value : []);
+        setImportLogs(logsData.status === 'fulfilled' ? logsData.value : []);
+
+        if (configsData.status === 'rejected') {
+          console.error("Erreur chargement configs GitLab:", configsData.reason);
+        }
+      } catch (err) {
+        console.error("Erreur critique chargement données:", err);
+      }
+    };
+
+    refreshData();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Auto-scroll vers les résultats ──────────────────────────────────────────
+  useEffect(() => {
+    if ((result || error) && resultsRef.current) {
+      setTimeout(() => {
+        resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  }, [result, error]);
+
+  // ── Auto-scroll vers la résolution si elle apparaît ─────────────────────────
+  useEffect(() => {
+    if (showResolutionStep && actionRef.current) {
+      setTimeout(() => {
+        actionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+    }
+  }, [showResolutionStep]);
 
   const handleFile = (f) => {
     if (!f) return;
@@ -338,6 +386,7 @@ export default function DevelopersImportPage() {
       const res = await developerService.importFile(file, {
         defaultSiteId:         siteId  || null,
         defaultGroupId:        groupId || null,
+        defaultGitlabConfigId: defaultGitlabConfigId || null,
         dryRun:                forceDryRun,
         // Lors d'un dry-run, on ne crée jamais rien — détection uniquement
         createMissingSites:    forceDryRun ? false : createMissingSites,
@@ -349,7 +398,7 @@ export default function DevelopersImportPage() {
       setActiveTab(res.error_count > 0 ? "error" : "success");
 
       // Afficher l'étape de résolution si dry-run avec entités inconnues
-      if (forceDryRun && (res.unknown_sites?.length > 0 || res.unknown_projects?.length > 0)) {
+      if (forceDryRun && (res.unknown_sites?.length > 0 || res.unknown_projects?.length > 0 || res.unknown_groups?.length > 0)) {
         setShowResolutionStep(true);
       }
 
@@ -376,36 +425,36 @@ export default function DevelopersImportPage() {
    *
    * Les entités "IGNORER" seront ignorées (create_missing=false ne les crée pas).
    */
-  const handleConfirmRealImport = useCallback(async () => {
+  const handleConfirmRealImport = useCallback(async (directResolutions = null) => {
     if (!file) return;
     setLoading(true);
     setError("");
 
+    // Utiliser les résolutions directes si fournies, sinon le state (sécurité)
+    const effectiveResolutions = directResolutions || resolutions;
+
     // Détecter si des entités ont été créées côté frontend (action CRÉER dans la résolution)
-    // Dans ce cas, on passe create_missing=true pour que le backend les retrouve par nom
-    const hadCreations =
-      resolutions &&
-      (
-        Object.values(resolutions.sites    || {}).some(r => r.action === "created") ||
-        Object.values(resolutions.projects || {}).some(r => r.action === "created")
-      );
+    const hadSiteCreations = effectiveResolutions && Object.values(effectiveResolutions.sites || {}).some(r => r.action === "created");
+    const hadProjCreations = effectiveResolutions && Object.values(effectiveResolutions.projects || {}).some(r => r.action === "created");
+    const hadGroupCreations = effectiveResolutions && Object.values(effectiveResolutions.groups || {}).some(r => r.action === "created");
 
     try {
       const res = await developerService.importFile(file, {
         defaultSiteId:         siteId  || null,
         defaultGroupId:        groupId || null,
+        defaultGitlabConfigId: defaultGitlabConfigId || null,
         dryRun:                false,
         // ✅ FIX : si des entités ont été créées côté frontend, le backend doit
-        // aussi chercher par nom pour les trouver → create_missing=true en sécurité
-        createMissingSites:    hadCreations || createMissingSites,
-        createMissingProjects: hadCreations || createMissingProjects,
-        createMissingGroups:   createMissingGroups,
+        // aussi chercher par nom pour les trouvers → create_missing=true en sécurité
+        createMissingSites:    hadSiteCreations || createMissingSites,
+        createMissingProjects: hadProjCreations || createMissingProjects,
+        createMissingGroups:   hadGroupCreations || createMissingGroups,
       });
 
       setResult(res);
       setShowResolutionStep(false);
       setResolutions(null);
-      setActiveTab(res.error_count > 0 ? "error" : "success");
+      setActiveTab((res.error_count > 0 || res.unknown_sites || res.unknown_projects) ? "error" : "success");
       refreshLogs();
     } catch (err) {
       setError(err.message || "Erreur lors de l'import réel.");
@@ -581,6 +630,33 @@ export default function DevelopersImportPage() {
                       {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
                   </div>
+
+                  <div className="col-md-12">
+                    <label className="form-label fw-medium fs-13">
+                      Instance GitLab par défaut{" "}
+                      <span className="text-muted fw-normal">(recommandé si vous créez de nouveaux projets)</span>
+                    </label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light"><i className="ri-git-merge-line"></i></span>
+                      <select 
+                        className="form-select" 
+                        value={defaultGitlabConfigId} 
+                        onChange={e => setDefaultGitlabConfigId(e.target.value)}
+                        style={{ borderLeft: "none" }}
+                      >
+                        <option value="">-- Sélectionner l'instance GitLab destination --</option>
+                        {gitlabConfigs.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.domain})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-muted fs-11 mt-1 mb-0">
+                      <i className="ri-information-line me-1"></i>
+                      Tous les nouveaux projets créés par cet import seront liés à cette instance pour l'extraction automatique des KPIs.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mb-3">
@@ -669,29 +745,63 @@ export default function DevelopersImportPage() {
               </div>
             </div>
 
-            {/* Bouton lancement */}
-            <button
-              className="btn btn-primary btn-lg w-100 mb-4"
-              onClick={() => handleImport(dryRun)}
-              disabled={loading || !file}
-              style={{ borderRadius: 12, fontWeight: 600 }}>
-              {loading ? (
-                <><span className="spinner-border spinner-border-sm me-2"></span>Import en cours…</>
-              ) : (
-                <><i className={`${dryRun ? "ri-eye-line" : "ri-upload-2-line"} me-2`}></i>
-                  {dryRun ? "Prévisualiser l'import" : "Lancer l'import"}</>
-              )}
-            </button>
+            {/* Bouton lancement / Confirmation Dynamique */}
+            {result?.dry_run && result?.success_count > 0 && result?.error_count === 0 && !hasPendingResolutions ? (
+              <div className="p-1 rounded-3 mb-4" style={{ background: "#DCFCE7", border: "2px solid #22C55E" }}>
+                <button
+                  className="btn btn-success btn-lg w-100 animate-pulse"
+                  onClick={handleConfirmRealImport}
+                  disabled={loading}
+                  style={{ 
+                    borderRadius: 10, 
+                    fontWeight: 700, 
+                    boxShadow: "0 4px 12px rgba(34, 197, 94, 0.3)",
+                    animation: "pulse-green 2s infinite"
+                  }}>
+                  {loading ? (
+                    <><span className="spinner-border spinner-border-sm me-2"></span>Enregistrement...</>
+                  ) : (
+                    <><i className="ri-checkbox-circle-fill me-2"></i>CONFIRMER & ENREGISTRER L'IMPORTATION RÉELLE</>
+                  )}
+                </button>
+                <p className="text-center text-success fs-12 fw-bold mt-2 mb-1">
+                  <i className="ri-arrow-up-line me-1"></i> Étape 1/2 terminée : Vérification OK. Cliquez pour finaliser.
+                </p>
+                <style>{`
+                  @keyframes pulse-green {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.02); }
+                    100% { transform: scale(1); }
+                  }
+                  .animate-pulse { animation: pulse-green 2s infinite; }
+                `}</style>
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary btn-lg w-100 mb-4"
+                onClick={() => handleImport(dryRun)}
+                disabled={loading || !file}
+                style={{ borderRadius: 12, fontWeight: 600 }}>
+                {loading ? (
+                  <><span className="spinner-border spinner-border-sm me-2"></span>Import en cours…</>
+                ) : (
+                  <><i className={`${dryRun ? "ri-eye-line" : "ri-upload-2-line"} me-2`}></i>
+                    {dryRun ? "Lancer la prévisualisation" : "Lancer l'importation réelle"}</>
+                )}
+              </button>
+            )}
 
             {/* Erreur */}
-            {error && (
-              <div className="alert d-flex align-items-center gap-2 mb-4"
-                style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12 }}>
-                <i className="ri-error-warning-line text-danger fs-20 flex-shrink-0"></i>
-                <span className="fs-13 flex-grow-1">{error}</span>
-                <button className="btn-close btn-sm" onClick={() => setError("")}></button>
-              </div>
-            )}
+            <div ref={resultsRef}>
+              {error && (
+                <div className="alert d-flex align-items-center gap-2 mb-4"
+                  style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12 }}>
+                  <i className="ri-error-warning-line text-danger fs-20 flex-shrink-0"></i>
+                  <span className="fs-13 flex-grow-1">{error}</span>
+                  <button className="btn-close btn-sm" onClick={() => setError("")}></button>
+                </div>
+              )}
+            </div>
 
             {/* Résultat */}
             {result && (
@@ -802,17 +912,23 @@ export default function DevelopersImportPage() {
                   )}
 
                   {/* ── ÉTAPE DE RÉSOLUTION (dry-run + entités inconnues) ── */}
-                  {showResolutionStep && hasPendingResolutions && (
-                    <ImportResolutionStep
-                      unknownSites     = {result.unknown_sites    || []}
-                      unknownProjects  = {result.unknown_projects || []}
-                      existingSites    = {sites}
-                      existingProjects = {projects}
-                      onResolved       = {(res) => setResolutions(res)}
-                      onConfirm        = {handleConfirmRealImport}
-                      loading          = {loading}
-                    />
-                  )}
+                  <div ref={actionRef}>
+                    {showResolutionStep && hasPendingResolutions && (
+                      <ImportResolutionStep
+                        unknownSites     = {result.unknown_sites    || []}
+                        unknownProjects  = {result.unknown_projects || []}
+                        unknownGroups    = {result.unknown_groups   || []}
+                        existingSites    = {sites}
+                        existingProjects = {projects}
+                        existingGroups   = {groups}
+                        onResolved       = {(res) => setResolutions(res)}
+                        onConfirm        = {handleConfirmRealImport}
+                        loading          = {loading}
+                        defaultGitlabConfigId = {defaultGitlabConfigId}
+                        defaultSiteId         = {siteId}
+                      />
+                    )}
+                  </div>
 
                   {/* CTA dry-run propre (aucune entité inconnue) */}
                   {result.dry_run && result.success_count > 0
@@ -827,7 +943,7 @@ export default function DevelopersImportPage() {
                         </p>
                         <p className="text-muted fs-12 mb-0">
                           {result.success_count} développeur{result.success_count > 1 ? "s" : ""} prêts
-                          à être créés. Tous les sites et projets sont connus en base.
+                          à être créés. Toutes les associations (sites, projets, groupes) sont connues en base.
                         </p>
                       </div>
                       <button

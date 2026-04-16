@@ -42,6 +42,16 @@ class AnalyticsService:
         self.dev_repo      = DeveloperRepository()
         self.period_repo   = PeriodRepository()
 
+    def _get_project_site_ids(self, project_id: int) -> List[int]:
+        """IDs de tous les sites rattachés à ce projet via ProjectSite (M2M)."""
+        from app.models.project_site import ProjectSite
+        return [
+            row.site_id
+            for row in self.db.query(ProjectSite.site_id)
+            .filter(ProjectSite.project_id == project_id)
+            .all()
+        ]
+
     def get_latest_kpis(self, project_id, site_id=None, group_id=None, developer_id=None):
         return self.snapshot_repo.get_latest(
             self.db, project_id, site_id=site_id, group_id=group_id, developer_id=developer_id
@@ -498,3 +508,61 @@ class AnalyticsService:
             "total_devs":   len(entries),
             "entries":      entries,
         }
+
+    def get_comparative_trends(
+        self,
+        project_id: int,
+        site_ids:   Optional[List[int]] = None,
+        group_ids:  Optional[List[int]] = None,
+        start_date: Optional[date]      = None,
+        end_date:   Optional[date]      = None,
+    ) -> List[Dict]:
+        """
+        [SENIOR] Récupère les tendances historiques pour plusieurs entités (Sites ou Groupes).
+        Permet la comparaison multi-courbes demandée par le management.
+        """
+        from app.models.site import Site
+        from app.models.developer_group import DeveloperGroup
+
+        query = self.db.query(KpiSnapshot).filter(KpiSnapshot.project_id == project_id)
+
+        # Filtre sur les entités (On compare soit des sites, soit des groupes)
+        if site_ids:
+            query = query.filter(KpiSnapshot.site_id.in_(site_ids), KpiSnapshot.group_id.is_(None), KpiSnapshot.developer_id.is_(None))
+        elif group_ids:
+            query = query.filter(KpiSnapshot.group_id.in_(group_ids), KpiSnapshot.developer_id.is_(None))
+        else:
+            # Par défaut, tous les sites associés au projet
+            project_site_ids = self._get_project_site_ids(project_id)
+            query = query.filter(KpiSnapshot.site_id.in_(project_site_ids), KpiSnapshot.group_id.is_(None), KpiSnapshot.developer_id.is_(None))
+
+        if start_date:
+            query = query.filter(KpiSnapshot.snapshot_date >= start_date)
+        if end_date:
+            query = query.filter(KpiSnapshot.snapshot_date <= end_date)
+
+        snapshots = query.order_by(KpiSnapshot.snapshot_date.asc()).all()
+
+        # Mapper pour labels
+        sites_map  = {s.id: s.name for s in self.db.query(Site).all()}
+        groups_map = {g.id: g.name for g in self.db.query(DeveloperGroup).all()}
+
+        results = []
+        for s in snapshots:
+            label = sites_map.get(s.site_id) if s.site_id else (groups_map.get(s.group_id) if s.group_id else "Global")
+            results.append({
+                "period_id":     s.period_id,
+                "snapshot_date": s.snapshot_date.isoformat(),
+                "period_label":  f"{_MOIS_FR.get(s.snapshot_date.month, '')} {s.snapshot_date.year}",
+                "entity_id":     s.site_id or s.group_id or 0,
+                "entity_name":   label,
+                "metrics": {
+                    "velocity":      s.commit_rate_per_site,
+                    "mr_rate":       s.mr_rate_per_site,
+                    "quality_score": s.approved_mr_rate,
+                    "review_time":   s.avg_review_time_hours,
+                    "total_commits": s.total_commits,
+                    "total_mrs":     s.total_mrs_created,
+                }
+            })
+        return results

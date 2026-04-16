@@ -112,15 +112,20 @@ def get_site_team(
     from app.models.site            import Site
 
     # ── 1. Gérer le cas "Tous les sites" ("all") ─────────────────────────────
+    from sqlalchemy.orm import joinedload
+    from app.models.developer_project import DeveloperProject
+
+    query = (
+        db.query(Developer)
+        .options(
+            joinedload(Developer.project_associations).joinedload(DeveloperProject.project)
+        )
+        .filter(Developer.is_bot.is_(False))
+    )
+    
     if site_id == "all":
         site_name = "Tous les sites"
-        developers = (
-            db.query(Developer)
-            .filter(Developer.is_bot.is_(False))
-            .order_by(Developer.name)
-            .all()
-        )
-        developer_ids = [d.id for d in developers]
+        # LOGIQUE SENIOR : si project_id est fourni, on filtrera directement la query de base plus bas
         primary_map = {}
     else:
         site_id_int = int(site_id)
@@ -148,16 +153,23 @@ def get_site_team(
                 "groups":     [],
                 "developers": [],
             }
+        
+        query = query.filter(Developer.id.in_(developer_ids))
 
-        developers = (
-            db.query(Developer)
-            .filter(
-                Developer.id.in_(developer_ids),
-                Developer.is_bot.is_(False),
-            )
-            .order_by(Developer.name)
-            .all()
-        )
+    # ── 1bis. Appliquer le filtre Projet (Optionnel) ─────────────────────────
+    if project_id:
+        # LOGIQUE SENIOR : Join interne strict + DISTINCT pour assurer l'unicité des résultats
+        query = query.join(Developer.project_associations).filter(
+            DeveloperProject.project_id == project_id,
+            DeveloperProject.is_active.is_(True)
+        ).distinct()
+
+    developers = query.order_by(Developer.name).all()
+    logger.info(f"API site_team: Found {len(developers)} developers for project {project_id}")
+    
+    # ✅ Mise à jour CRITIQUE des IDs pour les compteurs et les jointures suivantes
+    developer_ids = [d.id for d in developers]
+
 
     # ── 4. Charger les groupes présents sur ce site ───────────────────────────
     group_ids = list({dev.group_id for dev in developers if dev.group_id})
@@ -247,6 +259,15 @@ def get_site_team(
             "approved_mr_rate":      snap.approved_mr_rate       if snap else None,
             "avg_review_time_hours": snap.avg_review_time_hours  if snap else None,
             "delta_commit_rate":     snap.delta_commit_rate      if snap else None,
+            # ✅ Ajout des projets pour les badges
+            "projects": [
+                {
+                    "project_id": pa.project_id,
+                    "gitlab_project_id": pa.project.gitlab_project_id if pa.project else None,
+                    "is_active": pa.is_active
+                }
+                for pa in dev.project_associations
+            ]
         })
 
     # ── 7. Breakdown par groupe ───────────────────────────────────────────────
@@ -267,6 +288,7 @@ def get_site_team(
         })
 
     return {
+        "_diag_project_id": project_id,
         "site_id":    site_id,
         "site_name":  site_name,
         "total":      len(dev_list),

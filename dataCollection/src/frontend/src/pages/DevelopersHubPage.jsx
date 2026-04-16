@@ -355,19 +355,19 @@ export default function DevelopersHubPage() {
   const perPage = 9;
 
   const [projects,    setProjects]    = useState([]);
-  const [projectFilter, setProjectFilter] = useState(searchParams.get("project") || "");
+  const [projectFilter, setProjectFilter] = useState(searchParams.get("project") || "all");
 
   const [loading,         setLoading]         = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [selectedDevId,    setSelectedDevId]    = useState(null);
   const [showImportModal,  setShowImportModal]  = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (projId = projectFilter) => {
     setLoading(true);
     try {
       const [devsData, summaryData, sitesData, projsData] = await Promise.all([
-        developerService.getByTab("all"),
-        developerService.getSummary(),
+        developerService.getByTab("all", projId),
+        developerService.getSummary(projId),
         siteService.getAll(),
         projectService.getAll(),
       ]);
@@ -388,7 +388,9 @@ export default function DevelopersHubPage() {
     finally { setLoading(false); }
   }, [searchParams, projectFilter]);
 
-  useEffect(() => { loadData(); }, []); // eslint-disable-line
+  useEffect(() => { 
+    loadData(projectFilter); 
+  }, [projectFilter]); // ✅ Reload developers when project changes
 
   // ✅ NOUVEAU : Charger les lots quand le projet change
   useEffect(() => {
@@ -399,8 +401,9 @@ export default function DevelopersHubPage() {
   }, [projectFilter]);
   
   useEffect(() => {
-    if (!projectFilter) return;
+    if (!projectFilter || projectFilter === "all") return;
     setLoadingLeaderboard(true);
+
     developerService.getLeaderboard(projectFilter, { limit: 50, lotId: selectedLotId })
       .then(lb => {
         setLeaderboard(lb?.entries || []);
@@ -452,6 +455,7 @@ export default function DevelopersHubPage() {
       if (siteFilter !== "all" && String(dev.primary_site_id) !== siteFilter) return false;
       return true;
     });
+
     result.sort((a, b) => {
       if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
       if (sortBy === "score") {

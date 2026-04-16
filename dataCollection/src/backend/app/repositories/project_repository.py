@@ -247,7 +247,15 @@ class ProjectRepository(BaseRepository[Project]):
 
         Ne fait pas db.commit() — laissé à l'appelant (import_from_file).
         """
-        # Vérification race condition (même nom, autre ligne du CSV)
+        # 1. Priorité absolue : l'identifiant GitLab (Sorce of Truth)
+        if gitlab_project_id is not None:
+            existing = self.get_by_gitlab_id(db, gitlab_project_id)
+            if existing:
+                # On synchronise le nom si celui de la DB est vide ou très différent?
+                # Non, on respecte la DB pour l'affichage, mais on retourne l'objet.
+                return existing
+
+        # 2. Lookup par nom (ilike)
         existing = self.get_by_name_ilike(db, name)
         if existing:
             # Si le projet existe mais n'a pas d'ID, on le met à jour si des IDs sont fournis

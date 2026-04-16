@@ -150,7 +150,57 @@ async def root():
     return {"message": f"{settings.APP_NAME} v{settings.APP_VERSION} is running"}
 
 
-@app.get("/health", response_model=SimpleMessageResponse, tags=["Health"])
+@app.get("/health", tags=["Health"])
 async def health():
-    """Health check — utilisé par Docker / load balancer."""
-    return {"message": "OK"}
+    """
+    [SENIOR] Health check profond — utilisé par Docker / Kubernetes / monitoring.
+
+    Vérifie :
+      ✅ Application démarrée
+      ✅ Connectivité base de données (SELECT 1)
+      ✅ Version de l'application
+
+    Répond toujours 200 si l'app est fonctionnelle.
+    Répond 503 si la base de données est inaccessible.
+
+    Utilisé par :
+      - Docker HEALTHCHECK (CMD curl -f http://localhost:8000/health)
+      - Kubernetes liveness probe
+      - Monitoring (Uptime Robot, Grafana, ...)
+    """
+    import time
+    from datetime import datetime
+    from fastapi import Response
+    from sqlalchemy import text
+
+    t_start = time.monotonic()
+    db_status  = "ok"
+    db_latency = None
+
+    # ── DB connectivity check ──
+    try:
+        from app.database.session import SessionLocal
+        with SessionLocal() as db:
+            t_db = time.monotonic()
+            db.execute(text("SELECT 1"))
+            db_latency = round((time.monotonic() - t_db) * 1000, 2)  # ms
+    except Exception as e:
+        db_status = f"error: {str(e)[:100]}"
+        logger.error(f"[health] DB check failed: {e}")
+
+    total_ms = round((time.monotonic() - t_start) * 1000, 2)
+
+    payload = {
+        "status":      "ok" if db_status == "ok" else "degraded",
+        "version":     settings.APP_VERSION,
+        "app_name":    settings.APP_NAME,
+        "timestamp":   datetime.utcnow().isoformat() + "Z",
+        "database":    {"status": db_status, "latency_ms": db_latency},
+        "response_ms": total_ms,
+    }
+
+    if db_status != "ok":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content=payload)
+
+    return payload

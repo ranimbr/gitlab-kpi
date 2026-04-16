@@ -6,7 +6,7 @@ SEUL AJOUT par rapport à v4 :
     DeveloperImportRowResult → warnings (déjà présent v4)
 """
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import date, datetime
 from app.schemas.enums import ImportStatusEnum, DeveloperSourceEnum
 
@@ -107,6 +107,7 @@ class SiteAssociationResponse(BaseModel):
 class ProjectAssociationResponse(BaseModel):
     project_id:   int
     project_name: Optional[str] = None
+    gitlab_project_id: Optional[int] = None # IDENTIFIANT EXTERNE GitLab
     is_active:    bool
     model_config = {"from_attributes": True}
 
@@ -145,6 +146,8 @@ class DeveloperSummary(BaseModel):
     is_bot:          bool
     group_id:        Optional[int]
     primary_site_id: Optional[int] = None
+    sites:    List[SiteAssociationResponse]    = []
+    projects: List[ProjectAssociationResponse] = []
     model_config = {"from_attributes": True}
 
 
@@ -192,7 +195,7 @@ class DeveloperImportResponse(BaseModel):
 
     # Entités introuvables (create_missing=False)
     unknown_sites:    Optional[List[str]] = Field(default=None)
-    unknown_projects: Optional[List[str]] = Field(default=None)
+    unknown_projects: Optional[Dict[str, Optional[int]]] = Field(default=None)
     unknown_groups:   Optional[List[str]] = Field(default=None)   # ✅ NOUVEAU
 
     # Entités créées automatiquement (create_missing=True)

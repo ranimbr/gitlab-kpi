@@ -1,0 +1,57 @@
+# ── Environment ──
+.env
+.env.local
+.env.*.local
+
+# ── Databases ──
+*.db
+*.sqlite3
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+
+# ── Node / Frontend ──
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ── Project Specific ──
+src/backend/logs/
+src/backend/dumps/
+src/backend/alembic_error.txt
+src/backend/app.log
+
+# ── Temporary Scripts ──
+check_*.py
+scratch_*.py
+debug_*.py
+audit_*.py
+test_api_*.py
+verify_*.py
+nuke_*.py
+query_db_*.py
+sync_gitlab_ids.py
+trigger_pivot_extraction.py
+full_team_audit.py
+get_lot_summary.py
+get_full_summary.py
+find_period*.py
+clear_failed_extractions.py
+final_db_sync.py
+final_extraction_launch.py
+inject_expert_data.py
+patch_imported_projects.py
+global_sync_devs.py
+investigate_extraction*.py
+search_projects.py
+fetch_contributors_*.py
+reset_db_total.py
+update_project_path.py
+src/backend/=
+src/frontend/nul

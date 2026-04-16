@@ -255,7 +255,8 @@ export default function ExtractionPage() {
   const [activeTab, setActiveTab] = useState("project");
 
   const [gitlabConfigs,   setGitlabConfigs]   = useState([]);
-  const [projects,        setProjects]         = useState([]);
+  const [allProjects,     setAllProjects]      = useState([]);      // Liste complète pour les sous-composants
+  const [projects,        setProjects]         = useState([]);      // Liste filtrée pour l'onglet "Par Projet"
   const [developers,      setDevelopers]       = useState([]);
   const [periods,         setPeriods]          = useState([]);      // périodes open seulement
   const [allPeriods,      setAllPeriods]       = useState([]);      // toutes les périodes (backfill)
@@ -293,11 +294,15 @@ export default function ExtractionPage() {
   useEffect(()=>{
     const fetchInitial = async () => {
       try {
-        const [configsRes, periodsRes] = await Promise.all([
+        const [configsRes, periodsRes, projRes] = await Promise.all([
           api.get("/gitlab-configs"),
           api.get("/periods"),
+          api.get("/projects")
         ]);
         setGitlabConfigs(Array.isArray(configsRes.data) ? configsRes.data : []);
+        const allP = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
+        setAllProjects(allP);
+
         const all  = Array.isArray(periodsRes.data) ? periodsRes.data : [];
         const open = all.filter(p => p.status === "open");
         setPeriods(open);
@@ -318,20 +323,12 @@ export default function ExtractionPage() {
     }
   },[searchParams, projects]);
 
-  // Chargement projets
+  // Filtrage local des projets pour l'onglet "Par Projet"
   useEffect(()=>{
     if (!selectedConfig) { setProjects([]); setSelectedProject(""); setDevelopers([]); return; }
-    const fetch = async () => {
-      setLoadingProjects(true); setSelectedProject(""); setDevelopers([]);
-      try {
-        const res = await api.get("/projects");
-        const all = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
-        setProjects(all.filter(p => String(p.gitlab_config_id) === String(selectedConfig)));
-      } catch { setError("Impossible de charger les projets."); }
-      finally  { setLoadingProjects(false); }
-    };
-    fetch();
-  },[selectedConfig]);
+    setSelectedProject(""); setDevelopers([]);
+    setProjects(allProjects.filter(p => String(p.gitlab_config_id) === String(selectedConfig)));
+  },[selectedConfig, allProjects]);
 
   // Chargement développeurs
   useEffect(()=>{
@@ -497,7 +494,7 @@ export default function ExtractionPage() {
       </div>
 
       {activeTab === "team" ? (
-         <ExtractionByTeamTab gitlabConfigs={gitlabConfigs} periods={allPeriods} />
+          <ExtractionByTeamTab gitlabConfigs={gitlabConfigs} periods={allPeriods} projects={allProjects} />
       ) : (
       <>
       {/* Stats rapides */}
@@ -630,7 +627,7 @@ export default function ExtractionPage() {
                                   <div className={`fs-12 fw-medium ${selectedDeveloperIds.includes(String(dev.id)) ? "text-primary" : "text-dark"}`}>{dev.name || dev.gitlab_username}</div>
                                   <div className="text-muted fs-10">@{dev.gitlab_username}</div>
                                 </div>
-                                {selectedDeveloperIds.includes(String(dev.id)) && <i className="ri-checkbox-circle-fill text-primary ms-auto"></i>}
+
                               </label>
                             </div>
                           </div>
@@ -733,7 +730,7 @@ export default function ExtractionPage() {
                 </div>
               </div>
 
-              <hr className="border-dashed my-3"/>
+              <hr className="my-3" style={{ borderTop: "1px solid #F1F5F9" }}/>
               <div className="d-flex align-items-center justify-content-between gap-3">
                 <div className="text-muted fs-13">
                   {!selectedProject&&validated&&<span className="text-danger"><i className="ri-error-warning-line me-1"></i>Sélectionnez un projet</span>}
@@ -830,14 +827,15 @@ export default function ExtractionPage() {
               <div className="card-header"><h5 className="card-title mb-0 fs-13"><i className="ri-file-list-3-line me-2 text-muted"></i>Récapitulatif</h5></div>
               <div className="card-body py-2 px-3">
                 <div className="vstack gap-2">
-                  {[
+                  {Object.values([
                     selectedConfigObj  && {label:"Domaine", value:selectedConfigObj.domain,  icon:"ri-git-repository-line", color:"primary"},
                     selectedProjectObj && {label:"Projet",  value:selectedProjectObj.name,   icon:"ri-folder-2-line",       color:"info"   },
                     selectedPeriodObj  && {label:"Période", value:`${selectedPeriodObj.year}/${String(selectedPeriodObj.month).padStart(2,"0")}${selectedPeriodObj.status==="closed"?" ✓":""}`, icon:"ri-calendar-2-line", color:"success"},
                     {label:"Type",  value:extractionType, icon:"ri-play-circle-line", color:extractionType==="MONTHLY"?"warning":"primary"},
                     isBackfill && {label:"Mode", value:"Backfill historique", icon:"ri-history-line", color:"info"},
-                  ].filter(Boolean).map((row,i)=>(
-                    <div key={i} className="d-flex align-items-center justify-content-between py-1 border-bottom border-dashed">
+                  ].filter(Boolean)).map((row, i, arr)=>(
+                    <div key={i} className="d-flex align-items-center justify-content-between py-2"
+                      style={{ borderBottom: i < arr.length - 1 ? "1px solid #F8FAFC" : "none" }}>
                       <span className="text-muted fs-12 d-flex align-items-center gap-1"><i className={`${row.icon} text-${row.color}`}></i>{row.label}</span>
                       <span className={`badge bg-${row.color}-subtle text-${row.color} fs-11 text-truncate`} style={{maxWidth:140}}>{row.value}</span>
                     </div>

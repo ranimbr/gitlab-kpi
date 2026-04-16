@@ -51,7 +51,7 @@ export default function DeveloperImportModal({ onClose, onSuccess }) {
       Swal.fire({
         icon: 'success',
         title: 'Import terminé',
-        text: `${response.imported_count} développeurs ajoutés ou mis à jour.`,
+        text: `${response.success_count} développeurs ajoutés ou mis à jour.`,
         confirmButtonColor: '#4361ee'
       });
       

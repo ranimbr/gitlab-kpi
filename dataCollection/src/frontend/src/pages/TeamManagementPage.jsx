@@ -196,7 +196,7 @@ function ImportModal({ show, onClose, onImported, sites, groups }) {
         ...options,
       });
       setResult(res);
-      if (res?.imported > 0) onImported();
+      if (res?.success_count > 0) onImported();
     } catch (e) {
       setError(e?.response?.data?.detail || "Erreur lors de l'import.");
     } finally { setLoading(false); }
@@ -266,7 +266,7 @@ function ImportModal({ show, onClose, onImported, sites, groups }) {
             {result && (
               <div className="alert alert-success mt-2 py-2 fs-13">
                 <i className="ri-checkbox-circle-line me-2"></i>
-                Import réussi: {result.imported || result.created} importés, {result.skipped} ignorés, {result.failed} erreurs.
+                Import terminé: {result.success_count} réussis, {result.duplicate_count} doublons/ignorés, {result.error_count} erreurs.
               </div>
             )}
           </div>
@@ -427,13 +427,27 @@ export default function TeamManagementPage() {
     return {
       series: series.length ? series : [1],
       options: {
-        chart: { type: "donut", background: "transparent" },
+        chart: { 
+          type: "donut", 
+          background: "transparent",
+          events: {
+            dataPointSelection: (event, chartContext, config) => {
+              const g = groupsForSite[config.dataPointIndex];
+              if (g) {
+                const target = String(g.group_id);
+                // Toggle : si déjà sélectionné, on reset à "all"
+                setGroupFilter(prev => prev === target ? "all" : target);
+              }
+            }
+          }
+        },
         labels: labels.length ? labels : ["Vide"],
         colors: ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"],
         legend: { position: "bottom", fontSize: "12px", fontFamily: "Inter" },
         dataLabels: { enabled: false },
         plotOptions: { pie: { donut: { size: "70%" } } },
-        stroke: { show: false }
+        stroke: { show: false },
+        tooltip: { y: { formatter: (val) => `${val} développeur(s)` } }
       }
     };
   }, [groupsForSite]);
@@ -559,7 +573,7 @@ export default function TeamManagementPage() {
                 <div className="card-header bg-light border-bottom-0 pb-1 pt-3">
                   <h6 className="card-title text-uppercase fw-bold text-muted fs-11 ls-1 mb-0">Répartition par Groupe</h6>
                 </div>
-                <div className="card-body p-0 pt-3 pb-3 d-flex justify-content-center">
+                <div className="card-body p-0 pt-1 pb-3 d-flex justify-content-center" style={{ cursor: "pointer" }}>
                    <Chart options={groupChartOptions.options} series={groupChartOptions.series} type="donut" width="260" />
                 </div>
               </div>
@@ -601,12 +615,20 @@ export default function TeamManagementPage() {
             <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
                <div className="card-header bg-white border-bottom py-3">
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                     <h5 className="card-title mb-0 fw-bold"><i className="ri-team-fill text-primary me-2"/>Membres de l'équipe</h5>
+                     <div className="d-flex align-items-center gap-3">
+                        <h5 className="card-title mb-0 fw-bold"><i className="ri-team-fill text-primary me-2"/>Membres de l'équipe</h5>
+                     </div>
                      <div className="d-flex gap-2">
                         <div className="search-box">
                            <input type="text" className="form-control form-control-sm border-light bg-light" placeholder="Chercher un nom..." value={search} onChange={e => setSearch(e.target.value)} />
                            <i className="ri-search-line search-icon text-muted"></i>
                         </div>
+                        <select className="form-select form-select-sm border-light bg-light" style={{ width: 140 }} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}>
+                           <option value="all">Toutes équipes</option>
+                           {groups.map(g => (
+                             <option key={g.id} value={g.id}>{g.name}</option>
+                           ))}
+                        </select>
                         <select className="form-select form-select-sm border-light bg-light" style={{ width: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                            <option value="all">Tous statuts</option>
                            <option value="active">Actifs</option>
@@ -653,9 +675,16 @@ export default function TeamManagementPage() {
                                           {getInitials(dev.name || dev.gitlab_username)}
                                         </div>
                                         <div>
-                                          <Link to={`/developers/${dev.id}`} className="text-dark fw-bold text-decoration-none">
-                                            {dev.name || "Inconnu"}
-                                          </Link>
+                                          <div className="d-flex align-items-center gap-2">
+                                            <Link to={`/developers/${dev.id}`} className="text-dark fw-bold text-decoration-none">
+                                              {dev.name || "Inconnu"}
+                                            </Link>
+                                            {activeProject && (dev.projects || []).some(p => String(p.project_id) === String(activeProject.id) && p.is_active) && (
+                                              <span className="badge bg-success-subtle text-success border border-success border-opacity-10 fs-10 py-0 px-1">
+                                                <i className="ri-focus-3-line me-1"></i>🎯 Équipe
+                                              </span>
+                                            )}
+                                          </div>
                                           <div className="text-muted fs-11">@{dev.gitlab_username || "..."}</div>
                                         </div>
                                       </div>

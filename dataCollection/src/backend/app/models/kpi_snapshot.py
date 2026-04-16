@@ -51,6 +51,10 @@ class KpiSnapshot(Base):
     # Non comptabilisées dans les KPIs de production car pas encore soumises à relecture.
     # Permet d'identifier les développeurs actifs mais sans production finalisée ce mois.
     total_mrs_draft    = Column(Integer, default=0,   nullable=False)
+    
+    # ✅ METRIQUE SENIOR : Leadership et Entraide
+    # Nombre de MRs relues pour un développeur appartenant à une AUTRE équipe
+    cross_contribution_score = Column(Integer, default=0, nullable=False)
 
     # ── KPI #1 : MR Rate par site ────────────────────────────────────────────
     # Formule : total_mrs_created / nb_developers
@@ -67,6 +71,11 @@ class KpiSnapshot(Base):
     # ── KPI #4 : Merged MR Rate ──────────────────────────────────────────────
     # Formule : total_mrs_merged / total_mrs_approved
     merged_mr_rate       = Column(Float, default=0.0, nullable=False)
+    
+    # ✅ METRIQUES ENTERPRISE (Pilotage Stratégique) 🚀
+    bus_factor           = Column(Integer, default=0,   nullable=False)
+    sprint_velocity      = Column(Float,   default=0.0, nullable=False)
+    code_churn_rate      = Column(Float,   default=0.0, nullable=False)
 
     # ── KPI #5 : Commit Rate par site ────────────────────────────────────────
     # Formule : total_commits / nb_developers

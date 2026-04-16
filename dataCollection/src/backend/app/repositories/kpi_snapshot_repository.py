@@ -346,9 +346,14 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
     def upsert(self, db: Session, data: dict) -> KpiSnapshot:
         """
         Crée ou met à jour un snapshot.
-        Clé d'unicité : (project_id, period_id, site_id, group_id, developer_id).
-        Champs de clé exclus de la mise à jour (évite de changer la clé d'un existant).
+        Clé d'unicité logique : (project_id, period_id, developer_id, site_id, group_id).
+        
+        ✅ AMÉLIORATION SENIOR : Smart Re-Site
+        Si un snapshot existe déjà pour (project, period, developer) mais avec site_id=NULL,
+        on le "récupère" en mettant à jour son site_id au lieu d'en créer un nouveau.
+        Cela évite les doublons dans le dashboard de comparaison.
         """
+        # 1. Tentative de lookup avec la clé complète
         existing = self.get_by_project_period_site(
             db,
             project_id   = data["project_id"],
@@ -358,16 +363,33 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
             developer_id = data.get("developer_id"),
         )
 
+        # 2. ✅ SMART LOOKUP (Fallback pour snapshots orphelins)
+        # Si on a un developer_id et un site_id dans 'data', mais que 'existing' est None,
+        # on vérifie s'il existe un snapshot pour ce dev/periode avec site_id NULL.
+        if not existing and data.get("developer_id") and data.get("site_id"):
+            existing = self.get_by_project_period_site(
+                db,
+                project_id   = data["project_id"],
+                period_id    = data["period_id"],
+                site_id      = None,  # On cherche l'orphelin
+                group_id     = data.get("group_id"),
+                developer_id = data.get("developer_id"),
+            )
+            if existing:
+                # On met à jour le site du snapshot existant
+                setattr(existing, "site_id", data.get("site_id"))
+
         if existing:
-            # Ne pas écraser les clés de lookup
-            excluded = {"project_id", "period_id", "site_id", "group_id", "developer_id"}
+            # Ne pas écraser les clés de lookup (sauf site_id si on l'a migré au-dessus)
+            excluded = {"project_id", "period_id", "group_id", "developer_id"}
             for key, value in data.items():
                 if key not in excluded:
                     setattr(existing, key, value)
             db.flush()
             return existing
 
+        # 3. Création si vraiment aucun snapshot correspondant
         snapshot = KpiSnapshot(**data)
         db.add(snapshot)
         db.flush()
-        return snapshot
+        return snapshot

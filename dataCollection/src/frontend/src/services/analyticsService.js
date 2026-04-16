@@ -283,6 +283,32 @@ const analyticsService = {
     const { data } = await api.get(`/analytics/developer/${developerId}/insights`, { params });
     return data;
   },
+
+  /**
+   * GET /analytics/team/velocity
+   * Vélocité hebdomadaire de l'équipe (Manager Only).
+   */
+  getTeamVelocity: async (projectId, { weeks = 12, siteId = null } = {}) => {
+    const params = buildParams({ project_id: projectId, weeks, site_id: siteId });
+    const { data } = await api.get(`/analytics/team/velocity`, { params });
+    return data;
+  },
+
+  /**
+   * GET /analytics/{projectId}/trends/comparative
+   * [SENIOR] Analyse multi-courbes pour pilotage management.
+   */
+  getComparativeTrends: async (projectId, { siteIds = [], groupIds = [], startDate = null, endDate = null } = {}) => {
+    const params = new URLSearchParams();
+    if (siteIds && siteIds.length > 0) siteIds.forEach(id => params.append("site_ids", id));
+    if (groupIds && groupIds.length > 0) groupIds.forEach(id => params.append("group_ids", id));
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+
+    const { data } = await api.get(`/analytics/${projectId}/trends/comparative`, { params });
+    return data;
+  },
 };
+
 
 export default analyticsService;

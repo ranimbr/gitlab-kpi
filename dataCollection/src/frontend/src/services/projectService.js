@@ -28,6 +28,10 @@ const projectService = {
   create: async (payload) =>
     (await api.post("/projects", payload)).data,
 
+  // ✅ NOUVEAU : Création résiliente pour l'import (placeholders autorisés)
+  createFromImport: async (payload) =>
+    (await api.post("/projects/import", payload)).data,
+
   /**
    * PUT /projects/{id}
    * ✅ NOUVEAU : site_ids optionnel (remplace la liste entière si fourni)

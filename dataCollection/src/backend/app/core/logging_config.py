@@ -28,14 +28,34 @@ def setup_logging(debug: bool = False, log_file: str = "logs/app.log") -> None:
     log_path = Path(log_file)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    handlers: list = [
-        logging.StreamHandler(),
-        logging.FileHandler(log_file, encoding="utf-8"),
-    ]
+    class JsonFormatter(logging.Formatter):
+        def format(self, record):
+            import json
+            from datetime import datetime
+            log_record = {
+                "timestamp": datetime.fromtimestamp(record.created).isoformat() + "Z",
+                "level": record.levelname,
+                "name": record.name,
+                "message": record.getMessage(),
+            }
+            if hasattr(record, "extra"):
+                log_record.update(record.extra)
+            if record.exc_info:
+                log_record["exception"] = self.formatException(record.exc_info)
+            return json.dumps(log_record)
+
+    json_formatter = JsonFormatter()
+    
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+    
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(json_formatter)
+
+    handlers: list = [stream_handler, file_handler]
 
     logging.basicConfig(
         level   = level,
-        format  = "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         handlers = handlers,
         force   = True,  # réinitialise les handlers si déjà configurés
     )

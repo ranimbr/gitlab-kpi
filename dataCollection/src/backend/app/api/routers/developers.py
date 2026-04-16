@@ -213,11 +213,33 @@ def list_developers(
     devs = dev_repo.get_by_tab(
         db=db, tab=tab, project_id=project_id, site_id=site_id, gitlab_config_id=gitlab_config_id
     )
-    site_repo_m2m = DeveloperSiteRepository()
-
     results = []
     for dev in devs:
-        primary_site_id = site_repo_m2m.get_primary_site_id(db, dev.id)
+        # Optimization: primary_site_id logic
+        primary_site_id = None
+        for sa in dev.site_associations:
+            if sa.is_primary:
+                primary_site_id = sa.site_id
+                break
+        
+        # Build association responses manually for precision
+        sites = [
+            SiteAssociationResponse(
+                site_id=sa.site_id,
+                site_name=sa.site.name if sa.site else None,
+                is_primary=sa.is_primary
+            ) for sa in dev.site_associations
+        ]
+        
+        projects = [
+            ProjectAssociationResponse(
+                project_id=pa.project_id,
+                project_name=pa.project.name if pa.project else None,
+                gitlab_project_id=pa.project.gitlab_project_id if pa.project else None,
+                is_active=pa.is_active
+            ) for pa in dev.project_associations
+        ]
+
         results.append(DeveloperSummary(
             id              = dev.id,
             gitlab_username = dev.gitlab_username,
@@ -230,6 +252,8 @@ def list_developers(
             is_bot          = dev.is_bot,
             group_id        = dev.group_id,
             primary_site_id = primary_site_id,
+            sites           = sites,
+            projects        = projects,
         ))
     return results
 

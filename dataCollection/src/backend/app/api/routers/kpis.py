@@ -29,6 +29,7 @@ from app.models.app_user import AppUser
 from app.models.kpi_snapshot import KpiSnapshot
 from app.models.period import Period
 from app.models.site import Site
+from app.models.project_site import ProjectSite
 from app.repositories.developer_repository import DeveloperRepository
 from app.repositories.developer_site_repository import DeveloperSiteRepository
 from app.repositories.kpi_snapshot_repository import KpiSnapshotRepository
@@ -401,19 +402,18 @@ def get_available_sites(
     db:           Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
-    rows     = db.query(distinct(KpiSnapshot.site_id)).filter(
-        KpiSnapshot.project_id == project_id,
-        KpiSnapshot.site_id.isnot(None),
-    ).all()
-    site_ids = [row[0] for row in rows]
-    if not site_ids:
-        return []
+    """
+    [SENIOR] Retourne TOUS les sites associés au projet via la table M2M ProjectSite.
+    Auparavant restreint aux sites avec snapshots, ce qui bloquait l'initialisation du dashboard.
+    """
     return (
         db.query(Site)
-        .filter(Site.id.in_(site_ids), Site.is_active.is_(True))
+        .join(ProjectSite, ProjectSite.site_id == Site.id)
+        .filter(ProjectSite.project_id == project_id, Site.is_active.is_(True))
         .order_by(Site.name)
         .all()
     )
+
 
 
 # ── Développeurs disponibles ──────────────────────────────────────────────────

@@ -108,6 +108,26 @@ class KpiAggregator:
         )
         snapshots.append(global_snapshot)
 
+        # ── 2.5 Snapshot par groupe ───────────────────────────────────────────
+        project_group_ids = self._get_project_group_ids(project_id)
+        if project_group_ids:
+            for group_id in project_group_ids:
+                kpis = self.calculator.calculate_for_group(
+                    project_id, group_id, start_date, end_date
+                )
+                kpis["group_id"] = group_id
+                snapshot = self._upsert_with_deltas(
+                    kpis=kpis, period_id=period.id,
+                    year=year, month=month, lot_id=lot_id,
+                )
+                snapshots.append(snapshot)
+                logger.info(
+                    "Snapshot group — project=%d group=%d mr_rate=%.2f nb_devs=%d",
+                    project_id, group_id,
+                    kpis.get("mr_rate_per_site", 0),
+                    kpis.get("nb_developers", 0),
+                )
+
         # ── 3. Snapshots par développeur individuel ───────────────────────────
         developers = (
             self.db.query(Developer)
@@ -183,13 +203,40 @@ class KpiAggregator:
     # =========================================================================
 
     def _get_project_site_ids(self, project_id: int) -> List[int]:
-        """Récupère les site_ids associés à un projet via ProjectSite (M2M)."""
-        rows = (
-            self.db.query(ProjectSite.site_id)
-            .filter(ProjectSite.project_id == project_id)
+        """
+        ✅ [SENIOR ARCHITECTURE] Résolution dynamique des sites.
+        Un projet est rattaché à un site si au moins un développeur du site 
+        est rattaché au projet via DeveloperProject.
+        
+        Plus besoin de maintenance manuelle dans ProjectSite ! 
+        Cela garantit que le Dashboard de Pilotage est toujours synchronisé 
+        avec la réalité de l'équipe.
+        """
+        # On cherche les sites distincts des développeurs affectés à ce projet
+        site_ids = (
+            self.db.query(DeveloperSite.site_id)
+            .join(DeveloperProject, DeveloperSite.developer_id == DeveloperProject.developer_id)
+            .filter(DeveloperProject.project_id == project_id)
+            .filter(DeveloperProject.is_active.is_(True))
+            .distinct()
             .all()
         )
-        return [r.site_id for r in rows]
+        return [row[0] for row in site_ids]
+
+    def _get_project_group_ids(self, project_id: int) -> List[int]:
+        """
+        Trouve tous les groupes impliqués dans ce projet (distinct group_id des devs affectés)
+        """
+        group_ids = (
+            self.db.query(Developer.group_id)
+            .join(DeveloperProject, Developer.id == DeveloperProject.developer_id)
+            .filter(DeveloperProject.project_id == project_id)
+            .filter(DeveloperProject.is_active.is_(True))
+            .filter(Developer.group_id.isnot(None))
+            .distinct()
+            .all()
+        )
+        return [row[0] for row in group_ids]
 
     def _get_primary_site_for_developer(self, developer_id: int) -> Optional[int]:
         """

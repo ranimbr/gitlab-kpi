@@ -22,7 +22,7 @@ Toutes les corrections v4 conservées.
 import csv
 import io
 import logging
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -364,10 +364,14 @@ class DeveloperService:
                 detail=f"Erreur de lecture du fichier : {e}",
             )
 
-        # ── Pré-chargement O(1) des 3 référentiels ────────────────────────────
+        # ── Pré-chargement O(1) des référentiels ────────────────────────────
         all_sites    = {s.name.lower(): s for s in self.site_repo.get_all(db)}
-        all_projects = {p.name.lower(): p for p in self.project_repo.get_all(db, active_only=False)}
         all_groups   = {g.name.lower(): g for g in self.group_repo.get_all(db)}
+        
+        # Projets : double indexation (Nom et ID GitLab)
+        _projects_all = self.project_repo.get_all(db, active_only=False)
+        all_projects_by_name = {p.name.lower(): p for p in _projects_all}
+        all_projects_by_id   = {p.gitlab_project_id: p for p in _projects_all if p.gitlab_project_id}
 
         # ── Collecteurs ───────────────────────────────────────────────────────
         success_list   : List[dict] = []
@@ -375,17 +379,17 @@ class DeveloperService:
         duplicate_list : List[dict] = []
 
         unknown_sites_names    : Set[str] = set()
-        unknown_projects_names : Set[str] = set()
-        unknown_groups_names   : Set[str] = set()   # ✅ NOUVEAU
+        unknown_projects_data  : Dict[str, Optional[int]] = {}
+        unknown_groups_names   : Set[str] = set()
         created_sites_names    : Set[str] = set()
         created_projects_names : Set[str] = set()
-        created_groups_names   : Set[str] = set()   # ✅ NOUVEAU
+        created_groups_names   : Set[str] = set()
 
         for row_num, row in enumerate(rows, start=2):
             name      = (row.get("name")           or "").strip()
             email     = (row.get("email")          or "").strip().lower()
             username  = (row.get("gitlab_username") or row.get("username") or "").strip()
-            group_csv = (row.get("group")          or "").strip()   # ✅ NOUVEAU
+            group_csv = (row.get("group")          or "").strip()
 
             # ── Validation champs obligatoires ────────────────────────────────
             if not name or not email or not username:
@@ -407,8 +411,8 @@ class DeveloperService:
                 # En dry-run : on analyse les entités même sans créer le dev
                 # pour remonter unknown_sites/projects/groups dans le rapport
                 self._analyze_dry_run_row(
-                    row, all_sites, all_projects, all_groups,
-                    unknown_sites_names, unknown_projects_names, unknown_groups_names,
+                    row, all_sites, all_projects_by_name, all_groups,
+                    unknown_sites_names, unknown_projects_data, unknown_groups_names,
                 )
                 if existing_dev:
                     success_list.append({
@@ -460,7 +464,15 @@ class DeveloperService:
                 pname = parts[0].strip()
                 p_gitlab_id = int(parts[1].strip()) if len(parts) > 1 and parts[1].strip().isdigit() else None
 
-                proj = all_projects.get(pname.lower())
+                # 1. Tentative par ID GitLab (Le plus fiable)
+                proj = None
+                if p_gitlab_id and p_gitlab_id in all_projects_by_id:
+                    proj = all_projects_by_id[p_gitlab_id]
+                
+                # 2. Tentative par Nom si non trouvé par ID
+                if proj is None:
+                    proj = all_projects_by_name.get(pname.lower())
+                
                 if proj is None:
                     if create_missing_projects:
                         proj = self.project_repo.create_from_import(
@@ -469,24 +481,32 @@ class DeveloperService:
                             gitlab_project_id=p_gitlab_id, 
                             gitlab_config_id=default_gitlab_config_id
                         )
-                        all_projects[pname.lower()] = proj
+                        all_projects_by_name[pname.lower()] = proj
                         created_projects_names.add(pname)
                         logger.info("Import: projet '%s' créé avec ID%s (ligne %d)", pname, p_gitlab_id, row_num)
                     else:
-                        unknown_projects_names.add(pname)
+                        if pname not in unknown_projects_data or (unknown_projects_data[pname] is None and p_gitlab_id):
+                            unknown_projects_data[pname] = p_gitlab_id
+                            
                         row_warnings.append(
                             f"Projet '{pname}' introuvable — dev mis à jour sans ce projet."
                         )
                         logger.warning("Import: projet '%s' introuvable (ligne %d)", pname, row_num)
                         continue
                 else:
-                    # Si le projet existait, mais qu'on a mis un ID dans le CSV, on peut potentiellement le mettre à jour 
-                    # si l'admin veut l'écraser, mais en général on se contente du repo qui existe.
+                    # ✅ LOGIQUE AMÉLIORÉE : Réparation des projets orphelins (sans config)
+                    updates = {}
+                    
+                    # 1. Update ID GitLab si fourni dans CSV et manquant en base
                     if p_gitlab_id is not None and getattr(proj, "gitlab_project_id", None) is None:
-                        # Si le projet existait en draft, on update son ID !
-                        self.project_repo.update(db, proj.id, {"gitlab_project_id": p_gitlab_id})
-                        if default_gitlab_config_id and getattr(proj, "gitlab_config_id", None) is None:
-                            self.project_repo.update(db, proj.id, {"gitlab_config_id": default_gitlab_config_id})
+                        updates["gitlab_project_id"] = p_gitlab_id
+                    
+                    # 2. Update Config GitLab si fournie via l'UI et manquante en base
+                    if default_gitlab_config_id and getattr(proj, "gitlab_config_id", None) is None:
+                        updates["gitlab_config_id"] = default_gitlab_config_id
+                    
+                    if updates:
+                        self.project_repo.update(db, proj.id, updates)
                 resolved_projects.append(proj)
 
             # ── Résolution du groupe ──────────────────────────────────────────
@@ -621,7 +641,7 @@ class DeveloperService:
             "created[sites=%s projects=%s groups=%s]",
             "[DRY-RUN] " if dry_run else "",
             len(rows), len(success_list), len(error_list), len(duplicate_list),
-            sorted(unknown_sites_names),    sorted(unknown_projects_names),  sorted(unknown_groups_names),
+            sorted(unknown_sites_names),    list(unknown_projects_data.keys()),  sorted(unknown_groups_names),
             sorted(created_sites_names),    sorted(created_projects_names),  sorted(created_groups_names),
         )
 
@@ -635,12 +655,12 @@ class DeveloperService:
             "duplicate_count":   len(duplicate_list),
             "dry_run":           dry_run,
             "rows":              (success_list + error_list + duplicate_list) if len(rows) <= 100 else None,
-            "unknown_sites":     sorted(unknown_sites_names)    or None,
-            "unknown_projects":  sorted(unknown_projects_names) or None,
-            "unknown_groups":    sorted(unknown_groups_names)   or None,   # ✅ NOUVEAU
+            "unknown_sites":     sorted(list(unknown_sites_names))    or None,
+            "unknown_projects":  unknown_projects_data or None,
+            "unknown_groups":    sorted(list(unknown_groups_names))   or None,
             "created_sites":     sorted(created_sites_names)    or None,
             "created_projects":  sorted(created_projects_names) or None,
-            "created_groups":    sorted(created_groups_names)   or None,   # ✅ NOUVEAU
+            "created_groups":    sorted(created_groups_names)   or None,
         }
 
     # =========================================================================
@@ -654,7 +674,7 @@ class DeveloperService:
         all_projects:          dict,
         all_groups:            dict,
         unknown_sites_names:   Set[str],
-        unknown_projects_names: Set[str],
+        unknown_projects_data: Dict[str, Optional[int]],  # ✅ FIX: Dict {nom: gitlab_id}
         unknown_groups_names:  Set[str],
     ) -> None:
         """
@@ -667,9 +687,14 @@ class DeveloperService:
                 unknown_sites_names.add(sname)
 
         for pitem in [p.strip() for p in (row.get("projects") or "").split(",") if p.strip()]:
-            pname = pitem.rsplit(":", 1)[0].strip()
+            # Analyse syntaxe "Nom:ID"
+            p_parts = pitem.rsplit(":", 1)
+            pname = p_parts[0].strip()
+            p_gitlab_id = int(p_parts[1].strip()) if len(p_parts) > 1 and p_parts[1].strip().isdigit() else None
+
             if all_projects.get(pname.lower()) is None:
-                unknown_projects_names.add(pname)
+                if pname not in unknown_projects_data or (unknown_projects_data[pname] is None and p_gitlab_id):
+                    unknown_projects_data[pname] = p_gitlab_id
 
         group_csv = (row.get("group") or "").strip()
         if group_csv and all_groups.get(group_csv.lower()) is None:

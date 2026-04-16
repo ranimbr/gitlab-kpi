@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import api from "../services/api";
 import siteService from "../services/siteService";
 import developerService from "../services/developerService";
@@ -7,7 +7,22 @@ function formatTime(s) {
   return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
 }
 
-export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
+function BackfillBanner() {
+  return (
+    <div className="alert alert-info d-flex align-items-start gap-3 py-2 mb-0 mt-3" style={{borderRadius:8, borderLeft: "4px solid #3577f1"}}>
+      <i className="ri-information-line fs-18 flex-shrink-0 text-info mt-1"></i>
+      <div className="fs-12">
+        <strong className="d-block mb-1 text-info text-uppercase">Mode Backfill activé</strong>
+        <span className="text-muted">
+          Le backfill permet de recalculer les KPIs pour toute l'équipe sur des périodes passées. 
+          Toutes les périodes sont déverrouillées.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects = [] }) {
   const [sites, setSites] = useState([]);
   const [groups, setGroups] = useState([]);
   const [developers, setDevelopers] = useState([]);
@@ -18,6 +33,9 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
   const [selectedDeveloperIds, setSelectedDeveloperIds] = useState([]);
   const [extractionType, setExtractionType] = useState("REALTIME");
   const [selectedPeriod, setSelectedPeriod] = useState("");
+  const [isBackfill, setIsBackfill] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(""); // Filtre de recherche développeurs
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -52,6 +70,10 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
   useEffect(() => {
     fetchLists();
   }, [fetchLists]);
+
+  useEffect(() => {
+    setSelectedPeriod("");
+  }, [isBackfill]);
 
   const onRefresh = (e) => {
     e.preventDefault();
@@ -105,7 +127,57 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
     }
 
     return () => clearInterval(pollTimerRef.current);
-  }, [jobs, loading]);
+  // [FIX-POLLING] `loading` retiré des deps : sa présence causait une recréation
+  // de l'intervalle à chaque setLoading() appelé dans poll() → boucle infinie
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs]);
+
+  const availablePeriods = isBackfill ? periods : periods.filter(p => p.status === "open");
+
+  // Filtrer les projets par config
+  const availableProjects = projects.filter(p => String(p.gitlab_config_id) === String(selectedConfig));
+
+  const filteredDevelopers = developers.filter(d => {
+    if (selectedSite) {
+      return (d.sites || []).some(s => String(s.site_id) === String(selectedSite));
+    }
+    if (selectedGroup) {
+      return String(d.group_id) === String(selectedGroup);
+    }
+    return true;
+  });
+
+  // Filtre de recherche textuel
+  const searchedDevelopers = useMemo(() => {
+    if (!searchQuery.trim()) return filteredDevelopers;
+    const q = searchQuery.toLowerCase();
+    return filteredDevelopers.filter(d => 
+      (d.name || "").toLowerCase().includes(q) || 
+      (d.gitlab_username || "").toLowerCase().includes(q)
+    );
+  }, [filteredDevelopers, searchQuery]);
+
+  // Intelligence Senior : Identifier les projets où l'équipe est officiellement active
+  const teamProjectIds = useMemo(() => {
+    const ids = new Set();
+    filteredDevelopers.forEach(dev => {
+      (dev?.projects || []).forEach(p => {
+        if (p.is_active && p.gitlab_project_id) ids.add(String(p.gitlab_project_id));
+      });
+    });
+    return ids;
+  }, [filteredDevelopers]);
+
+  // Trier les projets : les projets de l'équipe en premier
+  const sortedProjects = useMemo(() => {
+    return [...availableProjects].sort((a, b) => {
+      const aIsTeam = teamProjectIds.has(a.gitlab_project_id);
+      const bIsTeam = teamProjectIds.has(b.gitlab_project_id);
+      if (aIsTeam && !bIsTeam) return -1;
+      if (!aIsTeam && bIsTeam) return 1;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }, [availableProjects, teamProjectIds]);
 
   const canRun = selectedConfig && (selectedSite || selectedGroup || selectedDeveloperIds.length > 0) && (!loading) && (extractionType !== "MONTHLY" || selectedPeriod);
 
@@ -123,6 +195,8 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
           developer_ids: selectedDeveloperIds.length > 0 ? selectedDeveloperIds.join(",") : undefined,
           extraction_type: extractionType,
           period_id: selectedPeriod || undefined,
+          is_backfill: isBackfill,
+          project_ids: selectedProjectIds.length > 0 ? selectedProjectIds.join(",") : undefined
         }
       });
 
@@ -202,32 +276,120 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
             <div className="mb-3">
               <label className="form-label fs-12 text-muted fw-semibold text-uppercase d-flex justify-content-between">
                 <span>Développeurs (Option 3)</span>
-                <button className="btn btn-link py-0 fs-10" onClick={() => setSelectedDeveloperIds(developers.map(d => String(d.id)))}>Tout cocher</button>
+                <div className="d-flex align-items-center gap-2">
+                   <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.map(d => String(d.id)))}>Tout cocher</button>
+                   <span className="text-muted">|</span>
+                   <button className="btn btn-link p-0 fs-10 text-danger" onClick={() => setSelectedDeveloperIds([])}>Reset</button>
+                </div>
               </label>
-              <div className="border rounded p-2 bg-light-subtle" style={{maxHeight: "150px", overflowY: "auto"}}>
-                {developers.map(d => (
-                  <div key={d.id} className="form-check mb-1">
-                    <input 
-                      className="form-check-input" 
-                      type="checkbox" 
-                      id={`team-dev-${d.id}`}
-                      checked={selectedDeveloperIds.includes(String(d.id))}
-                      onChange={e => {
-                        const id = String(d.id);
-                        setSelectedDeveloperIds(prev => 
-                          e.target.checked ? [...prev, id] : prev.filter(x => x !== id)
-                        );
-                        if (e.target.checked) { setSelectedSite(""); setSelectedGroup(""); }
-                      }}
-                    />
-                    <label className="form-check-label fs-12" htmlFor={`team-dev-${d.id}`}>
-                      {d.name || d.gitlab_username}
-                    </label>
+              
+              <div className="input-group input-group-sm mb-2">
+                <span className="input-group-text bg-light border-end-0"><i className="ri-search-line text-muted"></i></span>
+                <input 
+                  type="text" 
+                  className="form-control border-start-0 bg-light" 
+                  placeholder="Rechercher un développeur..." 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button className="btn btn-outline-light border-start-0" onClick={() => setSearchQuery("")}>
+                    <i className="ri-close-line text-muted"></i>
+                  </button>
+                )}
+              </div>
+
+              <div className="border rounded p-2 bg-light-subtle" style={{maxHeight: "180px", overflowY: "auto", border: "1px solid #e9ebec"}}>
+                {searchedDevelopers.length === 0 ? (
+                  <div className="text-center py-3 text-muted fs-11">Aucun développeur trouvé</div>
+                ) : searchedDevelopers.map(d => {
+                  const projCount = (d.projects || []).length;
+                  return (
+                  <div key={d.id} className="form-check mb-1 d-flex align-items-center justify-content-between pe-1">
+                    <div className="d-flex align-items-center">
+                      <input 
+                        className="form-check-input" 
+                        type="checkbox" 
+                        id={`team-dev-${d.id}`}
+                        checked={selectedDeveloperIds.includes(String(d.id))}
+                        onChange={e => {
+                          const id = String(d.id);
+                          setSelectedDeveloperIds(prev => 
+                            e.target.checked ? [...prev, id] : prev.filter(x => x !== id)
+                          );
+                          if (e.target.checked) { setSelectedSite(""); setSelectedGroup(""); }
+                        }}
+                      />
+                      <label className="form-check-label fs-12 ms-1" htmlFor={`team-dev-${d.id}`}>
+                        {d.name || d.gitlab_username}
+                      </label>
+                    </div>
+                    {projCount > 0 && (
+                      <span className="badge bg-light text-muted border fs-10" title={`${projCount} projets associés`}>
+                        {projCount} proj.
+                      </span>
+                    )}
                   </div>
-                ))}
+                );
+                })}
               </div>
             </div>
 
+            <div className="mb-3 mt-3">
+              <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Périmètre Projets (Optionnel)</label>
+              <div className="bg-light p-2 rounded" style={{maxHeight: "150px", overflowY: "auto", border: "1px solid #e9ebec"}}>
+                {availableProjects.length === 0 ? (
+                  <span className="text-muted fs-11 ms-1">Sélectionnez un domaine pour voir les projets.</span>
+                ) : (
+                  <>
+                    <div className="form-check mb-1">
+                      <input 
+                        className="form-check-input" 
+                        type="checkbox" 
+                        id="allProjects" 
+                        checked={selectedProjectIds.length === 0}
+                        onChange={() => setSelectedProjectIds([])} 
+                      />
+                      <label className="form-check-label fs-12 fw-medium text-primary" htmlFor="allProjects">
+                         ✨ Tous les projets actifs
+                      </label>
+                    </div>
+                    <hr className="my-1 opacity-25" />
+                    {sortedProjects.map(p => {
+                      const isTeamProject = teamProjectIds.has(String(p.gitlab_project_id));
+                      return (
+                        <div key={p.id} className="form-check mb-1 d-flex align-items-center justify-content-between pe-1">
+                          <div className="d-flex align-items-center">
+                            <input 
+                              className="form-check-input" 
+                              type="checkbox" 
+                              id={`proj-${p.id}`}
+                              checked={selectedProjectIds.includes(p.gitlab_project_id)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setSelectedProjectIds([...selectedProjectIds, p.gitlab_project_id]);
+                                } else {
+                                  setSelectedProjectIds(selectedProjectIds.filter(id => id !== p.gitlab_project_id));
+                                }
+                              }}
+                            />
+                            <label className="form-check-label fs-12 ms-1" htmlFor={`proj-${p.id}`}>
+                              {p.name} <small className="text-muted">({p.gitlab_project_id})</small>
+                            </label>
+                          </div>
+                          {isTeamProject && (
+                            <span className="badge bg-success-subtle text-success border border-success border-opacity-10 fs-10" title="Projet où l'équipe est officiellement assignée">
+                               <i className="ri-focus-3-line me-1"></i>🎯 Équipe
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+              <p className="text-muted fs-11 mt-1 mb-0">L'extraction ne scannera que les contributions sur les projets cochés.</p>
+            </div>
             <hr />
 
             <div className="mb-3">
@@ -239,13 +401,32 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods }) {
             </div>
 
             {extractionType === "MONTHLY" && (
-               <div className="mb-3">
-                 <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Période <span className="text-danger">*</span></label>
-                 <select className="form-select" value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)}>
-                   <option value="">Sélectionner la période</option>
-                   {periods.map(p => <option key={p.id} value={p.id}>{p.year}/{String(p.month).padStart(2,"0")}</option>)}
-                 </select>
-               </div>
+               <>
+                 <div className="mb-3">
+                   <div className="d-flex align-items-center justify-content-between mb-2">
+                     <label className="form-label fs-12 text-muted fw-semibold text-uppercase mb-0">Période <span className="text-danger">*</span></label>
+                     <div className="form-check form-switch mb-0">
+                       <input 
+                         className="form-check-input" 
+                         type="checkbox" 
+                         id="teamBackfillSwitch" 
+                         checked={isBackfill}
+                         onChange={e => setIsBackfill(e.target.checked)}
+                       />
+                       <label className="form-check-label fs-11 text-info fw-medium" htmlFor="teamBackfillSwitch">Backfill historique</label>
+                     </div>
+                   </div>
+                   <select className="form-select" value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)}>
+                     <option value="">Sélectionner la période</option>
+                     {availablePeriods.map(p => (
+                       <option key={p.id} value={p.id}>
+                         {p.year}/{String(p.month).padStart(2,"0")} {p.status === "closed" ? " (CLÔTURÉE)" : " (OUVERTE)"}
+                       </option>
+                     ))}
+                   </select>
+                 </div>
+                 {isBackfill && <BackfillBanner />}
+               </>
             )}
 
             <button 

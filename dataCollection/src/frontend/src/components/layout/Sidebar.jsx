@@ -375,6 +375,9 @@ export default function Sidebar() {
         <div className="sb-scroll">
           <Section title="Pilotage">
             <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" />
+            {isAdmin && (
+              <NavItem icon="ri-bar-chart-group-line" label="Analyse Stratégique" to="/analytics/comparison?project_id=1" />
+            )}
             <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" />
           </Section>
 

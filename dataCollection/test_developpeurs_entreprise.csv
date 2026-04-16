@@ -1,0 +1,5 @@
+name,email,gitlab_username,sites,projects,group
+Ranim Ben Rajeb,ranimbr04@gmail.com,ranim,Tunis,gitlab-org/gitlab-runner:250833,Squad Test
+Kamil Trzciński,ayufan@gitlab.com,ayufan,Paris,gitlab-org/gitlab-runner:250833,DevOps
+Axel von Bertoldi,axel@gitlab.com,avonbertoldi,Paris,gitlab-org/gitlab-runner:250833,DevOps
+Pedro Pombeiro,pedro@gitlab.com,pedropombeiro,Madrid,gitlab-org/gitlab-runner:250833,Integrations

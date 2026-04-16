@@ -38,7 +38,7 @@ from app.repositories.project_site_repository import ProjectSiteRepository
 from app.repositories.site_repository import SiteRepository
 from app.schemas.commit import CommitResponse
 from app.schemas.merge_request import MergeRequestResponse
-from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSiteAssign, ProjectUpdate
+from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSiteAssign, ProjectUpdate, ProjectImportCreate
 from app.schemas.site import SiteResponse
 
 logger     = logging.getLogger(__name__)
@@ -158,6 +158,36 @@ async def create_project(
     return _build_project_response(db, project)
 
 
+@router.post("/import", response_model=ProjectResponse, status_code=201)
+def create_project_import(
+    project_data:  ProjectImportCreate,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """
+    ✅ NOUVEAU : Création résiliente pour l'assistant d'import.
+    N'effectue PAS d'appel API GitLab bloquant. Permet de créer un projet
+    'offline' s'il n'est pas trouvable ou accessible immédiatement.
+    """
+    # 1. Création via la logique de repository dédiée à l'import
+    project = project_repo.create_from_import(
+        db, 
+        name=project_data.name, 
+        gitlab_project_id=project_data.gitlab_project_id,
+        gitlab_config_id=project_data.gitlab_config_id
+    )
+    
+    # 2. Association des sites (M2M)
+    if project_data.site_ids:
+        project_site_repo.sync(db, project.id, project_data.site_ids)
+        
+    db.commit()
+    db.refresh(project)
+    
+    logger.info(f"Project created via Import Resolution — id={project.id} name={project.name}")
+    return _build_project_response(db, project)
+
+
 # ── LIST ──────────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=List[ProjectResponse])
@@ -273,16 +303,21 @@ def remove_site_from_project(
 
 @router.get("/{project_id}/commits", response_model=List[CommitResponse])
 def get_project_commits(
-    project_id:   int,
-    limit:        int           = Query(2000, ge=1, le=5000),
-    offset:       int           = Query(0, ge=0),
-    lot_id:       Optional[int] = Query(None, description="Filtrer par session d'extraction"),
-    db:           Session       = Depends(get_db),
-    current_user: AppUser       = Depends(get_current_user),
+    project_id:            int,
+    limit:                 int           = Query(2000, ge=1, le=5000),
+    offset:                int           = Query(0, ge=0),
+    lot_id:                Optional[int] = Query(None, description="Filtrer par session d'extraction"),
+    exclude_merge_commits: bool          = Query(False, description="Exclure les merge commits (True pour KPI, False pour affichage)"),
+    db:                    Session       = Depends(get_db),
+    current_user:          AppUser       = Depends(get_current_user),
 ):
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
-    return commit_repo.get_project_commits_paginated(db, project_id, limit, offset, lot_id=lot_id)
+    return commit_repo.get_project_commits_paginated(
+        db, project_id, limit, offset,
+        lot_id=lot_id,
+        exclude_merge_commits=exclude_merge_commits,
+    )
 
 
 @router.get("/{project_id}/merge-requests", response_model=List[MergeRequestResponse])

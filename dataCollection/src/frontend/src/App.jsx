@@ -29,6 +29,11 @@ import TeamManagementPage     from "./pages/TeamManagementPage";
 import SetupWizardPage        from "./pages/SetupWizardPage";
 // [NEW] Phase 6: Comparaison côte-à-côte de 2 développeurs
 import DeveloperComparisonPage from "./pages/DeveloperComparisonPage";
+// [NEW] Priorité 3 — Page Analyse de Performance 360° (Bus Factor, Velocity, Churn, Percentile)
+import DeveloperPerformancePage from "./pages/DeveloperPerformancePage";
+// [NEW][SENIOR] Pilotage Stratégique — Comparaison multi-sites et multi-équipes
+import ComparativeAnalyticsPage from "./pages/ComparativeAnalyticsPage";
+
 
 // ── pages/admin/ ─────────────────────────────────────────────────────────────
 import DevelopersPage       from "./pages/admin/DevelopersPage";
@@ -134,6 +139,10 @@ export default function App() {
             {/* URL : /developers/42?project_id=1 */}
             <Route path="/developers/:id" element={<DeveloperProfilePage />} />
 
+            {/* [NEW] Analyse de Performance 360° — Bus Factor, Velocity, Churn, Percentile */}
+            {/* URL : /developers/42/performance?project_id=1 */}
+            <Route path="/developers/:id/performance" element={<DeveloperPerformancePage />} />
+
             {/* Extraction Lots — lecture seule, tous rôles */}
             <Route path="/extraction-lots" element={<ExtractionLotsPage />} />
 
@@ -151,9 +160,13 @@ export default function App() {
               <Route path="/admin/projects"       element={<AdminProjectsPage />} />
               <Route path="/admin/kpi-thresholds" element={<KpiThresholdPage />} />
               <Route path="/admin/dashboards"     element={<DashboardsAdminPage />} />
-              {/* [PHASE-1] Gestion d'équipe — vision centrée-développeur */}
+               {/* [PHASE-1] Gestion d'équipe — vision centrée-développeur */}
               <Route path="/team"                 element={<TeamManagementPage />} />
+              
+              {/* [NEW][SENIOR] Dashboard de Pilotage — Comparaison Stratégique Sites/Équipes */}
+              <Route path="/analytics/comparison" element={<ComparativeAnalyticsPage />} />
             </Route>
+
 
             {/* ── Super Admin uniquement ── */}
             <Route element={<SuperAdminRoute />}>

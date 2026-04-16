@@ -83,9 +83,10 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
 
     def get_monthly(
         self,
-        db:         Session,
-        period_id:  int,
-        project_id: int,
+        db:           Session,
+        period_id:    int,
+        project_id:   Optional[int] = None,
+        developer_id: Optional[int] = None,
     ) -> Optional[ExtractionLot]:
         """
         ✅ AJOUT — Retourne le lot MONTHLY existant tous statuts confondus.
@@ -97,16 +98,16 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         Utilisé par extraction_service.run_monthly_extraction() en mode Backfill
         pour réutiliser le lot existant au lieu d'en créer un nouveau (évite 409).
         """
-        return (
-            db.query(ExtractionLot)
-            .filter(
-                ExtractionLot.period_id       == period_id,
-                ExtractionLot.project_id      == project_id,
-                ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
-            )
-            .order_by(ExtractionLot.created_at.desc())
-            .first()
+        q = db.query(ExtractionLot).filter(
+            ExtractionLot.period_id       == period_id,
+            ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
         )
+        if project_id:
+            q = q.filter(ExtractionLot.project_id == project_id)
+        if developer_id:
+            q = q.filter(ExtractionLot.developer_id == developer_id)
+            
+        return q.order_by(ExtractionLot.created_at.desc()).first()
 
     def get_realtime_lots(
         self,
@@ -129,24 +130,26 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
 
     def monthly_exists(
         self,
-        db:         Session,
-        period_id:  int,
-        project_id: int,
+        db:           Session,
+        period_id:    int,
+        project_id:   Optional[int] = None,
+        developer_id: Optional[int] = None,
     ) -> bool:
         """
         Vérifie qu'un lot MONTHLY complété existe déjà.
         Utilisé pour empêcher les doublons en mode normal (non-Backfill).
         """
-        return (
-            db.query(ExtractionLot.id)
-            .filter(
-                ExtractionLot.period_id       == period_id,
-                ExtractionLot.project_id      == project_id,
-                ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
-                ExtractionLot.status          == ExtractionStatusEnum.completed,
-            )
-            .first() is not None
+        q = db.query(ExtractionLot.id).filter(
+            ExtractionLot.period_id       == period_id,
+            ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY,
+            ExtractionLot.status          == ExtractionStatusEnum.completed,
         )
+        if project_id:
+            q = q.filter(ExtractionLot.project_id == project_id)
+        if developer_id:
+            q = q.filter(ExtractionLot.developer_id == developer_id)
+            
+        return q.first() is not None
 
     def delete_realtime_lots(
         self,

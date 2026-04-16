@@ -208,6 +208,7 @@ class GitLabMapper:
             "approved_at":       approved_at,
             "approved":          approved,
             "review_time_hours": review_time_hours,
+            "cycle_time_hours":  data.get("cycle_time_hours"),
             "additions":         data.get("additions",     0),
             "deletions":         data.get("deletions",     0),
             "total_changes":     data.get("total_changes", 0),

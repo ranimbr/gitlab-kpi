@@ -1,0 +1,6 @@
+name,email,gitlab_username,sites,projects,group
+Tomasz Maczukin,tomasz@maczukin.pl,tmaczukin,Poland,gitlab-org/gitlab-runner:250833,Runner Execution Squad
+Steve Azzopardi,steveazz@gitlab.com,steveazz,Malta,gitlab-org/gitlab-runner:250833,Runner Execution Squad
+Pedro Pombeiro,pedro@gitlab.com,pedropombeiro,Portugal,gitlab-org/gitlab-runner:250833,Runner Execution Squad
+Jacob Vosmaer,jacob@gitlab.com,jacobvosmaer,Netherlands,gitlab-org/gitlab-shell:250836,Core Shell Dynamics
+Igor Drabchuk,igor@gitlab.com,igordrabchuk,Ukraine,gitlab-org/gitlab-shell:250836,Core Shell Dynamics

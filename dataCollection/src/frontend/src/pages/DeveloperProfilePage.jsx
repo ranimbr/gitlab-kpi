@@ -337,6 +337,14 @@ export default function DeveloperProfilePage() {
                        <span><i className="ri-at-line me-1 text-primary"></i>@{developer.gitlab_username}</span>
                        <span><i className="ri-mail-line me-1 text-primary"></i>{developer.email || "N/A"}</span>
                        <span><i className="ri-building-line me-1 text-primary"></i>{projects.find(p=>p.id===parseInt(selectedPid))?.name || "Tous projets"}</span>
+                       {developer.sites?.length > 0 && (() => {
+                         const siteNames = developer.sites
+                           .map(s => typeof s === "string" ? s : (s.name || s.site_name || s.label || s.code || null))
+                           .filter(Boolean);
+                         return siteNames.length > 0 ? (
+                           <span><i className="ri-map-pin-line me-1 text-primary"></i>{siteNames.join(", ")}</span>
+                         ) : null;
+                       })()}
                     </div>
                   </div>
                   <div className="col-xl-4 text-sm-end">
@@ -468,7 +476,15 @@ export default function DeveloperProfilePage() {
 
         {/* Phase 3: Export PDF Button */}
         <div className="row mt-4 mb-4 d-print-none">
-          <div className="col-12 d-flex gap-2 justify-content-end">
+          <div className="col-12 d-flex gap-2 justify-content-end flex-wrap">
+            {/* [NEW] Bouton Analyse Performance 360° */}
+            <button
+              className="btn d-flex align-items-center gap-2 fw-semibold"
+              style={{background:"linear-gradient(135deg,#f7b84b,#f06548)",color:"#fff",border:"none",boxShadow:"0 4px 12px rgba(240,101,72,0.35)",transition:"all .2s"}}
+              onClick={() => window.location.href = `/developers/${id}/performance${selectedPid ? `?project_id=${selectedPid}` : ""}`}
+            >
+              <i className="ri-bar-chart-2-line"></i>Analyse Performance 360°
+            </button>
             <button 
               className="btn btn-soft-danger d-flex align-items-center gap-2"
               onClick={() => {

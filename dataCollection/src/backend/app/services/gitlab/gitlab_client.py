@@ -18,13 +18,28 @@ MAX_BRANCHES = 50
 
 
 class GitLabAPIError(Exception):
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
+
+
+class GitLabProjectNotFoundError(GitLabAPIError):
+    """Raised when a project is not found (404) or inaccessible."""
     pass
 
 
 class GitLabClient:
 
     def __init__(self, config: GitLabConfig):
-        self.base_url = config.domain.rstrip("/") + "/api/v4"
+        # [SENIOR] Sécurité : on n'ajoute /api/v4 que s'il n'est pas déjà présent
+        # pour éviter des URLs du type .../api/v4/api/v4
+        domain = config.domain.rstrip("/")
+        if not domain.endswith("/api/v4"):
+            self.base_url = f"{domain}/api/v4"
+        else:
+            self.base_url = domain
+            
         # ✅ FIX : config.token (et non config.encrypted_token qui n'existe pas)
         token        = self._decrypt_token(config.token)
         self.headers = {"PRIVATE-TOKEN": token}
@@ -55,8 +70,15 @@ class GitLabClient:
         endpoint: str,
         params:   Optional[Dict[str, Any]] = None,
         _retry:   int = 0,
+        fast_fail: bool = False,
     ) -> Any:
-        """Requête HTTP avec retry automatique sur 5xx (max 3 tentatives)."""
+        """Requête HTTP avec retry automatique sur 5xx et 429 (rate-limit).
+
+        [SENIOR] Gestion du HTTP 429 Too Many Requests :
+        GitLab renvoie un header 'Retry-After' indiquant combien de secondes
+        attendre. Sans ce traitement, l'extraction échoue silencieusement
+        sur les gros repos (>500 MRs) où la limite API est atteinte.
+        """
         url = f"{self.base_url}{endpoint}"
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -69,18 +91,38 @@ class GitLabClient:
                 wait = 2 ** _retry
                 logger.warning(f"Network error on {url}, retry {_retry + 1}/3 in {wait}s: {e}")
                 await asyncio.sleep(wait)
-                return await self._request(method, endpoint, params, _retry + 1)
+                return await self._request(method, endpoint, params, _retry + 1, fast_fail=fast_fail)
             raise GitLabAPIError(f"Network error after 3 retries on {url}: {e}") from e
 
         if response.status_code == 404:
+            # [SENIOR] Distingue le 404 d'un projet inexistant vs un endpoint inconnu
+            if "/projects/" in endpoint:
+                raise GitLabProjectNotFoundError(f"Project or Resource not found on GitLab: {endpoint}", status_code=404)
             return None
+
+        # [SENIOR] HTTP 429 — Rate Limit GitLab
+        # Lit le header Retry-After et attend avant de réessayer
+        if response.status_code == 429:
+            if fast_fail:
+                logger.warning(f"Fast Fail triggered for {url} (Rate Limit 429). Skipping wait.")
+                raise GitLabAPIError("Rate limit hit (fast fail)", status_code=429)
+
+            retry_after = int(response.headers.get("Retry-After", 60))
+            logger.warning(
+                f"GitLab rate limit (429) on {url}. "
+                f"Waiting {retry_after}s before retry {_retry + 1}/3..."
+            )
+            await asyncio.sleep(retry_after)
+            if _retry < 3:
+                return await self._request(method, endpoint, params, _retry + 1, fast_fail=fast_fail)
+            raise GitLabAPIError(f"Rate limit persistent after 3 retries on {url}")
 
         if response.status_code >= 500:
             if _retry < 3:
                 wait = 2 ** _retry
                 logger.warning(f"HTTP {response.status_code} on {url}, retry {_retry + 1}/3 in {wait}s")
                 await asyncio.sleep(wait)
-                return await self._request(method, endpoint, params, _retry + 1)
+                return await self._request(method, endpoint, params, _retry + 1, fast_fail=fast_fail)
             raise GitLabAPIError(
                 f"GitLab API error {response.status_code} on {url} after 3 retries"
             )
@@ -130,6 +172,27 @@ class GitLabClient:
     async def get_project(self, project_id: int) -> Optional[Dict[str, Any]]:
         return await self._request("GET", f"/projects/{project_id}")
 
+    async def get_project_events(
+        self,
+        project_id: int,
+        action:     Optional[str] = None,
+        after:      Optional[str] = None,
+        before:     Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        [SENIOR] Récupère les événements du projet (ex: push) pour découvrir les branches.
+        L'API /events est beaucoup plus rapide que /repository/commits pour la découverte.
+        """
+        params: Dict[str, Any] = {}
+        if action:
+            params["action"] = action
+        if after:
+            params["after"] = after
+        if before:
+            params["before"] = before
+
+        return await self._get_paginated(f"/projects/{project_id}/events", params=params, max_pages=2)
+
     # ──────────────────────────────────────────────────────────────────────────
     # BRANCHES
     # ──────────────────────────────────────────────────────────────────────────
@@ -158,15 +221,24 @@ class GitLabClient:
     async def get_project_commits(
         self,
         project_id: int,
+        ref_name:   Optional[str] = None,
         since:      Optional[str] = None,
         until:      Optional[str] = None,
         author:     Optional[str] = None,
+        with_stats: bool = False,
     ) -> List[Dict[str, Any]]:
         """
-        [FIX-PERF] Commits de TOUTES les branches, requêtés nativement.
-        Passage d'une boucle N-requêtes par branche à 1 requête unique avec 'all=True'.
+        [FIX-PERF] Commits de TOUTES les branches (si ref_name=None) ou spécifique.
+        Optimisation SENIOR : with_stats=False par défaut pour éviter les timeouts.
         """
-        params: Dict[str, Any] = {"with_stats": True, "all": True}
+        params: Dict[str, Any] = {"with_stats": with_stats}
+        
+        # Si pas de branche spécifique, on demande "all" (tout l'historique de toutes les branches)
+        # Mais attention: sur d'énormes repos, c'est ce qui peut faire ramer.
+        if not ref_name:
+            params["all"] = True
+        else:
+            params["ref_name"] = ref_name
         
         if author:
             params["author"] = author
@@ -183,9 +255,24 @@ class GitLabClient:
             )
             logger.info(f"Project {project_id} — Extracted {len(commits)} commits natively.")
             return commits
+        except GitLabProjectNotFoundError:
+            # Propagate up to indicate the source project is missing
+            raise
         except GitLabAPIError as e:
             logger.error(f"Error fetching commits for project={project_id}: {e}")
             return []
+
+    async def get_commit_detail(
+        self,
+        project_id: int,
+        sha: str
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch the details of a single commit, including stats."""
+        try:
+            return await self._request("GET", f"/projects/{project_id}/repository/commits/{sha}")
+        except Exception as e:
+            logger.error(f"Error fetching commit {sha} for project={project_id}: {e}")
+            return None
 
     # ──────────────────────────────────────────────────────────────────────────
     # MERGE REQUESTS
@@ -197,6 +284,9 @@ class GitLabClient:
         author_username:   Optional[str] = None,
         reviewer_username: Optional[str] = None,
         assignee_username: Optional[str] = None,
+        author_id:         Optional[int] = None,
+        reviewer_id:       Optional[int] = None,
+        assignee_id:       Optional[int] = None,
         created_after:     Optional[str] = None,
         created_before:    Optional[str] = None,
         updated_after:     Optional[str] = None,
@@ -210,6 +300,12 @@ class GitLabClient:
             params["reviewer_username"] = reviewer_username
         if assignee_username:
             params["assignee_username"] = assignee_username
+        if author_id:
+            params["author_id"] = author_id
+        if reviewer_id:
+            params["reviewer_id"] = reviewer_id
+        if assignee_id:
+            params["assignee_id"] = assignee_id
         if created_after:
             params["created_after"] = created_after
         if created_before:
@@ -278,10 +374,29 @@ class GitLabClient:
     async def get_merge_request_notes(
         self, project_id: int, mr_iid: int
     ) -> List[Dict[str, Any]]:
+        """Fetch all notes (comments) for an MR, triées par date croissante."""
         return await self._get_paginated(
             f"/projects/{project_id}/merge_requests/{mr_iid}/notes",
             params={"sort": "asc", "per_page": 100}
         )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # HEALTH CHECK
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def ping(self) -> bool:
+        """[SENIOR] Vérifie que le token est valide et que l'API GitLab répond.
+
+        Utilisé par le health check de l'application.
+        Appelle GET /user — endpoint léger et toujours disponible.
+        Retourne True si l'API répond avec un user valide.
+        """
+        try:
+            result = await self._request("GET", "/user")
+            return bool(result and result.get("id"))
+        except Exception as e:
+            logger.warning(f"GitLab ping failed: {e}")
+            return False
 
     # ──────────────────────────────────────────────────────────────────────────
     # MEMBRES & USERS — [FIX-DEDUP]
@@ -290,8 +405,8 @@ class GitLabClient:
     async def get_project_members(self, project_id: int) -> List[Dict[str, Any]]:
         return await self._get_paginated(f"/projects/{project_id}/members/all")
 
-    async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
-        return await self._request("GET", f"/users/{user_id}")
+    async def get_user(self, user_id: int, fast_fail: bool = False) -> Optional[Dict[str, Any]]:
+        return await self._request("GET", f"/users/{user_id}", fast_fail=fast_fail)
 
     async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Cherche un utilisateur par son username (login)."""
@@ -301,25 +416,34 @@ class GitLabClient:
         return None
 
     async def get_project_members_with_emails(
-        self, project_id: int
+        self, 
+        project_id: int, 
+        target_user_ids: Optional[List[int]] = None
     ) -> Dict[int, Dict[str, Any]]:
         """
         [FIX-DEDUP] Pré-charge tous les membres avec leurs emails officiels.
-        Retourne { gitlab_user_id: user_data } pour résolution O(1).
+        Optimization SENIOR: si target_user_ids est fourni, on ne fetch que ceux-là.
         """
-        members     = await self.get_project_members(project_id)
+        # Optimization SENIOR: si target_user_ids est fourni, on ne fetch QUE ceux-là
+        # sans passer par get_project_members qui peut retourner des milliers d'utilisateurs
+        if target_user_ids:
+            logger.info(f"Project {project_id} — Direct fetch for {len(target_user_ids)} target developers (skipping global member list).")
+            members_to_fetch = [{"id": uid} for uid in target_user_ids]
+        else:
+            members_to_fetch = await self.get_project_members(project_id)
+        
         members_map: Dict[int, Dict[str, Any]] = {}
 
         batch_size = 10
-        for i in range(0, len(members), batch_size):
-            batch   = members[i:i + batch_size]
-            tasks   = [self.get_user(m["id"]) for m in batch if m.get("id")]
+        for i in range(0, len(members_to_fetch), batch_size):
+            batch   = members_to_fetch[i:i + batch_size]
+            tasks   = [self.get_user(m["id"], fast_fail=True) for m in batch if m.get("id")]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for member, user_data in zip(batch, results):
                 if isinstance(user_data, dict) and user_data.get("id"):
                     members_map[user_data["id"]] = user_data
-                else:
+                elif "id" in member:
                     members_map[member["id"]] = member
 
         logger.info(

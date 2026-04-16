@@ -94,7 +94,7 @@ def upgrade() -> None:
     op.add_column('developer_project', sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False))
     op.create_index('idx_dev_project_developer', 'developer_project', ['developer_id', 'is_active'], unique=False)
     op.create_index('idx_dev_project_project', 'developer_project', ['project_id', 'is_active'], unique=False)
-    op.drop_index('idx_developer_one_primary_site', table_name='developer_site', postgresql_where='(is_primary = true)')
+    # op.drop_index('idx_developer_one_primary_site', table_name='developer_site', postgresql_where='(is_primary = true)')
     op.add_column('extraction_lot', sa.Column('extraction_type', sa.Enum('REALTIME', 'MONTHLY', name='extractiontypeenum'), nullable=False, comment='REALTIME = à la demande | MONTHLY = clôture mensuelle'))
     op.add_column('extraction_lot', sa.Column('generated_file', sa.String(length=500), nullable=True))
     op.add_column('extraction_lot', sa.Column('md5sum', sa.String(length=64), nullable=True))

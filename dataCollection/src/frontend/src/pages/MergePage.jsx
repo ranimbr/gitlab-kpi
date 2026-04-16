@@ -185,11 +185,11 @@ function FilterTag({ label, onRemove, color="#f0f0f0", textColor="#495057" }) {
 }
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
-function FilterBar({ filters, onChange, projects, authors, activeCount, onReset, availableLots = [] }) {
+function FilterBar({ filters, onChange, projects, authors, activeCount, onReset, availableLots = [], groups = [] }) {
   return (
     <div className="card mb-3"><div className="card-body pb-2">
       <div className="row g-2 align-items-end">
-        <div className="col-xl-2 col-md-6"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-search-line me-1"></i>Search</label><div className="search-box"><input type="text" className="form-control form-control-sm" placeholder="Title, author, project…" value={filters.search} onChange={e=>onChange("search",e.target.value)}/><i className="ri-search-line search-icon"></i></div></div>
+        <div className="col-xl-2 col-md-6"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-search-line me-1"></i>Search</label><div className="search-box"><input type="text" className="form-control form-control-sm" placeholder="Titre, développeur, projet…" value={filters.search} onChange={e=>onChange("search",e.target.value)}/><i className="ri-search-line search-icon"></i></div></div>
         
         <div className="col-xl-2 col-md-3">
           <label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-stack-line me-1"></i>Session (Lot)</label>
@@ -203,13 +203,39 @@ function FilterBar({ filters, onChange, projects, authors, activeCount, onReset,
           </select>
         </div>
 
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
-        <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Author</label><select className="form-select form-select-sm" value={filters.author} onChange={e=>onChange("author",e.target.value)}><option value="all">All</option>{authors.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
+        <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-team-line me-1"></i>Équipe</label><select className="form-select form-select-sm" value={filters.group} onChange={e=>{onChange("group",e.target.value);onChange("author","all");}}><option value="all">Toutes</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Développeur</label><select className="form-select form-select-sm" value={filters.author} onChange={e=>onChange("author",e.target.value)}><option value="all">Tous</option>{authors.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-shield-check-line me-1"></i>Approved</label><select className="form-select form-select-sm" value={filters.approved} onChange={e=>onChange("approved",e.target.value)}><option value="all">All</option><option value="yes">Yes</option><option value="no">No</option></select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-calendar-line me-1"></i>From</label><input type="date" className="form-control form-control-sm" value={filters.dateFrom} onChange={e=>onChange("dateFrom",e.target.value)}/></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 mb-1 d-block">To</label><input type="date" className="form-control form-control-sm" value={filters.dateTo} onChange={e=>onChange("dateTo",e.target.value)}/></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 mb-1 d-block">&nbsp;</label><button onClick={onReset} className="btn btn-sm w-100" style={{background:activeCount>0?"#f06548":"#f0f0f0",color:activeCount>0?"#fff":"#878a99",border:"none",fontWeight:600,transition:"all .2s"}}>{activeCount>0?<><i className="ri-close-line me-1"></i>{activeCount}</>:<i className="ri-filter-off-line"></i>}</button></div>
+      </div>
+      {/* ─── Vue par Rôle ─────────────────────────────────────────────── */}
+      <div className="d-flex align-items-center gap-2 mt-3 pt-2" style={{borderTop:"1px solid #f0f0f0"}}>
+        <span style={{fontSize:11,fontWeight:700,color:"#878a99",textTransform:"uppercase",letterSpacing:".05em",whiteSpace:"nowrap"}}>
+          <i className="ri-user-settings-line me-1"></i>Vue par rôle :
+        </span>
+        {[
+          {value:"all",      icon:"ri-apps-line",       label:"Tous"},
+          {value:"authored", icon:"ri-quill-pen-line",   label:"Auteur"},
+          {value:"reviewed", icon:"ri-eye-line",         label:"Reviewer"},
+          {value:"assigned", icon:"ri-task-line",         label:"Assigné"},
+        ].map(r=>(
+          <button key={r.value} onClick={()=>onChange("role",r.value)}
+            style={{padding:"4px 14px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap",
+              background:filters.role===r.value?"#405189":"#f0f0f0",
+              color:filters.role===r.value?"#fff":"#6c757d",
+              border:`1px solid ${filters.role===r.value?"#405189":"#e9ecef"}`}}>
+            <i className={`${r.icon} me-1`}></i>{r.label}
+          </button>
+        ))}
+        {filters.role!=="all"&&filters.author==="all"&&(
+          <span style={{fontSize:11,color:"#f7b84b",fontStyle:"italic"}}>
+            <i className="ri-information-line me-1"></i>Sélectionnez un auteur pour activer le filtre par rôle
+          </span>
+        )}
       </div>
       {activeCount>0&&(
         <div className="d-flex flex-wrap gap-2 mt-2">
@@ -217,7 +243,9 @@ function FilterBar({ filters, onChange, projects, authors, activeCount, onReset,
           {filters.lot!=="all"&&<FilterTag label={`Session: #${filters.lot}`} onRemove={()=>onChange("lot","all")} color="#ede9fb" textColor="#5b21b6"/>}
           {filters.state!=="all"&&<FilterTag label={`Status: ${STATE_CFG[filters.state]?.label}`} onRemove={()=>onChange("state","all")} color="#dce9ff" textColor="#1a56db"/>}
           {filters.project!=="all"&&<FilterTag label={`Project: ${filters.project}`} onRemove={()=>onChange("project","all")} color="#e8ecf8" textColor="#405189"/>}
-          {filters.author!=="all"&&<FilterTag label={`Author: ${filters.author}`} onRemove={()=>onChange("author","all")} color="#ede9fb" textColor="#5b21b6"/>}
+          {filters.group!=="all"&&<FilterTag label={`Équipe: ${groups.find(g=>g.id===parseInt(filters.group))?.name||"Inconnue"}`} onRemove={()=>onChange("group","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
+          {filters.author!=="all"&&<FilterTag label={`Développeur: ${filters.author}`} onRemove={()=>onChange("author","all")} color="#ede9fb" textColor="#5b21b6"/>}
+          {filters.role!=="all"&&filters.author!=="all"&&<FilterTag label={`Rôle: ${filters.role}`} onRemove={()=>onChange("role","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
           {filters.approved!=="all"&&<FilterTag label={`Approved: ${filters.approved}`} onRemove={()=>onChange("approved","all")} color="#d7edf9" textColor="#1a6fa3"/>}
         </div>
       )}
@@ -247,7 +275,7 @@ function StatusDonut({ opened, merged, closed }) {
 }
 
 // ─── Top Contributors (Contextual Breakdown) ──────────────────────────────────
-function TopContributors({ mrs, selectedAuthor }) {
+function TopContributors({ mrs, selectedAuthor, developers }) {
   // Mode Individuel : Si un auteur est sélectionné (Vue Axel)
   if (selectedAuthor && selectedAuthor !== "all") {
     let authored = 0, reviewed = 0, assigned = 0;
@@ -320,18 +348,60 @@ function TopContributors({ mrs, selectedAuthor }) {
   }
 
   // Mode Global : La liste des meilleurs contributeurs (Vue Manager)
+  const validDevs = new Set(
+    (developers || []).flatMap(d => [
+      (d.name || "").toLowerCase(), 
+      (d.gitlab_username || "").toLowerCase()
+    ]).filter(Boolean)
+  );
+
   const map={};
-  mrs.forEach(mr=>{ const a=mr.author||"Unknown"; if(!map[a])map[a]={total:0,merged:0,opened:0}; map[a].total++; if(mr.state==="merged")map[a].merged++; if(mr.state==="opened")map[a].opened++; });
+  mrs.forEach(mr=>{
+    const roles = [
+      { name: mr.author,   type: "auth" },
+      { name: mr.reviewer, type: "rev"  },
+      { name: mr.assignee, type: "assig"}
+    ];
+    roles.forEach(r => {
+      if (!r.name || r.name === "Unknown") return;
+      
+      // ✅ FIX: Exclure les bots et devs hors liste (si la liste des developpeurs est chargée)
+      if (validDevs.size > 0 && !validDevs.has(r.name.toLowerCase())) return;
+
+      if(!map[r.name]) map[r.name]={total:0, merged:0, opened:0, auth:0, rev:0, assig:0};
+      map[r.name].total++;
+      map[r.name][r.type]++;
+      if(mr.state==="merged") map[r.name].merged++;
+      if(mr.state==="opened") map[r.name].opened++;
+    });
+  });
+
   const top=Object.entries(map).sort((a,b)=>b[1].total-a[1].total).slice(0,7);
   return (
     <div className="card h-100">
-      <div className="card-header d-flex align-items-center"><h5 className="card-title mb-0 flex-grow-1"><i className="ri-user-star-line me-2 text-primary"></i>Top Contributors</h5><span className="badge bg-primary-subtle text-primary">Top {top.length}</span></div>
+      <div className="card-header d-flex align-items-center">
+        <h5 className="card-title mb-0 flex-grow-1">
+          <i className="ri-user-star-line me-2 text-primary"></i>Top Contributors (All Roles)
+        </h5>
+        <span className="badge bg-primary-subtle text-primary">Top {top.length}</span>
+      </div>
       <div className="card-body">
         {!top.length?<div className="text-center text-muted py-4">No contributor data</div>:(
           <>
-            <ReactApexChart type="bar" height={210}
-              series={[{name:"Merged",data:top.map(([,v])=>v.merged)},{name:"Open",data:top.map(([,v])=>v.opened)}]}
-              options={{chart:{type:"bar",stacked:true,toolbar:{show:false},fontFamily:"Poppins, sans-serif"},plotOptions:{bar:{horizontal:true,borderRadius:4,borderRadiusApplication:"end"}},colors:["#0ab39c","#405189"],xaxis:{categories:top.map(([name])=>name.split(" ")[0]),labels:{style:{fontFamily:"Poppins, sans-serif",fontSize:"11px"}}},yaxis:{labels:{style:{fontFamily:"Poppins, sans-serif",fontSize:"11px"}}},legend:{position:"top",fontFamily:"Poppins, sans-serif",fontSize:"12px"},grid:{borderColor:"rgba(133,141,152,0.1)"},tooltip:{y:{formatter:v=>`${v} MRs`},shared:true,intersect:false},dataLabels:{enabled:false}}}/>
+            <ReactApexChart type="bar" height={230}
+              series={[
+                {name:"Authored", data:top.map(([,v])=>v.auth)},
+                {name:"Reviewed", data:top.map(([,v])=>v.rev)},
+                {name:"Assigned", data:top.map(([,v])=>v.assig)}
+              ]}
+              options={{
+                chart:{type:"bar",stacked:true,toolbar:{show:false},fontFamily:"Poppins, sans-serif"},
+                plotOptions:{bar:{horizontal:true,borderRadius:4}},
+                colors:["#405189","#0ab39c","#f7b84b"],
+                xaxis:{categories:top.map(([name])=>name.length>14?name.substring(0,12)+"...":name),labels:{style:{fontSize:"11px"}}},
+                legend:{position:"top",fontSize:"12px"},
+                tooltip:{y:{formatter:v=>`${v} MRs`}}
+              }}/>
             <div className="mt-2">
               {top.map(([name,v],i)=>{
                 const rate=Math.round((v.merged/v.total)*100);
@@ -429,7 +499,7 @@ function MRTable({ mrs, onDetail }) {
   const COLS=[
     {key:"gitlab_mr_id",     label:"ID",      sortable:true },
     {key:"title",            label:"Title",   sortable:true },
-    {key:"author",           label:"Author",  sortable:true },
+    {key:"author",           label:"Contributeurs",  sortable:true },
     {key:"project",          label:"Project", sortable:true },
     {key:"state",            label:"Status",  sortable:true },
     {key:"approved",         label:"Approved",sortable:false},
@@ -559,12 +629,14 @@ function MRTable({ mrs, onDetail }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-const INITIAL_FILTERS={search:"", lot: "all", state:"all",project:"all",author:"all",approved:"all",dateFrom:"",dateTo:""};
+const INITIAL_FILTERS={search:"", lot: "all", state:"all",project:"all",author:"all",role:"all",approved:"all",dateFrom:"",dateTo:"", group:"all"};
 
 export default function MergePage() {
   const [allMrs,   setAllMrs]   = useState([]);
   const [projects, setProjects]  = useState([]); 
   const [lots,     setLots]      = useState([]);    
+  const [developers, setDevelopers] = useState([]);
+  const [groups,   setGroups]    = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState({
@@ -608,6 +680,15 @@ export default function MergePage() {
       const projs = Array.isArray(res.data)?res.data:(res.data?.items??[]);
       setProjects(projs);
       
+      try {
+        const dRes = await api.get("/developers/");
+        setDevelopers(Array.isArray(dRes.data)?dRes.data:(dRes.data?.items??[]));
+        const gRes = await api.get("/developer-groups");
+        setGroups(Array.isArray(gRes.data)?gRes.data:(gRes.data?.items??[]));
+      } catch (e) {
+        console.error("Failed to fetch developers/groups", e);
+      }
+      
       const collected=[];
       for(const project of projs){
         // Isolation par projet
@@ -647,8 +728,25 @@ export default function MergePage() {
       if (m.reviewer) symbols.add(m.reviewer);
       if (m.assignee) symbols.add(m.assignee);
     });
+    
+    // Si on a la liste officielle des développeurs, on force leur affichage
+    // et on filtre les développeurs externes/bots.
+    if (developers && developers.length > 0) {
+      let filteredDevs = developers;
+      if (filters.group !== "all") {
+        const groupId = parseInt(filters.group);
+        filteredDevs = developers.filter(d => d.group_id === groupId);
+      }
+      const validNames = new Set(filteredDevs.flatMap(d => [d.name, d.gitlab_username]).filter(Boolean));
+      filteredDevs.forEach(d => {
+        if (d.name) symbols.add(d.name);
+        else if (d.gitlab_username) symbols.add(d.gitlab_username);
+      });
+      return Array.from(symbols).filter(Boolean).filter(s => validNames.has(s)).sort();
+    }
+    
     return Array.from(symbols).filter(Boolean).sort();
-  }, [allMrs]);
+  }, [allMrs, developers, filters.group]);
 
   const activeFilterCount=useMemo(()=>Object.entries(filters).filter(([,v])=>v!==""&&v!=="all").length,[filters]);
 
@@ -657,14 +755,32 @@ export default function MergePage() {
       if(filters.state!=="all"&&mr.state!==filters.state)return false;
       if(filters.project!=="all"&&mr.project!==filters.project)return false;
       
-      // ✅ FILTRE INCLUSIF (Auteur OR Reviewer OR Assignee)
+      const aut = (mr.author || "").toLowerCase();
+      const rev = (mr.reviewer || "").toLowerCase();
+      const ass = (mr.assignee || "").toLowerCase();
+
+      // ✅ FILTRE PAR ÉQUIPE / GROUPE — Vue 360° du groupe
+      if (filters.group !== "all") {
+        const groupId = parseInt(filters.group);
+        const groupDevs = developers.filter(d => d.group_id === groupId);
+        const groupNames = groupDevs.flatMap(d => [(d.name || "").toLowerCase(), (d.gitlab_username || "").toLowerCase()]).filter(Boolean);
+        
+        // La MR doit impliquer au moins un membre de l'équipe
+        const match = groupNames.some(name => aut.includes(name) || rev.includes(name) || ass.includes(name));
+        if (!match) return false;
+      }
+      
+      // ✅ FILTRE PAR DÉVELOPPEUR + RÔLE — Vue 360° de la contribution
       if (filters.author !== "all") {
         const target = filters.author.toLowerCase().trim();
-        const aut = (mr.author || "").toLowerCase();
+        const aut = (mr.author   || "").toLowerCase();
         const rev = (mr.reviewer || "").toLowerCase();
         const ass = (mr.assignee || "").toLowerCase();
         
-        if (!aut.includes(target) && !rev.includes(target) && !ass.includes(target)) return false;
+        if      (filters.role === "authored") { if (!aut.includes(target))                                                           return false; }
+        else if (filters.role === "reviewed") { if (!rev.includes(target))                                                           return false; }
+        else if (filters.role === "assigned") { if (!ass.includes(target))                                                           return false; }
+        else /* "all" roles — vue inclusive */ { if (!aut.includes(target) && !rev.includes(target) && !ass.includes(target)) return false; }
       }
 
       if(filters.approved==="yes"&&!(mr.approved===true||mr.approved===1))return false;
@@ -718,7 +834,7 @@ export default function MergePage() {
         </div>
       </div>
 
-      <FilterBar filters={filters} onChange={setFilter} projects={projectList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots}/>
+      <FilterBar filters={filters} onChange={setFilter} projects={projectList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots} groups={groups}/>
 
       <div className="row">
         <KPICard icon="ri-git-pull-request-line" label="Total MRs"   value={kpis.total}  bg="#e8ecf8" color="#405189" sub={`${kpis.mergeRate}% merge rate`}/>
@@ -731,7 +847,7 @@ export default function MergePage() {
       <div className="row">
         <div className="col-xl-4"><StatusDonut opened={kpis.opened} merged={kpis.merged} closed={kpis.closed}/></div>
         <div className="col-xl-8">
-          <TopContributors mrs={filtered} selectedAuthor={filters.author} />
+          <TopContributors mrs={filtered} selectedAuthor={filters.author} developers={developers} />
         </div>
       </div>
       <div className="row"><div className="col-12"><MRTable mrs={filtered} onDetail={setDetailMr}/></div></div>

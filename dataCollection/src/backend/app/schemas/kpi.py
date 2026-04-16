@@ -40,6 +40,11 @@ class KpiSnapshotResponse(BaseModel):
     total_mrs_draft:    int = 0
     nb_developers:      int
     review_time_hours:  float
+    
+    # ✅ METRIQUES ENTERPRISE (Pilotage Stratégique) 🚀
+    bus_factor:         int   = 0
+    sprint_velocity:    float = 0.0
+    code_churn_rate:    float = 0.0
 
     # ── KPI #1 : MR Rate par site ─────────────────────────────────────────────
     # Formule : total_mrs_created / nb_developers

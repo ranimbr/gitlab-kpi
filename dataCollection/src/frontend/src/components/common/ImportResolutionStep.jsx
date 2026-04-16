@@ -48,6 +48,7 @@
 import { useState, useEffect, useCallback } from "react";
 import siteService    from "../../services/siteService";
 import projectService from "../../services/projectService";
+import developerService from "../../services/developerService";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const ACTION_CREATE = "create";
@@ -402,7 +403,7 @@ function ProjectResolutionCard({ name, existingProjects, resolution, onChange })
             <strong> gitlab_project_id</strong> dans Administration → Projets après l'import.
           </div>
           <div className="imp-res-fields">
-            <div className="imp-res-field imp-res-field-full">
+            <div className="imp-res-field">
               <label>Nom du projet</label>
               <input
                 type="text"
@@ -410,6 +411,16 @@ function ProjectResolutionCard({ name, existingProjects, resolution, onChange })
                 value={resolution?.projectName ?? name}
                 onChange={e => onChange({ ...resolution, action: ACTION_CREATE, projectName: e.target.value })}
                 placeholder="Nom affiché"
+              />
+            </div>
+            <div className="imp-res-field">
+              <label>ID GitLab (Optionnel)</label>
+              <input
+                type="number"
+                className="imp-res-input"
+                value={resolution?.gitlabProjectId ?? ""}
+                onChange={e => onChange({ ...resolution, action: ACTION_CREATE, gitlabProjectId: e.target.value })}
+                placeholder="Ex: 24151740"
               />
             </div>
           </div>
@@ -453,22 +464,119 @@ function ProjectResolutionCard({ name, existingProjects, resolution, onChange })
   );
 }
 
+// ─── Card résolution — Groupe ──────────────────────────────────────────────────
+function GroupResolutionCard({ name, existingGroups, resolution, onChange }) {
+  const action = resolution?.action || ACTION_CREATE;
+
+  return (
+    <div className="imp-res-card" data-action={action}>
+      <div className="imp-res-card-header">
+        <div className="imp-res-badge-unknown"
+          style={{ background: "#F3E8FF", color: "#7E22CE" }}>
+          <i className="ri-team-line"></i>
+          <span>Groupe introuvable</span>
+        </div>
+        <span className="imp-res-entity-name">"{name}"</span>
+        <div className="imp-res-actions">
+          {[
+            { key: ACTION_CREATE, icon: "ri-add-circle-line", label: "Créer"   },
+            { key: ACTION_MAP,    icon: "ri-links-line",      label: "Mapper"  },
+            { key: ACTION_IGNORE, icon: "ri-eye-off-line",    label: "Ignorer" },
+          ].map(a => (
+            <button
+              key={a.key}
+              className={`imp-res-action-btn ${action === a.key ? "active" : ""}`}
+              data-variant={a.key}
+              onClick={() => onChange({ ...resolution, action: a.key })}
+              type="button"
+            >
+              <i className={a.icon}></i> {a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {action === ACTION_CREATE && (
+        <div className="imp-res-form imp-res-animate">
+          <div className="imp-res-form-hint">
+            <i className="ri-information-line"></i>
+            Le groupe sera créé avec le nom ci-dessous.
+          </div>
+          <div className="imp-res-fields">
+            <div className="imp-res-field imp-res-field-full">
+              <label>Nom du groupe</label>
+              <input
+                type="text"
+                className="imp-res-input"
+                value={resolution?.groupName ?? name}
+                onChange={e => onChange({ ...resolution, action: ACTION_CREATE, groupName: e.target.value })}
+                placeholder="Nom du groupe"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {action === ACTION_MAP && (
+        <div className="imp-res-form imp-res-animate">
+          <div className="imp-res-form-hint">
+            <i className="ri-links-line"></i>
+            Associez "{name}" à un groupe existant en base.
+          </div>
+          <div className="imp-res-fields">
+            <div className="imp-res-field imp-res-field-full">
+              <label>Groupe existant à utiliser</label>
+              <select
+                className="imp-res-select"
+                value={resolution?.mappedId ?? ""}
+                onChange={e => onChange({ ...resolution, action: ACTION_MAP, mappedId: e.target.value })}
+              >
+                <option value="">-- Sélectionner un groupe --</option>
+                {existingGroups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {action === ACTION_IGNORE && (
+        <div className="imp-res-ignore-note imp-res-animate">
+          <i className="ri-information-line flex-shrink-0 mt-1"></i>
+          <span>
+            Les développeurs avec le groupe "{name}" seront créés <strong>sans groupe</strong>.
+            Réassignez manuellement après l'import.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── Composant principal ───────────────────────────────────────────────────────
 export default function ImportResolutionStep({
   unknownSites     = [],
-  unknownProjects  = [],
+  unknownProjects  = {}, // ✅ Format {nom: id_ou_null}
+  unknownGroups    = [], // ✅ Format ["Nom"]
   existingSites    = [],
   existingProjects = [],
+  existingGroups   = [],
   onResolved,
   onConfirm,
   loading = false,
+  defaultGitlabConfigId = null,
+  defaultSiteId         = null,
 }) {
   const [siteResolutions,    setSiteResolutions]    = useState({});
   const [projectResolutions, setProjectResolutions] = useState({});
+  const [groupResolutions,   setGroupResolutions]   = useState({});
   const [submitting,         setSubmitting]         = useState(false);
   const [applyStatus,        setApplyStatus]        = useState(null);
   const [appliedSites,       setAppliedSites]       = useState([]);
   const [appliedProjects,    setAppliedProjects]    = useState([]);
+  const [appliedGroups,      setAppliedGroups]      = useState([]);
   const [applyError,         setApplyError]         = useState("");
 
   // ── Initialisation avec action CREATE par défaut ────────────────────────────
@@ -480,11 +588,21 @@ export default function ImportResolutionStep({
     setSiteResolutions(sr);
 
     const pr = {};
-    unknownProjects.forEach(p => {
-      pr[p] = { action: ACTION_CREATE, projectName: p };
+    const pEntries = Array.isArray(unknownProjects) 
+      ? unknownProjects.map(p => [p, null])
+      : Object.entries(unknownProjects);
+
+    pEntries.forEach(([p, gid]) => {
+      pr[p] = { action: ACTION_CREATE, projectName: p, gitlabProjectId: gid || "" };
     });
     setProjectResolutions(pr);
-  }, [unknownSites, unknownProjects]);
+
+    const gr = {};
+    unknownGroups.forEach(g => {
+      gr[g] = { action: ACTION_CREATE, groupName: g };
+    });
+    setGroupResolutions(gr);
+  }, [unknownSites, unknownProjects, unknownGroups]);
 
   // ── Validation : chaque MAP doit avoir un ID sélectionné ───────────────────
   const isValid = useCallback(() => {
@@ -494,14 +612,20 @@ export default function ImportResolutionStep({
     for (const r of Object.values(projectResolutions)) {
       if (r.action === ACTION_MAP && !r.mappedId) return false;
     }
+    for (const r of Object.values(groupResolutions)) {
+      if (r.action === ACTION_MAP && !r.mappedId) return false;
+    }
     return true;
-  }, [siteResolutions, projectResolutions]);
+  }, [siteResolutions, projectResolutions, groupResolutions]);
 
   // ── Compte des résolutions configurées ─────────────────────────────────────
-  const totalUnknown  = unknownSites.length + unknownProjects.length;
+  const totalUnknown  = unknownSites.length + 
+                        (Array.isArray(unknownProjects) ? unknownProjects.length : Object.keys(unknownProjects).length) +
+                        unknownGroups.length;
   const resolvedCount = [
     ...Object.values(siteResolutions),
     ...Object.values(projectResolutions),
+    ...Object.values(groupResolutions),
   ].filter(r => r?.action).length;
 
   // ── Appliquer les résolutions CREATE puis lancer l'import ──────────────────
@@ -513,6 +637,7 @@ export default function ImportResolutionStep({
 
     const newSites    = [];
     const newProjects = [];
+    const newGroups   = [];
 
     try {
       // 1. Créer les sites en mode CREATE
@@ -531,21 +656,38 @@ export default function ImportResolutionStep({
       // 2. Créer les projets en mode CREATE
       for (const [csvName, r] of Object.entries(projectResolutions)) {
         if (r.action === ACTION_CREATE) {
-          const created = await projectService.create({
-            name:        (r.projectName || csvName).trim(),
-            description: "Créé depuis l'import CSV développeurs",
-            is_active:   true,
+          if (!defaultGitlabConfigId) {
+            throw new Error("Instance GitLab par défaut manquante. Veuillez en sélectionner une dans les options d'import.");
+          }
+          const created = await projectService.createFromImport({
+            name:              (r.projectName || csvName).trim(),
+            gitlab_project_id: r.gitlabProjectId ? parseInt(r.gitlabProjectId, 10) : null,
+            gitlab_config_id:  parseInt(defaultGitlabConfigId, 10),
+            // Associer au site par défaut s'il existe
+            site_ids:          defaultSiteId ? [parseInt(defaultSiteId, 10)] : [],
           });
           newProjects.push({ csvName, created });
         }
       }
 
+      // 3. Créer les groupes en mode CREATE
+      for (const [csvName, r] of Object.entries(groupResolutions)) {
+        if (r.action === ACTION_CREATE) {
+          const created = await developerService.createGroup({
+            name: (r.groupName || csvName).trim(),
+            description: "Créé depuis l'import CSV développeurs",
+          });
+          newGroups.push({ csvName, created });
+        }
+      }
+
       setAppliedSites(newSites);
       setAppliedProjects(newProjects);
+      setAppliedGroups(newGroups);
       setApplyStatus("done");
 
       // Notifier le parent avec le détail complet
-      onResolved?.({
+      const finalResolutions = {
         sites: {
           ...siteResolutions,
           ...Object.fromEntries(newSites.map(s => [
@@ -558,7 +700,20 @@ export default function ImportResolutionStep({
             p.csvName, { action: "created", id: p.created.id, name: p.created.name }
           ])),
         },
-      });
+        groups: {
+          ...groupResolutions,
+          ...Object.fromEntries(newGroups.map(g => [
+            g.csvName, { action: "created", id: g.created.id, name: g.created.name }
+          ])),
+        },
+      };
+
+      onResolved?.(finalResolutions);
+      
+      // ✅ FIX: Passer les résolutions directement au parent pour l'import final
+      // Évite le bug de synchronisation d'état (page blanche)
+      setSubmitting(false);
+      onConfirm?.(finalResolutions);
 
     } catch (err) {
       setApplyStatus("error");
@@ -600,28 +755,6 @@ export default function ImportResolutionStep({
 
         <div className="imp-res-body">
 
-          {/* Barre de progression */}
-          <div className="imp-res-progress">
-            <i className="ri-checkbox-circle-line"
-              style={{ color: "#059669", fontSize: 16, flexShrink: 0 }}></i>
-            <span style={{ color: "#065F46", fontWeight: 600, whiteSpace: "nowrap" }}>
-              {resolvedCount} / {totalUnknown} résolus
-            </span>
-            <div className="imp-res-progress-bar-wrap">
-              <div className="imp-res-progress-bar"
-                style={{ width: `${totalUnknown > 0 ? (resolvedCount / totalUnknown) * 100 : 0}%` }}>
-              </div>
-            </div>
-          </div>
-
-          {/* Avertissement validation MAP */}
-          {!isValid() && (
-            <div className="imp-res-validation-hint">
-              <i className="ri-error-warning-line flex-shrink-0"></i>
-              Sélectionnez un site ou projet existant pour chaque action "Mapper".
-            </div>
-          )}
-
           {/* Résolution des sites */}
           {unknownSites.length > 0 && (
             <div className="mb-4">
@@ -642,13 +775,13 @@ export default function ImportResolutionStep({
           )}
 
           {/* Résolution des projets */}
-          {unknownProjects.length > 0 && (
+          {Object.keys(unknownProjects).length > 0 && (
             <div className="mb-2">
               <p className="imp-res-section-title">
                 <i className="ri-folder-2-line" style={{ color: "#4F46E5" }}></i>
-                Projets introuvables ({unknownProjects.length})
+                Projets introuvables ({Object.keys(unknownProjects).length})
               </p>
-              {unknownProjects.map(name => (
+              {Object.entries(unknownProjects).map(([name, gid]) => (
                 <ProjectResolutionCard
                   key={name}
                   name={name}
@@ -660,8 +793,27 @@ export default function ImportResolutionStep({
             </div>
           )}
 
+          {/* Résolution des groupes */}
+          {unknownGroups.length > 0 && (
+            <div className="mb-2">
+              <p className="imp-res-section-title">
+                <i className="ri-team-line" style={{ color: "#7E22CE" }}></i>
+                Groupes introuvables ({unknownGroups.length})
+              </p>
+              {unknownGroups.map(name => (
+                <GroupResolutionCard
+                  key={name}
+                  name={name}
+                  existingGroups={existingGroups}
+                  resolution={groupResolutions[name]}
+                  onChange={r => setGroupResolutions(prev => ({ ...prev, [name]: r }))}
+                />
+              ))}
+            </div>
+          )}
+
           {/* Banneau entités créées */}
-          {applyStatus === "done" && (appliedSites.length > 0 || appliedProjects.length > 0) && (
+          {applyStatus === "done" && (appliedSites.length > 0 || appliedProjects.length > 0 || appliedGroups.length > 0) && (
             <div className="imp-res-applied-banner">
               <i className="ri-checkbox-circle-line"
                 style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}></i>
@@ -673,9 +825,15 @@ export default function ImportResolutionStep({
                   </p>
                 )}
                 {appliedProjects.length > 0 && (
-                  <p className="mb-0">
+                  <p className="mb-1">
                     <strong>{appliedProjects.length} projet{appliedProjects.length > 1 ? "s" : ""} créé{appliedProjects.length > 1 ? "s" : ""} :</strong>{" "}
                     {appliedProjects.map(p => p.created.name).join(", ")}
+                  </p>
+                )}
+                {appliedGroups.length > 0 && (
+                  <p className="mb-0">
+                    <strong>{appliedGroups.length} groupe{appliedGroups.length > 1 ? "s" : ""} créé{appliedGroups.length > 1 ? "s" : ""} :</strong>{" "}
+                    {appliedGroups.map(g => g.created.name).join(", ")}
                   </p>
                 )}
               </div>

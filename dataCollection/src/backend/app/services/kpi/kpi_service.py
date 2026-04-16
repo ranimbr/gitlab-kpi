@@ -74,14 +74,22 @@ class KpiService:
             excluded = {"period_start", "period_end", "site_id", "project_id"}
             data = {k: v for k, v in metrics.items() if k not in excluded}
 
+            # ✅ résolution automatique du site si non fourni (Senior logic)
+            final_site_id = site_id
+            if final_site_id is None and dev_id is not None:
+                from app.services.kpi.kpi_aggregator import KpiAggregator
+                agg = KpiAggregator(db)
+                final_site_id = agg._get_primary_site_for_developer(dev_id)
+
             # Clés FK
             data["project_id"]    = project_id
             data["period_id"]     = period_id
             data["lot_id"]        = lot_id
-            data["site_id"]       = site_id
+            data["site_id"]       = final_site_id
             data["group_id"]      = group_id
             data["developer_id"]  = dev_id
             data["snapshot_date"] = date(period.year, period.month, 1)
+
 
             snapshot = snapshot_repo.upsert(db, data)
             logger.info(f"KpiSnapshot saved — lot={lot_id} dev={dev_id} project={project_id}")

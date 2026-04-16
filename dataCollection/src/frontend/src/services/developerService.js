@@ -93,6 +93,9 @@ const developerService = {
     if (options.defaultGroupId)
       form.append("default_group_id", String(options.defaultGroupId));
 
+    if (options.defaultGitlabConfigId)
+      form.append("default_gitlab_config_id", String(options.defaultGitlabConfigId));
+
     // Booléens → strings "true"/"false" (FormData ne sérialise pas les booléens)
     form.append("dry_run",                 options.dryRun                ? "true" : "false");
     form.append("create_missing_sites",    options.createMissingSites    ? "true" : "false");

@@ -101,7 +101,11 @@ class DeveloperRepository(BaseRepository[Developer]):
         site_id:          Optional[int] = None,
         gitlab_config_id: Optional[int] = None,
     ) -> List[Developer]:
-        q = db.query(Developer).options(joinedload(Developer.group))
+        q = db.query(Developer).options(
+            joinedload(Developer.group),
+            joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
+            joinedload(Developer.project_associations).joinedload(DeveloperProject.project)
+        )
 
         if tab == "validated":
             q = q.filter(
