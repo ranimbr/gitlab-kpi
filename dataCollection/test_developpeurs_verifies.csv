@@ -1,5 +1,0 @@
-name,email,gitlab_username,sites,projects,group
-Axel von Bertoldi,ayufan@gitlab.com,ayufan,Paris,gitlab-org/gitlab-runner:250833,Maintainers
-Kamil Trzciński,kamil@gitlab.com,kamil,Paris,gitlab-org/gitlab-runner:250833,Engineers
-Tomasz Maczukin,tomasz@maczukin.pl,tmaczukin,Poland,gitlab-org/gitlab-runner:250833,Integrations
-Pedro Pombeiro,pedro@gitlab.com,pedropombeiro,Madrid,gitlab-org/gitlab-runner:250833,Maintainers

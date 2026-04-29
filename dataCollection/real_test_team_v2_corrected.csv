@@ -1,7 +1,0 @@
-name,email,gitlab_username,sites,projects,group
-S. Selhorn,sselhorn@gitlab.com,sselhorn,Tunis,gitlab-org/gitlab-docs:1794617,Squad A
-D. Joshi,djoshi@gitlab.com,djoshi,Paris,"gitlab-com/runbooks:1148549, gitlab-org/gitlab-docs:1794617",Squad A
-Stan Hu,stanhu@gitlab.com,stanhu,Tunis,gitlab-com/runbooks:1148549,"Squad A, Squad B"
-J. Jarvis,jarv@gitlab.com,jarv,Paris,gitlab-com/runbooks:1148549,Squad B
-B. Newton,bnewton@gitlab.com,bnewton,Tunis,gitlab-com/runbooks:1148549,Squad B
-S. German,sgerman@gitlab.com,sgerman,Madrid,gitlab-org/gitlab-docs:1794617,Squad B

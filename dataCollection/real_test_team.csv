@@ -1,6 +1,0 @@
-name,email,gitlab_username,sites,projects,group
-Milos Rizzi,mrizzi@gitlab.com,mrizzi,Tunis,template-nextjs:17698544,Frontend
-Kushal Sharma,kushal@gitlab.com,kushalsharma,Paris,template-nextjs:17698544,Frontend
-John Terenzio,jjt@gitlab.com,jjt,Tunis,helm-image:945332,DevOps
-Nicholas Klick,nicholas@gitlab.com,nicholasklick,Paris,helm-image:945332,DevOps
-Nico Meisenzahl,nico@gitlab.com,nmeisenzahl,Tunis,helm-image:945332,DevOps
