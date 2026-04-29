@@ -1,5 +1,5 @@
 """schemas/period.py — inchangé fonctionnellement."""
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, computed_field
 from typing import Optional
 from datetime import datetime
 
@@ -18,19 +18,36 @@ class PeriodCreate(BaseModel):
 
 
 class PeriodResponse(BaseModel):
-    id:         int
-    year:       int
-    month:      int
-    status:     str
-    closed_at:  Optional[datetime]
-    created_at: datetime
+    id:              int
+    year:            int
+    month:           int
+    status:          str
+    created_at:      datetime
+    closed_at:       Optional[datetime] = None
+    closed_by_id:    Optional[int] = None
+    closed_by_name:  Optional[str] = None
+    closure_summary: Optional[dict] = None
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def name(self) -> str:
+        mois_fr = [
+            "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+            "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+        ]
+        return f"{mois_fr[self.month - 1]} {self.year}"
+
+    model_config = {
+        "from_attributes": True,
+    }
 
 
 class PeriodCloseResponse(BaseModel):
-    message:   str
-    period_id: int
-    year:      int
-    month:     int
-    closed_at: Optional[datetime]
+    message:         str
+    period_id:       int
+    year:            int
+    month:           int
+    closed_at:       Optional[datetime]
+    closed_by_id:    Optional[int] = None
+    closure_summary: Optional[dict] = None
+

@@ -9,6 +9,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import siteService      from "../services/siteService";
 import projectService   from "../services/projectService";
 import extractionLotService from "../services/extractionLotService";
+import periodService    from "../services/periodService";
 import LoadingSpinner   from "../components/common/LoadingSpinner";
 import EmptyState       from "../components/common/EmptyState";
 import Pagination       from "../components/common/Pagination";
@@ -100,7 +101,7 @@ const MiniRadar = ({ kpis }) => {
 };
 
 // ─── Component: Developer Card (Premium Grid Pattern) ─────────────────────────
-function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport, loading }) {
+function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport, loading, projectFilter, selectedLotId }) {
   const { isTeamLead } = useAuth();
   
   if (loading) {
@@ -213,16 +214,46 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
           {/* Stats row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: 14, gap: 8 }}>
             {[
-              { label: 'Commits', value: devKpis?.total_commits ?? 0, color: '#4361ee' },
-              { label: 'MRs', value: devKpis?.total_mrs_created ?? 0, color: '#06b6d4' },
-              { label: 'Approb.', value: devKpis?.approved_mr_rate ? `${(devKpis.approved_mr_rate * 100).toFixed(0)}%` : '—', color: '#10b981' },
+              { 
+                label: 'Commits', 
+                value: devKpis?.total_commits ?? (devKpis ? 0 : '—'), 
+                color: '#4361ee',
+                tooltip: 'Voir les commits de ce développeur',
+                link: `/commits?project_id=${projectFilter}&developer_id=${dev.id}${selectedLotId ? `&lot_id=${selectedLotId}` : ''}`
+              },
+              { 
+                label: 'MRs', 
+                value: devKpis?.total_mrs_created ?? (devKpis ? 0 : '—'), 
+                color: '#06b6d4',
+                tooltip: 'Voir les MRs de ce développeur',
+                link: `/merge?project_id=${projectFilter}&developer_id=${dev.id}${selectedLotId ? `&lot_id=${selectedLotId}` : ''}`
+              },
+              { 
+                label: 'Taux MR', 
+                value: devKpis?.approved_mr_rate != null ? `${(devKpis.approved_mr_rate * 100).toFixed(0)}%` : '—', 
+                color: '#10b981',
+                tooltip: 'Taux de MRs approuvées',
+                link: null
+              },
             ].map((s, i) => (
-              <div key={i} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
+              <div key={i} style={{ textAlign: 'center' }} title={s.tooltip}>
+                {s.link ? (
+                  <Link to={s.link} style={{ textDecoration: 'none' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: devKpis ? s.color : '#c8d1db', lineHeight: 1 }}>{s.value}</div>
+                  </Link>
+                ) : (
+                  <div style={{ fontSize: 15, fontWeight: 800, color: devKpis ? s.color : '#c8d1db', lineHeight: 1 }}>{s.value}</div>
+                )}
                 <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 3 }}>{s.label}</div>
               </div>
             ))}
           </div>
+          {/* ✅ [SENIOR] No-data state: show context if KPIs are missing */}
+          {!devKpis && (
+            <div style={{ marginTop: 8, fontSize: 10, color: '#94a3b8', textAlign: 'center', fontStyle: 'italic' }}>
+              Sélectionnez un projet pour voir les KPIs
+            </div>
+          )}
         </div>
 
         {/* Footer CTA */}
@@ -342,20 +373,25 @@ export default function DevelopersHubPage() {
   const [summary,     setSummary]     = useState({ total: 0, validated: 0, pending: 0, bots: 0 });
   const [latestKpis,  setLatestKpis]  = useState({});
   const [alertCounts, setAlertCounts] = useState({});
-  const [leaderboard, setLeaderboard] = useState([]); // ✅ FIX : État manquant
+  const [leaderboard, setLeaderboard] = useState([]);
 
-  // ✅ NOUVEAU : Isolation par Lot
+  // ✅ NOUVEAU : Isolation par Lot et Période
   const [lots, setLots] = useState([]);
   const [selectedLotId, setSelectedLotId] = useState(null);
+  const [periods, setPeriods] = useState([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
 
   const [search,       setSearch]       = useState(searchParams.get("q") || "");
   const [siteFilter,   setSiteFilter]   = useState(searchParams.get("site") || "all");
+  const [groupFilter,  setGroupFilter]  = useState("all");
+  const [validatedOnly, setValidatedOnly] = useState(false);
   const [sortBy,       setSortBy]       = useState("score");
+  const [groups,       setGroups]       = useState([]);
   const [page,         setPage]         = useState(1);
   const perPage = 9;
 
   const [projects,    setProjects]    = useState([]);
-  const [projectFilter, setProjectFilter] = useState(searchParams.get("project") || "all");
+  const [projectFilter, setProjectFilter] = useState(searchParams.get("project") || "");
 
   const [loading,         setLoading]         = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
@@ -365,34 +401,41 @@ export default function DevelopersHubPage() {
   const loadData = useCallback(async (projId = projectFilter) => {
     setLoading(true);
     try {
-      const [devsData, summaryData, sitesData, projsData] = await Promise.all([
+      const [devsData, summaryData, sitesData, projsData, periodsData, groupsData] = await Promise.all([
         developerService.getByTab("all", projId),
         developerService.getSummary(projId),
         siteService.getAll(),
         projectService.getAll(),
+        periodService.getAll(),
+        developerService.getGroups()
       ]);
 
       setDevelopers(Array.isArray(devsData) ? devsData : []);
       setSummary(summaryData || { total: 0, validated: 0, pending: 0, bots: 0 });
       setSites(Array.isArray(sitesData) ? sitesData : []);
-      setProjects(Array.isArray(projsData) ? projsData : []);
+      setPeriods(Array.isArray(periodsData) ? periodsData : []);
+      setGroups(Array.isArray(groupsData) ? groupsData : []);
+      const projList = Array.isArray(projsData) ? projsData : [];
+      setProjects(projList);
       
-      if (!projectFilter && projsData?.length > 0) {
-        setProjectFilter(String(projsData[0].id));
+      if (!projectFilter && projList.length > 0) {
+        setProjectFilter(String(projList[0].id));
       }
 
-      // Si un lot_id est dans l'URL, on le présélectionne
+      if (!selectedPeriodId && Array.isArray(periodsData) && periodsData.length > 0) {
+        setSelectedPeriodId(periodsData[0].id);
+      }
+
       const urlLotId = searchParams.get("lot_id");
       if (urlLotId) setSelectedLotId(parseInt(urlLotId));
     } catch { /* err */ } 
     finally { setLoading(false); }
-  }, [searchParams, projectFilter]);
+  }, [searchParams, projectFilter, selectedPeriodId]);
 
   useEffect(() => { 
     loadData(projectFilter); 
-  }, [projectFilter]); // ✅ Reload developers when project changes
+  }, [projectFilter]);
 
-  // ✅ NOUVEAU : Charger les lots quand le projet change
   useEffect(() => {
     if (!projectFilter) { setLots([]); return; }
     extractionLotService.getAll(projectFilter)
@@ -404,7 +447,12 @@ export default function DevelopersHubPage() {
     if (!projectFilter || projectFilter === "all") return;
     setLoadingLeaderboard(true);
 
-    developerService.getLeaderboard(projectFilter, { limit: 50, lotId: selectedLotId })
+    developerService.getLeaderboard(projectFilter, { 
+      limit: 50, 
+      lotId: selectedLotId,
+      periodId: selectedPeriodId,
+      siteId: siteFilter !== "all" ? siteFilter : null
+    })
       .then(lb => {
         setLeaderboard(lb?.entries || []);
         const kpiMap = {};
@@ -422,10 +470,8 @@ export default function DevelopersHubPage() {
       .catch(() => { setLeaderboard([]); setLatestKpis({}); })
       .finally(() => setLoadingLeaderboard(false));
 
-    // Phase 4: Fetch alert counts for all developers
     developerService.getByTab("validated").then(devs => {
       const allDevs = Array.isArray(devs) ? devs : [];
-      // Fetch alerts for first 30 developers (performance limit)
       Promise.all(allDevs.slice(0, 30).map(d => 
         developerService.getDeveloperAlerts(d.id).then(alerts => ({ id: d.id, count: (alerts || []).length })).catch(() => ({ id: d.id, count: 0 }))
       )).then(results => {
@@ -434,7 +480,7 @@ export default function DevelopersHubPage() {
         setAlertCounts(map);
       });
     });
-  }, [projectFilter, selectedLotId]);
+  }, [projectFilter, selectedLotId, selectedPeriodId, siteFilter]);
 
   useEffect(() => { setPage(1); }, [search, siteFilter, sortBy, projectFilter]);
 
@@ -510,36 +556,51 @@ export default function DevelopersHubPage() {
                 </div>
               </div>
               <div className="col-md-auto ms-auto d-flex gap-2">
-                <select className="form-select form-select-sm" value={projectFilter} onChange={e => setProjectFilter(e.target.value)} style={{ width: 140 }}>
-                  <option value="" disabled>Choix du projet</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <select className="form-select form-select-sm" value={projectFilter} onChange={e => setProjectFilter(e.target.value)} style={{ width: 160 }}>
+                  <option value="all">Tous les projets</option>
+                  {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
                 </select>
-                {/* ✅ NOUVEAU : Sélecteur de session (Lot) */}
-                {lots.length > 0 && (
-                  <select className="form-select form-select-sm border-primary" 
-                    value={selectedLotId || ""} 
-                    onChange={e => setSelectedLotId(e.target.value ? Number(e.target.value) : null)} 
-                    style={{ width: 140, fontWeight: 600 }}>
-                    <option value="">🚀 Session actuelle</option>
-                    {lots.map(l => (
-                      <option key={l.id} value={l.id}>
-                        Lot #{l.id} ({new Date(l.created_at).toLocaleDateString()})
-                      </option>
-                    ))}
-                  </select>
-                )}
+
+                {/* Période Selector */}
+                <select className="form-select form-select-sm" 
+                  value={selectedPeriodId || ""} 
+                  onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)} 
+                  style={{ width: 140 }}>
+                  <option value="">Toutes périodes</option>
+                  {periods.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.month}/{p.year}
+                    </option>
+                  ))}
+                </select>
+
                 <select className="form-select form-select-sm" value={siteFilter} onChange={e => setSiteFilter(e.target.value)} style={{ width: 140 }}>
                   <option value="all">Tous les sites</option>
                   {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+
+                <select className="form-select form-select-sm" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} style={{ width: 140 }}>
+                  <option value="all">Toutes les équipes</option>
+                  {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+
                 <select className="form-select form-select-sm" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ width: 160 }}>
                   <option value="score">KPI Score ↓</option>
+                  <option value="commits">Commits ↓</option>
+                  <option value="mrs">Merge Requests ↓</option>
                   <option value="name">Nom A→Z</option>
-                  <option value="recent">Recents</option>
+                  <option value="recent">Inscriptions récentes</option>
                 </select>
-                <button className="btn btn-soft-danger btn-sm" onClick={() => { setSearch(""); setSiteFilter("all"); setProjectFilter(""); setSelectedLotId(null); }} title="Réinitialiser">
+
+                <div className="form-check form-switch ms-2 d-flex align-items-center gap-2">
+                  <input className="form-check-input" type="checkbox" id="validatedSwitch" checked={validatedOnly} onChange={e => setValidatedOnly(e.target.checked)} />
+                  <label className="form-check-label fs-11 fw-bold text-muted mb-0" htmlFor="validatedSwitch">VALIDÉS SEULS</label>
+                </div>
+
+                <button className="btn btn-soft-danger btn-sm ms-auto" onClick={() => { setSearch(""); setSiteFilter("all"); setGroupFilter("all"); setProjectFilter(""); setSelectedLotId(null); setSelectedPeriodId(null); setValidatedOnly(false); }} title="Réinitialiser">
                   <i className="ri-refresh-line"></i>
                 </button>
+                
                 {isTeamLead && isTeamLead() && (
                   <>
                     <Link to="/developers/compare" className="btn btn-soft-info btn-sm d-flex align-items-center gap-1" style={{ fontWeight: 600 }}>
@@ -589,6 +650,8 @@ export default function DevelopersHubPage() {
                         index={idx} 
                         onShowReport={setSelectedDevId}
                         loading={false}
+                        projectFilter={projectFilter}
+                        selectedLotId={selectedLotId}
                       />
                     ))
                   )}

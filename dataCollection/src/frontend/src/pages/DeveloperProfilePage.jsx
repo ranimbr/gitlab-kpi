@@ -240,16 +240,15 @@ export default function DeveloperProfilePage() {
         // Calcul du snapshot précédent pour les deltas
         const currentIndex = snaps.findIndex(s => s.period_id === parseInt(targetPeriodId));
         setPrevSnap(currentIndex > 0 ? snaps[currentIndex - 1] : null);
-      } else if (selectedPid === "all" && projects.length > 0) {
-        // "Tous les projets" — agrège automatiquement depuis le premier projet disponible
-        // On fetch le summary depuis tous les projets et on prend le cumulé
-        const firstPid = projects[0]?.id;
-        if (firstPid) {
-          const summ = await analyticsService.getDeveloperSummary(firstPid, parseInt(id)).catch(() => null);
-          setSummary(summ);
-          const snap = await analyticsService.getLatest(firstPid, { developerId: parseInt(id) }).catch(() => null);
-          setSnapshot(snap);
-        }
+      } else if (selectedPid === "all") {
+        // ✅ [SENIOR FIX] Properly aggregate summary across ALL projects
+        const summ = await analyticsService.getDeveloperSummary(null, parseInt(id)).catch(() => null);
+        setSummary(summ);
+        
+        // Take latest snapshot across all projects
+        const snap = await analyticsService.getLatest("all", { developerId: parseInt(id) }).catch(() => null);
+        setSnapshot(snap);
+        
         setPeriods([]);
         setPrevSnap(null);
       }
@@ -262,37 +261,37 @@ export default function DeveloperProfilePage() {
   if (loading) return <LoadingSpinner fullPage text="Chargement du profil..." />;
   if (!developer) return <EmptyState title="Profil introuvable" />;
 
-  const kpis = summary ? [
+  const kpis = [
     { 
       title: "Mentorat (Commentaires)", 
-      value: summary.total_comments ?? 0, 
+      value: summary?.total_comments ?? 0, 
       icon: "ri-chat-4-line",   
       color: "primary", 
       delta: snapshot ? { value: `${snapshot.total_comments ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
     },
     { 
       title: "Revues de code",    
-      value: summary.total_reviews ?? 0, 
+      value: summary?.total_reviews ?? 0, 
       icon: "ri-eye-line", 
       color: "info", 
       delta: snapshot ? { value: `${snapshot.total_reviews ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
     },
     { 
       title: "MRs Créées", 
-      value: summary.total_mrs_created ?? 0, 
+      value: summary?.total_mrs_created ?? 0, 
       icon: "ri-git-pull-request-line", 
       color: "success", 
       delta: snapshot ? { value: `${snapshot.total_mrs_created ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
     },
     { 
       title: "Score Global",   
-      value: fmt((summary.developer_score || 0) * 100, 0), 
-      unit: " pts", 
+      value: summary ? fmt((summary.developer_score || 0) * 100, 0) : "—", 
+      unit: summary ? " pts" : "", 
       icon: "ri-medal-line", 
       color: "warning", 
-      delta: deltaInfo(snapshot?.developer_score, prevSnap?.developer_score) // Le score dépend toujours de la période !
+      delta: deltaInfo(snapshot?.developer_score, prevSnap?.developer_score)
     }
-  ] : [];
+  ];
 
   return (
     <div className="page-content">
@@ -347,39 +346,58 @@ export default function DeveloperProfilePage() {
                        })()}
                     </div>
                   </div>
-                  <div className="col-xl-4 text-sm-end">
-                     <div className="d-flex flex-wrap flex-sm-nowrap justify-content-sm-end gap-2">
-                        <div style={{ width: 180 }}>
+                  <div className="col-xl-auto">
+                    <div className="d-flex flex-wrap justify-content-xl-end gap-2 mb-3">
+                       <Link to={`/commits?developer_id=${id}&project_id=${selectedPid || 'all'}`} 
+                          className="btn btn-soft-primary d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
+                          <i className="ri-history-line"></i> Commits
+                       </Link>
+                       <Link to={`/merge?developer_id=${id}&project_id=${selectedPid || 'all'}`} 
+                          className="btn btn-soft-info d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
+                          <i className="ri-git-merge-line"></i> MRs
+                       </Link>
+                       <button className="btn btn-primary d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold" onClick={() => setExportingPdf(true)}>
+                          <i className="ri-file-pdf-line"></i> PDF
+                       </button>
+                    </div>
+                    <div className="d-flex flex-wrap flex-sm-nowrap justify-content-sm-end gap-2">
+                        <div style={{ width: 160 }}>
                            <label className="fs-11 fw-bold text-muted text-uppercase mb-1 d-block">Période</label>
                            <select className="form-select form-select-sm border-light"
                              value={selectedPeriodId} onChange={e => setSelectedPeriodId(e.target.value)}>
-                             <option value="">Dernière période</option>
+                             <option value="">Dernière</option>
                              {periods.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                            </select>
                         </div>
-                        <div style={{ width: 180 }}>
+                        <div style={{ width: 160 }}>
                            <label className="fs-11 fw-bold text-muted text-uppercase mb-1 d-block">Projet</label>
                            <select className="form-select form-select-sm border-light"
                              value={selectedPid} onChange={e => setSelectedPid(e.target.value)}>
-                             <option value="all">Tous les projets</option>
+                             <option value="all">Global</option>
                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                            </select>
                         </div>
-                     </div>
-                  </div>
+                    </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* KPI Cards */}
-        {summary ? (
-          <div className="row g-3 mb-4">
-            {kpis.map((k, i) => <KpiCard key={i} {...k} />)}
+        {/* KPI Cards — Toujours affichées pour la structure */}
+        <div className="row g-3 mb-4">
+          {kpis.map((k, i) => <KpiCard key={i} {...k} />)}
+        </div>
+
+        {!summary && (
+          <div className="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center">
+            <i className="ri-information-line fs-20 me-2"></i>
+            <div>
+              <strong>Données partielles :</strong> Aucune statistique agrégée n'est disponible pour ce projet/période. 
+              <Link to="/extraction" className="alert-link ms-2">Lancer une extraction</Link>
+            </div>
           </div>
-        ) : (
-          <div className="alert alert-info border-0 shadow-sm mb-4"><i className="ri-information-line me-2"></i>Aucune donnée disponible pour ce développeur.</div>
         )}
 
         {/* Phase 5: Monthly Evolution Chart */}
@@ -432,7 +450,14 @@ export default function DeveloperProfilePage() {
                 <h4 className="card-title mb-0"><i className="ri-radar-line me-2 text-info"></i>Analyse Multidimensionnelle</h4>
               </div>
               <div className="card-body d-flex flex-column justify-content-center pt-0">
-                {summary ? <ScoreRadarChart snapshot={summary} height={300} /> : <div className="text-center py-5 text-muted">Données insuffisantes</div>}
+                {summary ? (
+                  <ScoreRadarChart snapshot={summary} height={300} />
+                ) : (
+                  <div className="text-center py-5 text-muted opacity-50">
+                    <i className="ri-radar-line fs-1 d-block mb-2"></i>
+                    Données insuffisantes
+                  </div>
+                )}
                 <div className="text-center mt-3 p-3 bg-light rounded-3">
                    <h4 className="fw-bold mb-0 text-primary">{Math.round((summary?.developer_score || 0) * 100)} pts</h4>
                    <p className="text-muted fs-12 mb-0">Score de Compétences (All-Time)</p>

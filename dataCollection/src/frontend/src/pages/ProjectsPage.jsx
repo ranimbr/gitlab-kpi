@@ -141,7 +141,7 @@ export default function ProjectsPage() {
 
   const load=useCallback(()=>{
     setLoading(true);
-    api.get("/projects/").then(res=>{ const data=Array.isArray(res.data)?res.data:(res.data?.items??[]); setProjects(data); }).catch(()=>{}).finally(()=>setLoading(false));
+    api.get("/projects").then(res=>{ const data=Array.isArray(res.data)?res.data:(res.data?.items??[]); setProjects(data); }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 
   useEffect(()=>{ load(); },[load]);

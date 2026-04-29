@@ -55,14 +55,20 @@ def _build_project_response(db: Session, project: Project) -> ProjectResponse:
     """Construit ProjectResponse avec la liste des sites associés (M2M)."""
     from app.schemas.project import SiteInfo
 
-    site_ids  = project_site_repo.get_site_ids_for_project(db, project.id)
+    # Logic Senior : Fusionner les sites explicitement configurés ET les sites découverts via les développeurs
+    explicit_ids  = project_site_repo.get_site_ids_for_project(db, project.id)
+    discovered_ids = project_site_repo.get_discovered_site_ids(db, project.id)
+    all_site_ids   = list(set(explicit_ids) | set(discovered_ids))
+    
     sites_out = []
-    for sid in site_ids:
+    for sid in all_site_ids:
         site_obj = site_repo.get_by_id(db, sid)
-        sites_out.append(SiteInfo(
-            site_id   = sid,
-            site_name = site_obj.name if site_obj else None,
-        ))
+        if site_obj and site_obj.is_active:
+            sites_out.append(SiteInfo(
+                site_id   = sid,
+                site_name = site_obj.name,
+            ))
+
 
     return ProjectResponse(
         id                = project.id,
@@ -303,18 +309,38 @@ def remove_site_from_project(
 
 @router.get("/{project_id}/commits", response_model=List[CommitResponse])
 def get_project_commits(
-    project_id:            int,
-    limit:                 int           = Query(2000, ge=1, le=5000),
+    project_id:            str,
+    limit:                 int           = Query(100, ge=1, le=5000),
     offset:                int           = Query(0, ge=0),
     lot_id:                Optional[int] = Query(None, description="Filtrer par session d'extraction"),
-    exclude_merge_commits: bool          = Query(False, description="Exclure les merge commits (True pour KPI, False pour affichage)"),
+    period_id:             Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
+    exclude_merge_commits: bool          = Query(False, description="Exclure les merge commits"),
     db:                    Session       = Depends(get_db),
     current_user:          AppUser       = Depends(get_current_user),
 ):
-    if not project_repo.get_by_id(db, project_id):
+    # Mapping Senior : support pour "all" ou ID numérique
+    p_id = None if project_id == "all" else int(project_id)
+    
+    if p_id and not project_repo.get_by_id(db, p_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
+    
+    # Priorité 1 : Recherche unifiée par Période (Modern)
+    if period_id is not None:
+        return commit_repo.get_by_period_paginated(
+            db, period_id, p_id, limit, offset,
+            exclude_merge_commits=exclude_merge_commits
+        )
+    
+    # Priorité 2 : Recherche par Lot (Legacy/Debug)
+    if not p_id:
+        # [SENIOR FIX] "Toutes les périodes" = retourner TOUS les commits, pas juste la dernière période
+        return commit_repo.get_all_paginated(
+            db, project_id=None, limit=limit, offset=offset,
+            exclude_merge_commits=exclude_merge_commits
+        )
+
     return commit_repo.get_project_commits_paginated(
-        db, project_id, limit, offset,
+        db, p_id, limit, offset,
         lot_id=lot_id,
         exclude_merge_commits=exclude_merge_commits,
     )
@@ -322,20 +348,57 @@ def get_project_commits(
 
 @router.get("/{project_id}/merge-requests", response_model=List[MergeRequestResponse])
 def get_project_mrs(
-    project_id:    int,
-    limit:         int  = Query(2000, ge=1, le=5000),
+    project_id:    str,
+    limit:         int  = Query(100, ge=1, le=5000),
     offset:        int  = Query(0, ge=0),
     exclude_draft: bool = Query(True),
     lot_id:        Optional[int] = Query(None, description="Filtrer par session d'extraction"),
+    period_id:     Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
     db:            Session = Depends(get_db),
     current_user:  AppUser = Depends(get_current_user),
 ):
-    if not project_repo.get_by_id(db, project_id):
+    # Mapping Senior : support pour "all" ou ID numérique
+    p_id = None if project_id == "all" else int(project_id)
+
+    if p_id and not project_repo.get_by_id(db, p_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
     
-    # Si on demande un lot spécifique, on ignore le filtre simple de mr_repo
-    # et on utilise la logique avancée avec joinedload
+    # Option 1 : Recherche unifiée par Période (Modern)
+    if period_id is not None:
+        return mr_repo.get_by_period_paginated(
+            db, period_id, p_id, limit, offset
+        )
+    
+    # Option 2 : "Toutes les périodes" — retourner TOUTES les MRs
+    if not p_id:
+        from app.models.merge_request import MergeRequest
+        from app.models.developer import Developer
+        query = (
+            db.query(MergeRequest)
+            .options(
+                joinedload(MergeRequest.developer),
+                joinedload(MergeRequest.reviewer),
+                joinedload(MergeRequest.assignee)
+            )
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .filter(
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            )
+        )
+        if exclude_draft:
+            query = query.filter(MergeRequest.is_draft.is_(False))
+        return (
+            query
+            .order_by(MergeRequest.created_at_gitlab.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
     from app.models.merge_request import MergeRequest
+    from app.models.developer import Developer
     query = (
         db.query(MergeRequest)
         .options(
@@ -343,7 +406,13 @@ def get_project_mrs(
             joinedload(MergeRequest.reviewer),
             joinedload(MergeRequest.assignee)
         )
-        .filter(MergeRequest.project_id == project_id)
+        .join(Developer, MergeRequest.developer_id == Developer.id)
+        .filter(
+            MergeRequest.project_id == p_id,
+            Developer.is_active == True,
+            Developer.is_validated == True,
+            Developer.is_bot == False
+        )
     )
     
     if exclude_draft:

@@ -11,21 +11,23 @@ const developerService = {
 
   // ── Liste & Summary ────────────────────────────────────────────────────────
 
-  getByTab: (tab = "all", projectId = null) => {
+  getByTab: (tab = "all", projectId = null, activeOnly = false) => {
     const params = { tab };
+    if (activeOnly) params.active_only = true;
     if (projectId && projectId !== "all") params.project_id = parseInt(projectId);
     return api.get("/developers", { params }).then(r => r.data);
   },
 
-  getSummary: (projectId = null, siteId = null) => {
+  getSummary: (projectId = null, siteId = null, activeOnly = false) => {
     const params = {};
+    if (activeOnly) params.active_only = true;
     if (projectId && projectId !== "all") params.project_id = parseInt(projectId);
     if (siteId    && siteId    !== "all") params.site_id    = parseInt(siteId);
     return api.get("/developers/summary", { params }).then(r => r.data);
   },
 
-  getAll: () =>
-    api.get("/developers", { params: { tab: "validated" } }).then(r => r.data),
+  getAll: (activeOnly = true) =>
+    api.get("/developers", { params: { tab: "validated", active_only: activeOnly } }).then(r => r.data),
 
   getById: (id) =>
     api.get(`/developers/${id}`).then(r => r.data),
@@ -41,9 +43,10 @@ const developerService = {
 
   // ── Groupes ───────────────────────────────────────────────────────────────
 
-  getGroups: (siteId = null) => {
+  getGroups: (siteId = null, activeOnly = false) => {
     const params = {};
     if (siteId) params.site_id = siteId;
+    if (activeOnly) params.active_only = true;
     return api.get("/developer-groups", { params }).then(r => r.data);
   },
   createGroup: (data) => api.post("/developer-groups",      data).then(r => r.data),

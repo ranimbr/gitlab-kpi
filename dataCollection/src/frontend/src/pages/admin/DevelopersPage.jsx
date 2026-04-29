@@ -321,7 +321,7 @@ function DevEditModal({ dev, sites, groups, onClose, onSave }) {
     email:           dev?.email           || "",
     gitlab_username: dev?.gitlab_username || "",
     primary_site_id: dev?.primary_site_id || "",
-    group_id:        dev?.group_id        || "",
+    group_id:        (dev?.group_ids && dev.group_ids.length > 0) ? dev.group_ids[0] : "",
     is_bot:          dev?.is_bot          || false,
     is_external:     dev?.is_external     || false,
   });
@@ -343,7 +343,7 @@ function DevEditModal({ dev, sites, groups, onClose, onSave }) {
         name:            form.name.trim()            || null,
         email:           form.email.trim()           || null,
         gitlab_username: form.gitlab_username.trim() || null,
-        group_id:        form.group_id ? parseInt(form.group_id) : null,
+        group_ids:       form.group_id ? [parseInt(form.group_id)] : [],
         is_bot:          form.is_bot,
         is_external:     form.is_external,
       };
@@ -678,8 +678,15 @@ function TableView({ paginated, sites, groups, duplicateIds, developers, onValid
                     : <span className="text-muted fs-12">—</span>}
                 </td>
                 <td>
-                  {dev.group_id 
-                    ? <span className="badge fs-11" style={{ background: "#f5f3ff", color: "#6f42c1" }}><i className="ri-group-line me-1"></i>{groups.find(g => g.id === dev.group_id)?.name || "Groupe #"+dev.group_id}</span>
+                  {(dev.group_ids && dev.group_ids.length > 0) 
+                    ? dev.group_ids.map(gid => {
+                        const g = groups.find(x => x.id === gid);
+                        return (
+                          <span key={gid} className="badge fs-11 me-1" style={{ background: "#f5f3ff", color: "#6f42c1" }}>
+                            <i className="ri-group-line me-1"></i>{g?.name || "Groupe #"+gid}
+                          </span>
+                        );
+                      })
                     : <span className="text-muted fs-12">—</span>}
                 </td>
                 <td>
@@ -757,7 +764,12 @@ function CardView({ paginated, sites, groups, duplicateIds, onValidate, onEdit, 
                           : <span className="badge fs-10" style={{ background: "#dcfce7", color: "#15803d" }}>Validé</span>}
                       {dev.is_external && <span className="badge fs-10" style={{ background: "#f5f3ff", color: "#6f42c1" }}>Externe</span>}
                       {site && <span className="badge fs-10" style={{ background: "#e0f2fe", color: "#0369a1" }}><i className="ri-map-pin-line me-1"></i>{site.name}</span>}
-                      {dev.group_id && <span className="badge fs-10" style={{ background: "#f5f3ff", color: "#6f42c1" }}><i className="ri-group-line me-1"></i>{groups.find(g => g.id === dev.group_id)?.name || "Grp."}</span>}
+                      {(dev.group_ids && dev.group_ids.length > 0) && (
+                        <span className="badge fs-10" style={{ background: "#f5f3ff", color: "#6f42c1" }}>
+                          <i className="ri-group-line me-1"></i>
+                          {groups.find(g => g.id === dev.group_ids[0])?.name || "Grp."}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1366,7 +1378,7 @@ export default function DevelopersPage() {
                   <ul className="list-group list-group-flush">
                     {groups.map(group => {
                       const site        = sites.find(s => s.id === group.site_id);
-                      const memberCount = allDevelopers.filter(d => d.group_id === group.id).length;
+                      const memberCount = allDevelopers.filter(d => (d.group_ids || []).includes(group.id)).length;
                       return (
                         <li key={group.id} className="list-group-item px-3 py-3">
                           <div className="d-flex align-items-start gap-2">

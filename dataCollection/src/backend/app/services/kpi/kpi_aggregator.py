@@ -225,14 +225,14 @@ class KpiAggregator:
 
     def _get_project_group_ids(self, project_id: int) -> List[int]:
         """
-        Trouve tous les groupes impliqués dans ce projet (distinct group_id des devs affectés)
+        Trouve tous les groupes impliqués dans ce projet (via M2M developer_group_link)
         """
+        from app.models.developer_group import developer_group_link
         group_ids = (
-            self.db.query(Developer.group_id)
-            .join(DeveloperProject, Developer.id == DeveloperProject.developer_id)
+            self.db.query(developer_group_link.c.group_id)
+            .join(DeveloperProject, developer_group_link.c.developer_id == DeveloperProject.developer_id)
             .filter(DeveloperProject.project_id == project_id)
             .filter(DeveloperProject.is_active.is_(True))
-            .filter(Developer.group_id.isnot(None))
             .distinct()
             .all()
         )

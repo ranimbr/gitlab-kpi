@@ -79,6 +79,32 @@ class ProjectSiteRepository(BaseRepository[ProjectSite]):
             .all()
         ]
 
+    def get_discovered_site_ids(
+        self,
+        db:         Session,
+        project_id: int,
+    ) -> List[int]:
+        """
+        [SENIOR AUTO-DISCOVERY]
+        Récupère les IDs des sites basés sur les développeurs ACTIFS du projet.
+        LOGIQUE : Project -> DeveloperProject -> Developer -> DeveloperSite -> Site
+        """
+        from app.models.developer_project import DeveloperProject
+        from app.models.developer_site    import DeveloperSite
+        
+        return [
+            row.site_id
+            for row in db.query(DeveloperSite.site_id)
+            .join(DeveloperProject, DeveloperProject.developer_id == DeveloperSite.developer_id)
+            .filter(
+                DeveloperProject.project_id == project_id,
+                DeveloperProject.is_active.is_(True)
+            )
+            .distinct()
+            .all()
+        ]
+
+
     def get_project_ids_for_site(
         self,
         db:      Session,

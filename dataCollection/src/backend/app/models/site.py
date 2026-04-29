@@ -61,8 +61,8 @@ class Site(Base):
     )
     developer_groups = relationship(
         "DeveloperGroup",
-        secondary="developer_group_site",
-        back_populates="sites",
+        back_populates="site",
+        cascade="all, delete-orphan",
     )
     dashboards = relationship(
         "Dashboard",

@@ -52,13 +52,20 @@ Tout le reste est identique à la version précédente.
             .one_or_none()
         )
 
-    def get_all(self, db: Session) -> List[DeveloperGroup]:
-        return (
+    def get_all(self, db: Session, active_only: bool = False) -> List[DeveloperGroup]:
+        q = (
             db.query(DeveloperGroup)
-            .options(joinedload(DeveloperGroup.sites))
-            .order_by(DeveloperGroup.name)
-            .all()
+            .options(joinedload(DeveloperGroup.site))
         )
+        if active_only:
+            # ✅ SENIOR : On ne montre que les groupes ayant au moins un développeur actif/validé
+            q = q.join(DeveloperGroup.developers).filter(
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            ).distinct()
+            
+        return q.order_by(DeveloperGroup.name).all()
 """
 
 # ── VERSION COMPLÈTE DU FICHIER ───────────────────────────────────────────────
@@ -85,7 +92,7 @@ class DeveloperRepository(BaseRepository[Developer]):
         return (
             db.query(Developer)
             .options(
-                joinedload(Developer.group),
+                joinedload(Developer.groups),
                 joinedload(Developer.site_associations),
                 joinedload(Developer.project_associations),
             )
@@ -102,7 +109,7 @@ class DeveloperRepository(BaseRepository[Developer]):
         gitlab_config_id: Optional[int] = None,
     ) -> List[Developer]:
         q = db.query(Developer).options(
-            joinedload(Developer.group),
+            joinedload(Developer.groups),
             joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
             joinedload(Developer.project_associations).joinedload(DeveloperProject.project)
         )
@@ -193,7 +200,7 @@ class DeveloperRepository(BaseRepository[Developer]):
         return {"validated": validated, "pending": pending, "bots": bots, "total": total}
 
     def get_all(self, db: Session, active_only: bool = True) -> List[Developer]:
-        q = db.query(Developer).options(joinedload(Developer.group))
+        q = db.query(Developer).options(joinedload(Developer.groups))
         if active_only:
             q = q.filter(
                 Developer.is_validated.is_(True),
@@ -303,11 +310,27 @@ class DeveloperRepository(BaseRepository[Developer]):
             synchronize_session="fetch",
         )
 
-    def create(self, db: Session, data: dict) -> Developer:
+    def create(self, db: Session, data: dict, group_ids: List[int] = None) -> Developer:
+        # Extraire les groupes s'ils existent
+        groups = []
+        if group_ids:
+            groups = db.query(DeveloperGroup).filter(DeveloperGroup.id.in_(group_ids)).all()
+            
+        # Créer le développeur
         developer = Developer(**data)
+        if groups:
+            developer.groups = groups
+            
         db.add(developer)
         db.flush()
         return developer
+
+    def sync_groups(self, db: Session, developer: Developer, group_ids: List[int]) -> None:
+        """Synchronise la liste des groupes d'un développeur."""
+        if group_ids is not None:
+            groups = db.query(DeveloperGroup).filter(DeveloperGroup.id.in_(group_ids)).all()
+            developer.groups = groups
+            db.flush()
 
 
 # =============================================================================
@@ -319,20 +342,26 @@ class DeveloperGroupRepository(BaseRepository[DeveloperGroup]):
     def __init__(self):
         super().__init__(DeveloperGroup)
 
-    def get_by_site_id(self, db: Session, site_id: int) -> List[DeveloperGroup]:
-        from app.models.site import Site
-        return (
+    def get_by_site_id(self, db: Session, site_id: int, active_only: bool = False) -> List[DeveloperGroup]:
+        q = (
             db.query(DeveloperGroup)
-            .options(joinedload(DeveloperGroup.sites))
-            .filter(DeveloperGroup.sites.any(Site.id == site_id))
-            .order_by(DeveloperGroup.name)
-            .all()
+            .options(joinedload(DeveloperGroup.site))
+            .filter(DeveloperGroup.site_id == site_id)
         )
+        if active_only:
+            # ✅ SENIOR : On ne montre que les groupes ayant au moins un développeur actif/validé
+            q = q.join(DeveloperGroup.developers).filter(
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            ).distinct()
+            
+        return q.order_by(DeveloperGroup.name).all()
 
     def get_by_id(self, db: Session, obj_id: int) -> Optional[DeveloperGroup]:
         return (
             db.query(DeveloperGroup)
-            .options(joinedload(DeveloperGroup.sites))
+            .options(joinedload(DeveloperGroup.site))
             .filter(DeveloperGroup.id == obj_id)
             .one_or_none()
         )
@@ -343,27 +372,33 @@ class DeveloperGroupRepository(BaseRepository[DeveloperGroup]):
     def get_by_manager(self, db: Session, manager_id: int) -> List[DeveloperGroup]:
         return (
             db.query(DeveloperGroup)
-            .options(joinedload(DeveloperGroup.sites))
+            .options(joinedload(DeveloperGroup.site))
             .filter(DeveloperGroup.manager_id == manager_id)
             .all()
         )
 
     def get_all_site_ids(self, db: Session) -> List[int]:
-        from app.models.developer_group import developer_group_site_table
         rows = (
-            db.query(developer_group_site_table.c.site_id)
+            db.query(DeveloperGroup.site_id)
             .distinct()
             .all()
         )
-        return [r.site_id for r in rows]
+        return [r.site_id for r in rows if r.site_id]
 
-    def get_all(self, db: Session) -> List[DeveloperGroup]:
-        return (
+    def get_all(self, db: Session, active_only: bool = False) -> List[DeveloperGroup]:
+        q = (
             db.query(DeveloperGroup)
-            .options(joinedload(DeveloperGroup.sites))
-            .order_by(DeveloperGroup.name)
-            .all()
+            .options(joinedload(DeveloperGroup.site))
         )
+        if active_only:
+            # ✅ SENIOR : On ne montre que les groupes ayant au moins un développeur actif/validé
+            q = q.join(DeveloperGroup.developers).filter(
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            ).distinct()
+            
+        return q.order_by(DeveloperGroup.name).all()
 
     # ── ✅ NOUVEAU v5 ──────────────────────────────────────────────────────────
 
@@ -379,7 +414,24 @@ class DeveloperGroupRepository(BaseRepository[DeveloperGroup]):
             .one_or_none()
         )
 
-    def create_from_import(self, db: Session, name: str) -> DeveloperGroup:
+    def create(self, db: Session, obj_in: dict) -> DeveloperGroup:
+        """
+        Surcharge Senior de la méthode create générique pour assurer l'intégrité.
+        Si site_id est manquant (NULL), on le force sur le premier site disponible.
+        """
+        # On vérifie si site_id est fourni et non-nulle
+        effective_site_id = obj_in.get("site_id")
+        
+        if effective_site_id is None:
+            # Recherche du site par défaut pour éviter le crash (Enterprise patterns)
+            from app.models.site import Site
+            first_site = db.query(Site).order_by(Site.id.asc()).first()
+            if first_site:
+                obj_in["site_id"] = first_site.id
+        
+        return super().create(db, obj_in)
+
+    def create_from_import(self, db: Session, name: str, site_id: Optional[int] = None) -> DeveloperGroup:
         """
         ✅ NOUVEAU : Crée un groupe minimal depuis un import CSV.
 
@@ -396,8 +448,15 @@ class DeveloperGroupRepository(BaseRepository[DeveloperGroup]):
         if existing:
             return existing
 
+        if site_id is None:
+            from app.models.site import Site
+            first_site = db.query(Site).first()
+            if first_site:
+                site_id = first_site.id
+
         group = DeveloperGroup(
             name        = name.strip(),
+            site_id     = site_id,
             manager_id  = None,
             description = (
                 "Créé depuis l'import CSV développeurs — "

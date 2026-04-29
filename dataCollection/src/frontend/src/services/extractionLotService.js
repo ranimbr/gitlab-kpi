@@ -8,5 +8,7 @@ const extractionLotService = {
     return (await api.get("/extraction-lots", { params })).data;
   },
   getById: async (lotId) => (await api.get(`/extraction-lots/${lotId}`)).data,
+  delete:  async (lotId) => (await api.delete(`/extraction-lots/${lotId}`)).data,
+  deleteBulk: async (lotIds) => (await api.post("/extraction-lots/bulk-delete", { lot_ids: lotIds })).data,
 };
 export default extractionLotService;

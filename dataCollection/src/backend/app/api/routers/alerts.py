@@ -62,7 +62,7 @@ def list_developer_alerts(
     return alert_repo.get_by_developer(db, developer_id, unresolved_only=True)
 
 
-@router.get("/", response_model=List[AlertResponse])
+@router.get("", response_model=List[AlertResponse])
 def list_alerts(
     project_id:   Optional[int]            = Query(default=None),
     dashboard_id: Optional[int]            = Query(default=None),

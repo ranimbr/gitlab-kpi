@@ -95,16 +95,13 @@ class DeveloperService:
             "company":         None,
             "is_external":     payload.is_external,
             "onboarding_date": payload.onboarding_date,
-            "group_id":        payload.group_id,
-            "is_active":       payload.is_active,
-            "is_validated":    True,
             "is_bot":          False,
             "auto_created":    False,
             "source":          "manual",
             "created_by":      created_by,
         }
 
-        developer = self.dev_repo.create(db, dev_data)
+        developer = self.dev_repo.create(db, dev_data, group_ids=payload.group_ids)
         db.flush()
 
         for site_assoc in payload.sites:
@@ -142,9 +139,11 @@ class DeveloperService:
         old_value  = {"is_validated": developer.is_validated, "is_bot": developer.is_bot}
         update_data = {"is_validated": payload.is_validated}
         if payload.is_bot     is not None: update_data["is_bot"]     = payload.is_bot
-        if payload.group_id   is not None: update_data["group_id"]   = payload.group_id
 
         self.dev_repo.update(db, developer, update_data)
+        
+        if payload.group_ids is not None:
+            self.dev_repo.sync_groups(db, developer, payload.group_ids)
 
         if payload.sites is not None:
             self.dev_site_repo.sync(
@@ -181,9 +180,12 @@ class DeveloperService:
         if not developer:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Développeur introuvable.")
 
-        update_data = payload.model_dump(exclude_unset=True, exclude={"sites", "projects"})
+        update_data = payload.model_dump(exclude_unset=True, exclude={"sites", "projects", "group_ids"})
         if update_data:
             self.dev_repo.update(db, developer, update_data)
+        
+        if payload.group_ids is not None:
+            self.dev_repo.sync_groups(db, developer, payload.group_ids)
         if payload.sites is not None:
             self.dev_site_repo.sync(
                 db, developer_id,
@@ -365,8 +367,10 @@ class DeveloperService:
             )
 
         # ── Pré-chargement O(1) des référentiels ────────────────────────────
-        all_sites    = {s.name.lower(): s for s in self.site_repo.get_all(db)}
-        all_groups   = {g.name.lower(): g for g in self.group_repo.get_all(db)}
+        all_sites    = {s.name.lower().strip(): s for s in self.site_repo.get_all(db)}
+        all_groups   = {g.name.lower().strip(): g for g in self.group_repo.get_all(db)}
+        
+        logger.info("Import: %d sites et %d groupes chargés en cache.", len(all_sites), len(all_groups))
         
         # Projets : double indexation (Nom et ID GitLab)
         _projects_all = self.project_repo.get_all(db, active_only=False)
@@ -386,19 +390,37 @@ class DeveloperService:
         created_groups_names   : Set[str] = set()
 
         for row_num, row in enumerate(rows, start=2):
-            name      = (row.get("name")           or "").strip()
-            email     = (row.get("email")          or "").strip().lower()
-            username  = (row.get("gitlab_username") or row.get("username") or "").strip()
-            group_csv = (row.get("group")          or "").strip()
+            # ✅ DIAGNOSTIC SENIOR : On log les clés une seule fois
+            if row_num == 2:
+                logger.info("Import DEBUG: Clés détectées dans le CSV: %s", list(row.keys()))
+
+            # ✅ LOGIQUE RESILIENTE (Senior) : On cherche avec une tolérance maximale
+            def get_val(keys):
+                keys_lower = [k.lower().strip() for k in keys]
+                for row_k, val in row.items():
+                    rk_clean = str(row_k).lower().strip()
+                    if rk_clean in keys_lower:
+                        return (str(val) or "").strip()
+                return ""
+
+            name     = get_val(["name", "nom", "full_name"])
+            email    = get_val(["email", "mail", "courriel"]).lower()
+            username = get_val(["gitlab_username", "username", "identifiant", "user"])
+            
+            # Détection flexible de la colonne Groupe
+            group_csv_raw = get_val(["group", "groups", "groupe", "groupes", "equipe", "équipe", "team"])
 
             # ── Validation champs obligatoires ────────────────────────────────
             if not name or not email or not username:
+                logger.warning("Import Ligne %d: Champs manquants (Nom=%s, Email=%s, User=%s)", row_num, name, email, username)
                 error_list.append({
                     "row": row_num, "status": "error",
                     "name": name or None, "email": email or None,
                     "reason": "Champs obligatoires manquants (name, email, gitlab_username)",
                 })
                 continue
+
+            logger.info("Import Ligne %d: Analyse dev %s (%s) | Groupe CSV: '%s'", row_num, name, username, group_csv_raw)
 
             # ── Détection Existant (UPSERT) ───────────────────────────────────
             existing_dev = None
@@ -509,38 +531,47 @@ class DeveloperService:
                         self.project_repo.update(db, proj.id, updates)
                 resolved_projects.append(proj)
 
-            # ── Résolution du groupe ──────────────────────────────────────────
-            resolved_group_id: Optional[int] = None
+            # ── Résolution des groupes ────────────────────────────────────────
+            groups_csv = [g.strip() for g in group_csv_raw.split(",") if g.strip()]
+            resolved_group_ids: List[int] = []
 
-            if group_csv:
-                group = all_groups.get(group_csv.lower())
+            for gname in groups_csv:
+                gname_clean = gname.lower().strip()
+                group = all_groups.get(gname_clean)
+                
                 if group is None:
                     if create_missing_groups:
-                        group = self.group_repo.create_from_import(db, group_csv)
-                        all_groups[group_csv.lower()] = group
-                        created_groups_names.add(group_csv)
-                        logger.info("Import: groupe '%s' créé (ligne %d)", group_csv, row_num)
+                        # On cherche un site_id pour le groupe (le premier trouvé ou default)
+                        site_id_for_group = resolved_sites[0]["site"].id if resolved_sites else default_site_id
+                        if not site_id_for_group:
+                            # Fallback ultime sur n'importe quel site existant
+                            first_s = db.query(Site).first()
+                            site_id_for_group = first_s.id if first_s else None
+                            
+                        group = self.group_repo.create_from_import(db, gname, site_id=site_id_for_group)
+                        db.flush() # Pour avoir l'ID
+                        all_groups[gname_clean] = group
+                        created_groups_names.add(gname)
+                        logger.info("Import: groupe '%s' CRÉÉ et indexé (ligne %d)", gname, row_num)
                     else:
-                        unknown_groups_names.add(group_csv)
-                        row_warnings.append(
-                            f"Groupe '{group_csv}' introuvable — dev mis à jour sans groupe."
-                        )
-                        logger.warning("Import: groupe '%s' introuvable (ligne %d)", group_csv, row_num)
+                        unknown_groups_names.add(gname)
+                        row_warnings.append(f"Groupe '{gname}' introuvable (auto-création OFF).")
+                        logger.warning("Import: groupe '%s' introuvable et non créé (ligne %d)", gname, row_num)
                 if group:
-                    resolved_group_id = group.id
+                    resolved_group_ids.append(group.id)
 
             # Fallback sur default_group_id si aucun groupe résolu
-            if resolved_group_id is None and default_group_id:
-                resolved_group_id = default_group_id
+            if not resolved_group_ids and default_group_id:
+                resolved_group_ids = [default_group_id]
 
             # ── UPSERT du développeur ─────────────────────────────────────────
             try:
                 if existing_dev:
                     developer_id = existing_dev.id
                     
-                    # Mise à jour du groupe si fourni
-                    if resolved_group_id is not None:
-                        existing_dev.group_id = resolved_group_id
+                    # Mise à jour des groupes
+                    if resolved_group_ids:
+                        self.dev_repo.sync_groups(db, existing_dev, resolved_group_ids)
                         
                     # Ajout des sites (sans écraser)
                     if resolved_sites:
@@ -581,10 +612,9 @@ class DeveloperService:
                         "auto_created":    False,
                         "source":          "csv_import",
                         "created_by":      imported_by,
-                        "group_id":        resolved_group_id,
                     }
 
-                    developer = self.dev_repo.create(db, dev_data)
+                    developer = self.dev_repo.create(db, dev_data, group_ids=resolved_group_ids)
                     db.flush()
 
                     if resolved_sites:
@@ -696,9 +726,10 @@ class DeveloperService:
                 if pname not in unknown_projects_data or (unknown_projects_data[pname] is None and p_gitlab_id):
                     unknown_projects_data[pname] = p_gitlab_id
 
-        group_csv = (row.get("group") or "").strip()
-        if group_csv and all_groups.get(group_csv.lower()) is None:
-            unknown_groups_names.add(group_csv)
+        groups_csv = [g.strip() for g in (row.get("group") or "").split(",") if g.strip()]
+        for gname in groups_csv:
+            if all_groups.get(gname.lower()) is None:
+                unknown_groups_names.add(gname)
 
     # =========================================================================
     # VALIDATION EN-TÊTES
@@ -721,11 +752,34 @@ class DeveloperService:
 
     def _parse_file(self, content: bytes, file_type: str) -> List[dict]:
         if file_type == "csv":
-            text   = content.decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(text))
+            # ✅ SENIOR : Chaîne de décodage robuste (UTF8 -> CP1252 -> Latin1)
+            text = None
+            for enc in ["utf-8-sig", "cp1252", "latin-1"]:
+                try:
+                    text = content.decode(enc)
+                    logger.info("Import: Fichier décodé avec succès en %s", enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if not text:
+                raise HTTPException(status_code=400, detail="Encodage du fichier non supporté (utilisez UTF-8)")
+                
+            # Détection auto du délimiteur (virgule ou point-virgule)
+            try:
+                dialect = csv.Sniffer().sniff(text[:1024]) if "," in text or ";" in text else "excel"
+            except:
+                dialect = "excel" # Fallback
+                
+            reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+            
             if reader.fieldnames:
-                self._validate_headers(set(reader.fieldnames))
-            return list(reader)
+                # On normalise les headers dès la lecture
+                return [
+                    {str(k).lower().strip(): v for k, v in row.items() if k}
+                    for row in reader
+                ]
+            return []
         else:
             try:
                 import openpyxl

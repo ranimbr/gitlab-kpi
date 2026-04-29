@@ -455,7 +455,7 @@ export default function DeveloperPerformancePage() {
 
       // 3. All developers in project → scores for percentile
       try {
-        const allDevsRes = await api.get("/admin/developers/", { params: { project_id: pid, page_size: 100 } });
+        const allDevsRes = await api.get("/admin/developers", { params: { project_id: pid, page_size: 100 } });
         const allDevs = allDevsRes.data?.items || allDevsRes.data || [];
         
         const allSnapshots = await Promise.allSettled(

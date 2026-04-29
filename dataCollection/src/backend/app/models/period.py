@@ -3,7 +3,7 @@ models/period.py — version corrigée
 """
 from sqlalchemy import (
     Column, Integer, DateTime, UniqueConstraint,
-    CheckConstraint, Enum, Index,
+    CheckConstraint, Enum, Index, ForeignKey, JSON
 )
 from sqlalchemy.orm import relationship
 import enum
@@ -31,6 +31,13 @@ class Period(Base):
     month     = Column(Integer, nullable=False)
     status    = Column(Enum(PeriodStatusEnum), default=PeriodStatusEnum.open, nullable=False)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # ── [SENIOR GRADE] Audit & Gouvernance ───────────────────────────────────
+    closed_by_id    = Column(Integer, ForeignKey("app_user.id"), nullable=True)
+    closure_summary = Column(JSON, nullable=True, comment="Checklist de validation pré-clôture")
+
+    closed_by       = relationship("AppUser")
+    # ──────────────────────────────────────────────────────────────────────────
 
     extraction_lots = relationship("ExtractionLot", back_populates="period", cascade="all, delete-orphan")
     kpi_snapshots   = relationship("KpiSnapshot",   back_populates="period", cascade="all, delete-orphan")

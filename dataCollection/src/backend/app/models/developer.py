@@ -15,6 +15,7 @@ CORRECTIONS APPLIQUÉES :
 4. Aucune autre modification — modèle était déjà correct.
 """
 
+from typing import Optional, List
 from sqlalchemy import (
     Column, Integer, String, Boolean, ForeignKey,
     Index, DDL, event, Date, DateTime,
@@ -57,11 +58,6 @@ class Developer(Base):
     onboarding_date = Column(Date, nullable=True)
     last_active_at  = Column(DateTime(timezone=True), nullable=True)
 
-    group_id = Column(
-        Integer,
-        ForeignKey("developer_group.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     created_by = Column(
         Integer,
         ForeignKey("app_user.id", ondelete="SET NULL"),
@@ -69,7 +65,12 @@ class Developer(Base):
     )
 
     # ── Relations ────────────────────────────────────────────────────────────
-    group           = relationship("DeveloperGroup", back_populates="developers")
+    # ✅ CHANGEMENT : passage en Many-to-Many
+    groups          = relationship(
+        "DeveloperGroup", 
+        secondary="developer_group_link", 
+        back_populates="developers"
+    )
     created_by_user = relationship(
         "AppUser",
         back_populates="developers_created",
@@ -132,9 +133,54 @@ class Developer(Base):
         foreign_keys="Alert.developer_id",
     )
 
+    # ── Propriétés Dynamiques (Senior Compatibility Layer) ────────────────────
+    
+    @property
+    def primary_site_id(self) -> Optional[int]:
+        """
+        Résout l'ID du site primaire depuis les associations M2M.
+        Indispensable pour le filtrage frontend et les schémas existants.
+        """
+        for assoc in self.site_associations:
+            if assoc.is_primary:
+                return assoc.site_id
+        # Fallback au premier site associé si aucun n'est marqué primaire
+        if self.site_associations:
+            return self.site_associations[0].site_id
+        return None
+
+    @property
+    def group_ids(self) -> List[int]:
+        """
+        Agrège les IDs de tous les groupes (équipes) du développeur.
+        Nécessaire pour les schémas Pydantic.
+        """
+        return [g.id for g in self.groups]
+
+    @property
+    def primary_site_name(self) -> Optional[str]:
+        """Helper pour l'affichage direct."""
+        for assoc in self.site_associations:
+            if assoc.is_primary and assoc.site:
+                return assoc.site.name
+        return None
+
+    @property
+    def site(self) -> Optional[str]:
+        """
+        Alias pour le frontend (CommitsPage, MergePage).
+        Retourne le site primaire ou le premier site trouvé.
+        """
+        name = self.primary_site_name
+        if not name and self.site_associations:
+            # Fallback : prend le premier site si aucun n'est marqué primaire
+            first = self.site_associations[0]
+            if first.site:
+                return first.site.name
+        return name
+
     # ── Index ────────────────────────────────────────────────────────────────
     __table_args__ = (
-        Index("idx_developer_group",          "group_id"),
         Index("idx_developer_active",         "is_active"),
         Index("idx_developer_validated",      "is_validated"),
         Index("idx_developer_bot",            "is_bot"),

@@ -14,7 +14,7 @@
 import axios from "axios";
 
 const BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  import.meta.env.VITE_API_URL || "/api/v1"; // ✅ FIX: Utilise le proxy Vite par défaut
 
 const api = axios.create({
   baseURL: BASE_URL,

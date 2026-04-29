@@ -85,6 +85,10 @@ class ExtractionLot(Base):
     error_message  = Column(Text,        nullable=True)
     # NULL tant que le lot est pending ou running
     completed_at   = Column(DateTime(timezone=True), nullable=True)
+    
+    # ── [PHASE 2] Observabilité Granulaire ────────────────────────────────────
+    step_progress  = Column(Integer,     default=0,  nullable=False)
+    current_action = Column(String(255), nullable=True)
 
     period_id = Column(
         Integer,
@@ -137,6 +141,14 @@ class ExtractionLot(Base):
         back_populates="extraction_lot",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def commit_count(self) -> int:
+        return len(self.commits)
+
+    @property
+    def mr_count(self) -> int:
+        return len(self.merge_requests)
 
     # ── Index et contraintes ─────────────────────────────────────────────────
     __table_args__ = (

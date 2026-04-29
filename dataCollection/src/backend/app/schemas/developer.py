@@ -13,12 +13,14 @@ from app.schemas.enums import ImportStatusEnum, DeveloperSourceEnum
 
 class DeveloperGroupCreate(BaseModel):
     name:        str           = Field(min_length=1, max_length=100)
-    site_ids:    Optional[List[int]] = Field(default=[])
+    site_id:     Optional[int] = Field(default=None, description="ID du site (Nouveau modèle 1-N)")
+    site_ids:    Optional[List[int]] = Field(default=[], description="Maintenu pour compatibilité frontend")
     manager_id:  Optional[int] = None
     description: Optional[str] = Field(default=None, max_length=500)
 
 class DeveloperGroupUpdate(BaseModel):
     name:        Optional[str] = Field(default=None, min_length=1, max_length=100)
+    site_id:     Optional[int] = None
     site_ids:    Optional[List[int]] = None
     manager_id:  Optional[int] = None
     description: Optional[str] = Field(default=None, max_length=500)
@@ -32,7 +34,9 @@ class SiteResponse(BaseModel):
 class DeveloperGroupResponse(BaseModel):
     id:          int
     name:        str
-    sites:       List[SiteResponse] = []
+    site_id:     Optional[int] = None
+    site:        Optional[SiteResponse] = None
+    sites:       List[SiteResponse] = []  # Pour compatibilité
     manager_id:  Optional[int]
     description: Optional[str]
     created_at:  datetime
@@ -54,7 +58,7 @@ class DeveloperCreate(BaseModel):
     company: Optional[str] = Field(default=None, max_length=255)
     is_external:     bool           = Field(default=False)
     onboarding_date: Optional[date] = Field(default=None)
-    group_id: Optional[int] = None
+    group_ids: List[int] = Field(default=[])
     sites:    List[DeveloperSiteAssociation]    = Field(default=[])
     projects: List[DeveloperProjectAssociation] = Field(default=[])
     is_active: bool = True
@@ -80,7 +84,7 @@ class DeveloperUpdate(BaseModel):
     avatar_url:      Optional[str]  = Field(default=None, max_length=512)
     is_external:     Optional[bool] = None
     onboarding_date: Optional[date] = None
-    group_id:        Optional[int]  = None
+    group_ids:       Optional[List[int]]  = None
     is_active:       Optional[bool] = None
     sites:    Optional[List[DeveloperSiteAssociation]]    = None
     projects: Optional[List[DeveloperProjectAssociation]] = None
@@ -90,7 +94,7 @@ class DeveloperValidate(BaseModel):
     is_bot:       Optional[bool] = Field(default=None)
     sites:        Optional[List[DeveloperSiteAssociation]]    = Field(default=None)
     projects:     Optional[List[DeveloperProjectAssociation]] = Field(default=None)
-    group_id:     Optional[int] = Field(default=None)
+    group_ids:     Optional[List[int]] = Field(default=None)
 
     @model_validator(mode="after")
     def validate_single_primary_site(self) -> "DeveloperValidate":
@@ -123,16 +127,30 @@ class DeveloperResponse(BaseModel):
     auto_created:    bool
     onboarding_date: Optional[date]
     last_active_at:  Optional[datetime]
-    group_id:        Optional[int]
+    group_ids:       List[int] = []
     is_active:       bool
     is_validated:    bool
     is_bot:          bool
     source:          str
     created_by:      Optional[int]
     created_at:      datetime
+    site:            Optional[str] = None
     sites:    List[SiteAssociationResponse]    = []
     projects: List[ProjectAssociationResponse] = []
     model_config = {"from_attributes": True}
+
+    @model_validator(mode='after')
+    def compute_site(self) -> 'DeveloperResponse':
+        if not self.site:
+            # On essaie d'extraire le nom du site depuis les associations
+            for assoc in self.sites:
+                if assoc.is_primary and assoc.site_name:
+                    self.site = assoc.site_name
+                    break
+            if not self.site and self.sites:
+                # Fallback sur le premier site rattaché
+                self.site = self.sites[0].site_name
+        return self
 
 class DeveloperSummary(BaseModel):
     id:              int
@@ -144,11 +162,25 @@ class DeveloperSummary(BaseModel):
     is_active:       bool
     is_validated:    bool
     is_bot:          bool
-    group_id:        Optional[int]
+    group_ids:       List[int] = []
     primary_site_id: Optional[int] = None
+    site:            Optional[str] = None
     sites:    List[SiteAssociationResponse]    = []
     projects: List[ProjectAssociationResponse] = []
     model_config = {"from_attributes": True}
+
+    @model_validator(mode='after')
+    def compute_site(self) -> 'DeveloperSummary':
+        if not self.site:
+            # On essaie d'extraire le nom du site depuis les associations
+            for assoc in self.sites:
+                if assoc.is_primary and assoc.site_name:
+                    self.site = assoc.site_name
+                    break
+            if not self.site and self.sites:
+                # Fallback sur le premier site rattaché
+                self.site = self.sites[0].site_name
+        return self
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

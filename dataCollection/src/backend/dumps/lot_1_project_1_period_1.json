@@ -3,20 +3,18 @@
   "project_id": 1,
   "period_id": 1,
   "extraction_type": "MONTHLY",
-  "generated_at": "2026-04-16T09:34:50.051099+00:00",
-  "commits": [],
-  "merge_requests": [
+  "generated_at": "2026-04-29T12:11:35.918318+00:00",
+  "commits": [
     {
-      "gitlab_mr_id": 1,
-      "title": "Update new password",
-      "state": "opened",
-      "is_draft": false,
-      "approved": false,
-      "review_time_hours": null,
-      "source_branch": "update_rami",
-      "target_branch": "feature/sprint1",
-      "developer_id": 2,
-      "reviewer_id": 1
+      "sha": "a1940fa7c9d894c79c6af63a5f9e75af70776baf",
+      "title": "Modifier README.md",
+      "authored_date": "2026-03-26T13:31:05+00:00",
+      "additions": 16,
+      "deletions": 73,
+      "total_changes": 89,
+      "is_merge_commit": false,
+      "developer_id": 2
     }
-  ]
+  ],
+  "merge_requests": []
 }

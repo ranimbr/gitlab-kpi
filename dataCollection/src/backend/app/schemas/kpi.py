@@ -27,19 +27,19 @@ class KpiSnapshotResponse(BaseModel):
     Réponse API pour un snapshot KPI.
     1 ligne = tous les KPIs du triplet (project, period, site/group/developer).
     """
-    id:            int
-    snapshot_date: date
+    id:            Optional[int]  = None
+    snapshot_date: Optional[date] = None
 
     # ── Compteurs bruts ──────────────────────────────────────────────────────
-    total_commits:      int
-    total_mrs_created:  int
-    total_mrs_approved: int
-    total_mrs_merged:   int
+    total_commits:      int = 0
+    total_mrs_created:  int = 0
+    total_mrs_approved: int = 0
+    total_mrs_merged:   int = 0
     total_comments:     int = 0
     total_reviews:      int = 0
     total_mrs_draft:    int = 0
-    nb_developers:      int
-    review_time_hours:  float
+    nb_developers:      int = 0
+    review_time_hours:  float = 0.0
     
     # ✅ METRIQUES ENTERPRISE (Pilotage Stratégique) 🚀
     bus_factor:         int   = 0
@@ -90,8 +90,8 @@ class KpiSnapshotResponse(BaseModel):
     score_rank_in_site: Optional[int]   = None
 
     # ── Clés de contexte ─────────────────────────────────────────────────────
-    project_id:   int
-    period_id:    int
+    project_id:   Optional[int] = None
+    period_id:    Optional[int] = None
     lot_id:       Optional[int] = None
     site_id:      Optional[int] = None
     group_id:     Optional[int] = None
@@ -231,7 +231,7 @@ class DashboardSummaryResponse(BaseModel):
     total_snapshots: int
 
     # Contexte de filtrage actif
-    project_id:   int
+    project_id:   Optional[int] = None
     site_id:      Optional[int] = None
     group_id:     Optional[int] = None
     developer_id: Optional[int] = None

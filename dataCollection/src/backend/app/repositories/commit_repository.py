@@ -51,8 +51,18 @@ class CommitRepository(BaseRepository[Commit]):
     ) -> List[Commit]:
         query = (
             db.query(Commit)
-            .options(joinedload(Commit.developer))
-            .filter(Commit.project_id == project_id)
+            .join(Developer, Commit.developer_id == Developer.id)
+            .options(
+                joinedload(Commit.developer)
+                .joinedload(Developer.site_associations)
+                .joinedload(DeveloperSite.site)
+            )
+            .filter(
+                Commit.project_id == project_id,
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            )
         )
         if exclude_merge_commits:
             query = query.filter(Commit.is_merge_commit.is_(False))
@@ -68,6 +78,91 @@ class CommitRepository(BaseRepository[Commit]):
             .all()
         )
 
+    def get_by_period_paginated(
+        self,
+        db:         Session,
+        period_id:  int,
+        project_id: Optional[int] = None,
+        limit:      int = 50,
+        offset:     int = 0,
+        exclude_merge_commits: bool = True,
+    ) -> List[Commit]:
+        """
+        ✅ SENIOR : Récupération fédérée par période.
+        Permet de voir tous les commits d'un mois (ou d'un projet spécifique ce mois-là)
+        en joignant via ExtractionLot.
+        """
+        from app.models.extraction_lot import ExtractionLot
+        query = (
+            db.query(Commit)
+            .join(Developer, Commit.developer_id == Developer.id)
+            .options(
+                joinedload(Commit.developer)
+                .joinedload(Developer.site_associations)
+                .joinedload(DeveloperSite.site)
+            )
+            .join(ExtractionLot, Commit.extraction_lot_id == ExtractionLot.id)
+            .filter(
+                ExtractionLot.period_id == period_id,
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            )
+        )
+        
+        if project_id is not None:
+            query = query.filter(Commit.project_id == project_id)
+            
+        if exclude_merge_commits:
+            query = query.filter(Commit.is_merge_commit.is_(False))
+
+        return (
+            query
+            .order_by(Commit.authored_date.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+
+    def get_all_paginated(
+        self,
+        db:         Session,
+        project_id: Optional[int] = None,
+        limit:      int = 500,
+        offset:     int = 0,
+        exclude_merge_commits: bool = True,
+    ) -> List[Commit]:
+        """
+        [SENIOR] Retourne TOUS les commits de TOUTES les périodes.
+        Utilisé quand l'utilisateur choisit "Toutes les périodes".
+        """
+        query = (
+            db.query(Commit)
+            .join(Developer, Commit.developer_id == Developer.id)
+            .options(
+                joinedload(Commit.developer)
+                .joinedload(Developer.site_associations)
+                .joinedload(DeveloperSite.site)
+            )
+            .filter(
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            )
+        )
+        if project_id is not None:
+            query = query.filter(Commit.project_id == project_id)
+        if exclude_merge_commits:
+            query = query.filter(Commit.is_merge_commit.is_(False))
+
+        return (
+            query
+            .order_by(Commit.authored_date.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
 
     def count_by_project(self, db: Session, project_id: int) -> int:
         return (

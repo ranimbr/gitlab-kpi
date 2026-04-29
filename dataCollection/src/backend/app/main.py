@@ -130,13 +130,14 @@ app = FastAPI(
     strict_slashes = False,
 )
 
-# ── CORS (FORCED "*" FOR PFE DEMO RELIABILITY) ────────────────────────────────
+# ── CORS (SECURE ORIGIN-BASED POLICY) ─────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["*"],  # ✅ FIX: Allow all for zero-friction Docker demo
-    allow_credentials = True,
-    allow_methods     = ["*"],
-    allow_headers     = ["*"],
+    # Senior Resilience : autorise localhost/127.0.0.1 sur n'importe quel port de dev
+    allow_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?", 
+    allow_credentials  = True,
+    allow_methods      = ["*"],
+    allow_headers      = ["*"],
 )
 
 # ── Routes ────────────────────────────────────────────────────────────────────

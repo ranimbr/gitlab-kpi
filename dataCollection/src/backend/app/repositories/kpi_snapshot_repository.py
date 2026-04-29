@@ -327,11 +327,13 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
         q = (
             db.query(KpiSnapshot)
             .filter(
-                KpiSnapshot.project_id       == project_id,
                 KpiSnapshot.period_id        == period_id,
                 KpiSnapshot.developer_id.isnot(None),   # snapshots individuels uniquement
             )
         )
+        if project_id:
+            q = q.filter(KpiSnapshot.project_id == project_id)
+
         if site_id is not None:
             q = q.filter(KpiSnapshot.site_id == site_id)
         if group_id is not None:

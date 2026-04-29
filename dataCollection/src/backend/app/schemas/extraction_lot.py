@@ -23,6 +23,27 @@ from datetime import datetime
 from app.schemas.enums import ExtractionTypeEnum
 
 
+# ── Objets imbriqués légers (évite de serializer toute l'entité) ──────────────
+
+class DeveloperSummary(BaseModel):
+    """Résumé minimal d'un développeur pour les lots d'extraction."""
+    id:               int
+    name:             Optional[str] = None
+    gitlab_username:  Optional[str] = None
+    site:             Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class UserSummary(BaseModel):
+    """Résumé minimal d'un utilisateur (triggered_by_user)."""
+    id:    int
+    name:  Optional[str] = None
+    email: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class ExtractionLotCreate(BaseModel):
     """
     Body POST /extraction/run.
@@ -71,7 +92,8 @@ class ExtractionLotCreate(BaseModel):
 
 class ExtractionLotResponse(BaseModel):
     """
-    Réponse GET /extraction-lots/{id}.
+    Réponse GET /extraction-lots — inclut les objets imbriqués
+    developer et triggered_by_user pour éviter les lookups côté frontend.
     """
     id:              int
     extraction_type: str = Field(alias="extraction_type")
@@ -85,6 +107,12 @@ class ExtractionLotResponse(BaseModel):
     error_message:   Optional[str]
     created_at:      datetime
     completed_at:    Optional[datetime]
+    commit_count:    int = 0
+    mr_count:        int = 0
+
+    # ✅ AJOUT : objets imbriqués — évite d'afficher "User #1" et "Dev #42"
+    developer:          Optional[DeveloperSummary] = None
+    triggered_by_user:  Optional[UserSummary]      = None
 
     model_config = {
         "from_attributes": True,
@@ -104,3 +132,8 @@ class ExtractionRunResponse(BaseModel):
     period_id:       int
     generated_file:  Optional[str] = None
     md5sum:          Optional[str] = None
+
+
+class BulkDeleteRequest(BaseModel):
+    """Requête de suppression en masse."""
+    lot_ids: List[int]

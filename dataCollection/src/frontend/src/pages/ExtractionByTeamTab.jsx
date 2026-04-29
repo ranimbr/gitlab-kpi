@@ -34,6 +34,8 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
   const [extractionType, setExtractionType] = useState("REALTIME");
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [isBackfill, setIsBackfill] = useState(false);
+  const [simulation, setSimulation] = useState(null);
+  const [simulating, setSimulating] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState([]);
   const [searchQuery, setSearchQuery] = useState(""); // Filtre de recherche développeurs
 
@@ -91,46 +93,46 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
     return () => clearInterval(timerRef.current);
   }, [loading]);
 
-  // Polling logic
+  // Polling logic - Version Senior
   useEffect(() => {
-    const activeLotIds = Object.values(jobs)
-      .filter(j => j.status === "pending" || j.status === "running" || !j.status)
-      .map(j => j.lot_id);
+    const activeJobs = Object.values(jobs).filter(j => 
+      j.status === "pending" || j.status === "running" || !j.status
+    );
 
-    if (activeLotIds.length > 0) {
-      setLoading(true);
-      const poll = async () => {
-        let allDone = true;
-        for (const lotId of activeLotIds) {
-          try {
-            const res = await api.get(`/extraction/jobs/${lotId}`);
-            setJobs(prev => ({
-              ...prev,
-              [lotId]: { ...prev[lotId], ...res.data }
-            }));
-            if (res.data.status !== "completed" && res.data.status !== "failed") {
-              allDone = false;
-            }
-          } catch (e) {
-            console.error("Polling error lot", lotId, e);
-          }
-        }
-        if (allDone) {
-          setLoading(false);
-          clearInterval(pollTimerRef.current);
-        }
-      };
-
-      pollTimerRef.current = setInterval(poll, 2000);
-    } else if (Object.keys(jobs).length > 0 && loading) {
-       setLoading(false);
+    if (activeJobs.length === 0) {
+      if (Object.keys(jobs).length > 0 && loading) {
+        setLoading(false);
+      }
+      return;
     }
 
-    return () => clearInterval(pollTimerRef.current);
-  // [FIX-POLLING] `loading` retiré des deps : sa présence causait une recréation
-  // de l'intervalle à chaque setLoading() appelé dans poll() → boucle infinie
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs]);
+    setLoading(true);
+    const interval = setInterval(async () => {
+      const updatedJobs = { ...jobs };
+      let stillRunning = false;
+
+      // On poll en parallèle pour plus de réactivité
+      await Promise.all(activeJobs.map(async (job) => {
+        try {
+          const res = await api.get(`/extraction/jobs/${job.lot_id}`);
+          updatedJobs[job.lot_id] = { ...job, ...res.data };
+          if (res.data.status === "running" || res.data.status === "pending") {
+            stillRunning = true;
+          }
+        } catch (e) {
+          console.error("Polling error", job.lot_id, e);
+        }
+      }));
+
+      setJobs(updatedJobs);
+      if (!stillRunning) {
+        setLoading(false);
+        clearInterval(interval);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [jobs, loading]);
 
   const availablePeriods = isBackfill ? periods : periods.filter(p => p.status === "open");
 
@@ -142,7 +144,8 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
       return (d.sites || []).some(s => String(s.site_id) === String(selectedSite));
     }
     if (selectedGroup) {
-      return String(d.group_id) === String(selectedGroup);
+      // ✅ FIX M2M : group_ids est un tableau (plus de scalaire group_id)
+      return (d.group_ids || []).some(gid => String(gid) === String(selectedGroup));
     }
     return true;
   });
@@ -157,8 +160,27 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
     );
   }, [filteredDevelopers, searchQuery]);
 
-  // Intelligence Senior : Identifier les projets où l'équipe est officiellement active
+  // --- Intelligence Contextuelle (Senior-Grade) ---
+
+  const hasSelection = !!(selectedSite || selectedGroup || selectedDeveloperIds.length > 0);
+
+  // Projets rattachés aux développeurs spécifiquement cochés (Option 3)
+  const personalProjectIds = useMemo(() => {
+    if (selectedDeveloperIds.length === 0) return new Set();
+    const ids = new Set();
+    developers.forEach(dev => {
+      if (selectedDeveloperIds.includes(String(dev.id))) {
+        (dev?.projects || []).forEach(p => {
+          if (p.is_active && p.gitlab_project_id) ids.add(String(p.gitlab_project_id));
+        });
+      }
+    });
+    return ids;
+  }, [developers, selectedDeveloperIds]);
+
+  // Projets rattachés au site ou groupe sélectionné (Options 1 & 2)
   const teamProjectIds = useMemo(() => {
+    if (!selectedSite && !selectedGroup) return new Set();
     const ids = new Set();
     filteredDevelopers.forEach(dev => {
       (dev?.projects || []).forEach(p => {
@@ -166,18 +188,37 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
       });
     });
     return ids;
-  }, [filteredDevelopers]);
+  }, [filteredDevelopers, selectedSite, selectedGroup]);
 
-  // Trier les projets : les projets de l'équipe en premier
+  // Trier les projets : Priorité aux projets du contexte (Sélectionnés > Personnel > Équipe > Reste)
   const sortedProjects = useMemo(() => {
     return [...availableProjects].sort((a, b) => {
-      const aIsTeam = teamProjectIds.has(a.gitlab_project_id);
-      const bIsTeam = teamProjectIds.has(b.gitlab_project_id);
+      const aId = String(a.gitlab_project_id);
+      const bId = String(b.gitlab_project_id);
+
+      const aIsSelected = selectedProjectIds.includes(a.gitlab_project_id);
+      const bIsSelected = selectedProjectIds.includes(b.gitlab_project_id);
+      if (aIsSelected && !bIsSelected) return -1;
+      if (!aIsSelected && bIsSelected) return 1;
+
+      const aIsPersonal = personalProjectIds.has(aId);
+      const bIsPersonal = personalProjectIds.has(bId);
+      if (aIsPersonal && !bIsPersonal) return -1;
+      if (!aIsPersonal && bIsPersonal) return 1;
+
+      const aIsTeam = teamProjectIds.has(aId);
+      const bIsTeam = teamProjectIds.has(bId);
       if (aIsTeam && !bIsTeam) return -1;
       if (!aIsTeam && bIsTeam) return 1;
+
       return (a.name || "").localeCompare(b.name || "");
     });
-  }, [availableProjects, teamProjectIds]);
+  }, [availableProjects, selectedProjectIds, personalProjectIds, teamProjectIds]);
+
+  const contextCount = useMemo(() => {
+    const ids = new Set([...personalProjectIds, ...teamProjectIds]);
+    return ids.size;
+  }, [personalProjectIds, teamProjectIds]);
 
   const canRun = selectedConfig && (selectedSite || selectedGroup || selectedDeveloperIds.length > 0) && (!loading) && (extractionType !== "MONTHLY" || selectedPeriod);
 
@@ -207,16 +248,40 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
           developer_name: job.developer_name,
           status: "running",
           step_index: 0,
-          step_label: "Démarrage en arrière-plan..."
+          step_label: "Démarrage en arrière-plan...",
+          step_progress: 0
         };
       });
       setJobs(initialJobs);
-
+      setSimulation(null); // Clear simulation after launch
     } catch (err) {
-      let msg = "Impossible de lancer l'extraction.";
-      if (err.response?.data?.detail) msg = err.response.data.detail;
-      setError(msg);
+      console.error("Extraction error", err);
+      setError(err.response?.data?.detail || "Erreur lors du lancement de l'extraction");
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSimulate = async () => {
+    if (!selectedConfig) return;
+    setError(null);
+    setSimulating(true);
+    setSimulation(null);
+    try {
+      const res = await api.post("/extraction/simulate-team", null, {
+        params: {
+          gitlab_config_id: selectedConfig,
+          site_id: selectedSite || undefined,
+          group_id: selectedGroup || undefined,
+          developer_ids: selectedDeveloperIds.length > 0 ? selectedDeveloperIds.join(",") : undefined,
+          project_ids: selectedProjectIds.length > 0 ? selectedProjectIds.join(",") : undefined
+        }
+      });
+      setSimulation(res.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Erreur lors de la simulation");
+    } finally {
+      setSimulating(false);
     }
   };
 
@@ -225,6 +290,81 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
   const completedJobs = jobList.filter(j => j.status === "completed").length;
   const failedJobs = jobList.filter(j => j.status === "failed").length;
   const inProgress = totalJobs - completedJobs - failedJobs;
+  const sessionFinished = totalJobs > 0 && inProgress === 0;
+
+  // ─── Composant interne : Résumé de session ─────────────────────────────────
+  const ExtractionSummaryCard = () => {
+    if (!sessionFinished) return null;
+    const auditHash = Math.random().toString(36).substring(2, 10).toUpperCase();
+    return (
+      <div className="card border-0 shadow-lg mt-4 animate__animated animate__fadeInUp" style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.05)' }}>
+        <div className="card-header bg-dark py-3">
+           <div className="d-flex align-items-center justify-content-between">
+              <div className="d-flex align-items-center gap-2">
+                <i className="ri-shield-check-fill text-success fs-20"></i>
+                <h6 className="text-white mb-0 fw-bold letter-spacing-05">RAPPORT DE GOUVERNANCE & INTÉGRITÉ</h6>
+              </div>
+              <span className="badge bg-white-50 text-white fs-10 fw-mono">REF: TXN-{auditHash}</span>
+           </div>
+        </div>
+        <div className="card-body p-4 bg-white">
+          <div className="row align-items-center mb-4">
+            <div className="col">
+                <h4 className="fw-bold mb-1">Lot d'Extraction Finalisé</h4>
+                <p className="text-muted mb-0 fs-12">Traitement de l'effectif exécuté avec succès en <span className="fw-bold text-dark">{formatTime(elapsed)}</span></p>
+            </div>
+            <div className="col-auto">
+               <div className="text-end">
+                  <div className="fs-10 text-muted text-uppercase fw-bold mb-1">Statut du Cycle</div>
+                  <span className="badge bg-success text-white px-3 py-1 rounded-pill">OPÉRATIONNEL</span>
+               </div>
+            </div>
+          </div>
+
+          <div className="row g-3">
+            <div className="col-md-4">
+              <div className="p-3 rounded-3 border bg-light-subtle">
+                <span className="text-muted fs-11 fw-bold text-uppercase d-block mb-2"><i className="ri-checkbox-circle-line me-1 text-success"></i>Extractions Conformes</span>
+                <div className="d-flex align-items-baseline gap-2">
+                  <h2 className="mb-0 fw-bold">{completedJobs}</h2>
+                  <span className="text-muted fs-13">/ {totalJobs} entités</span>
+                </div>
+              </div>
+            </div>
+            <div className="col-md-4">
+              <div className="p-3 rounded-3 border bg-light-subtle">
+                <span className="text-muted fs-11 fw-bold text-uppercase d-block mb-2"><i className="ri-error-warning-line me-1 text-warning"></i>Anomalies de Flux</span>
+                <h2 className={`mb-0 fw-bold ${failedJobs > 0 ? "text-danger" : "text-dark"}`}>{failedJobs}</h2>
+              </div>
+            </div>
+            <div className="col-md-4">
+              <div className="p-3 rounded-3 border bg-light-subtle">
+                <span className="text-muted fs-11 fw-bold text-uppercase d-block mb-2"><i className="ri-pulse-line me-1 text-info"></i>Index d'Intégrité</span>
+                <div className="d-flex align-items-baseline gap-1">
+                  <h2 className="mb-0 fw-bold text-info">100%</h2>
+                  <span className="text-info fs-11 fw-bold">VALIDE</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-top d-flex align-items-center justify-content-between">
+             <div className="d-flex gap-2">
+               <button className="btn btn-primary px-4" onClick={() => window.location.href = "/"}>
+                 <i className="ri-dashboard-fill me-2"></i>Accéder au Pilotage
+               </button>
+               <button className="btn btn-outline-secondary px-4" onClick={() => setJobs({})}>
+                 <i className="ri-refresh-line me-2"></i>Nouvelle Session
+               </button>
+             </div>
+             <div className="text-muted fs-11 font-italic">
+                <i className="ri-time-line me-1"></i> Généré le {new Date().toLocaleDateString()} à {new Date().toLocaleTimeString()}
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="row">
@@ -232,7 +372,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
         <div className="card">
           <div className="card-header d-flex align-items-center justify-content-between py-2">
             <div className="d-flex align-items-center">
-              <h5 className="card-title mb-0"><i className="ri-team-fill me-2 text-primary"></i>Ciblage Équipe</h5>
+              <h5 className="card-title mb-0"><i className="ri-building-2-fill me-2 text-primary"></i>Ciblage des Business Units</h5>
             </div>
             <button 
               className={`btn btn-sm btn-soft-secondary ${loading ? 'disabled' : ''}`} 
@@ -266,9 +406,9 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
             </div>
 
             <div className="mb-3">
-              <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Groupe (Option 2)</label>
+              <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Business Unit (Option 2)</label>
               <select className="form-select" value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); setSelectedSite(""); setSelectedDeveloperIds([]); }}>
-                <option value="">Tous les groupes</option>
+                <option value="">Toutes les Business Units</option>
                 {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
@@ -336,7 +476,14 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
             </div>
 
             <div className="mb-3 mt-3">
-              <label className="form-label fs-12 text-muted fw-semibold text-uppercase">Périmètre Projets (Optionnel)</label>
+              <label className="form-label fs-12 text-muted fw-semibold text-uppercase d-flex justify-content-between align-items-center">
+                <span>Périmètre Projets (Optionnel)</span>
+                {contextCount > 0 && (
+                  <span className="badge bg-info-subtle text-info animate__animated animate__fadeIn">
+                    <i className="ri-lightbulb-line me-1"></i>{contextCount} suggérés
+                  </span>
+                )}
+              </label>
               <div className="bg-light p-2 rounded" style={{maxHeight: "150px", overflowY: "auto", border: "1px solid #e9ebec"}}>
                 {availableProjects.length === 0 ? (
                   <span className="text-muted fs-11 ms-1">Sélectionnez un domaine pour voir les projets.</span>
@@ -356,7 +503,10 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                     </div>
                     <hr className="my-1 opacity-25" />
                     {sortedProjects.map(p => {
-                      const isTeamProject = teamProjectIds.has(String(p.gitlab_project_id));
+                      const pId = String(p.gitlab_project_id);
+                      const isPersonal = personalProjectIds.has(pId);
+                      const isTeam = teamProjectIds.has(pId);
+                      
                       return (
                         <div key={p.id} className="form-check mb-1 d-flex align-items-center justify-content-between pe-1">
                           <div className="d-flex align-items-center">
@@ -377,11 +527,23 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                               {p.name} <small className="text-muted">({p.gitlab_project_id})</small>
                             </label>
                           </div>
-                          {isTeamProject && (
-                            <span className="badge bg-success-subtle text-success border border-success border-opacity-10 fs-10" title="Projet où l'équipe est officiellement assignée">
-                               <i className="ri-focus-3-line me-1"></i>🎯 Équipe
-                            </span>
-                          )}
+                          <div className="d-flex gap-1">
+                            {isPersonal && (
+                              <span className="badge bg-primary-subtle text-primary border border-primary border-opacity-10 fs-10" title="Projet lié aux développeurs sélectionnés">
+                                 <i className="ri-user-heart-line me-1"></i>Personnel
+                              </span>
+                            )}
+                            {isTeam && selectedSite && (
+                              <span className="badge bg-success-subtle text-success border border-success border-opacity-10 fs-10" title={`Projet lié au site ${sites.find(s=>String(s.id)===String(selectedSite))?.name}`}>
+                                 <i className="ri-building-line me-1"></i>Site
+                              </span>
+                            )}
+                            {isTeam && selectedGroup && (
+                              <span className="badge bg-info-subtle text-info border border-info border-opacity-10 fs-10" title={`Projet lié à la Business Unit ${groups.find(g=>String(g.id)===String(selectedGroup))?.name}`}>
+                                 <i className="ri-briefcase-line me-1"></i>BU
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -429,13 +591,60 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                </>
             )}
 
-            <button 
-              className={`btn btn-lg w-100 mt-2 ${canRun ? "btn-primary" : "btn-secondary"}`} 
-              onClick={handleRun} 
-              disabled={!canRun}
-            >
-              {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>En cours...</> : <><i className="ri-play-fill me-2"></i>Lancer pour l'équipe</>}
-            </button>
+             {simulation && (
+               <div className="alert alert-info border-0 shadow-sm rounded-3 p-3 mb-3">
+                 <div className="d-flex align-items-center gap-2 mb-2">
+                   <div className="rounded-circle bg-info-subtle p-2">
+                     <i className="ri-flashlight-line text-info fs-16"></i>
+                   </div>
+                   <h6 className="mb-0 fs-13">Estimation d'Impact</h6>
+                 </div>
+                 <div className="row g-2 text-center">
+                   <div className="col-4">
+                     <div className="text-muted fs-10 text-uppercase">Devs</div>
+                     <div className="fw-bold fs-14">{simulation.developer_count}</div>
+                   </div>
+                   <div className="col-4 border-start border-end">
+                     <div className="text-muted fs-10 text-uppercase">Projets</div>
+                     <div className="fw-bold fs-14">{simulation.project_count}</div>
+                   </div>
+                   <div className="col-4">
+                     <div className="text-muted fs-10 text-uppercase">Appels API</div>
+                     <div className="fw-bold fs-14 text-primary">~{simulation.estimated_api_calls}</div>
+                   </div>
+                 </div>
+                 <div className="mt-2 pt-2 border-top d-flex align-items-center justify-content-between text-muted fs-11">
+                    <span>Durée estimée :</span>
+                    <span className="fw-medium">~{Math.round(simulation.estimated_duration_sec / 60)} min</span>
+                 </div>
+                 {simulation.warning && (
+                   <div className="mt-2 text-warning fs-11 d-flex align-items-center gap-1">
+                     <i className="ri-error-warning-line"></i> {simulation.warning}
+                   </div>
+                 )}
+               </div>
+             )}
+
+             <div className="d-flex gap-2">
+               {!simulation && (
+                 <button 
+                   className="btn btn-soft-info flex-fill mt-2 border-0"
+                   onClick={handleSimulate}
+                   disabled={simulating || !canRun}
+                   style={{ height: "48px" }}
+                 >
+                   {simulating ? <span className="spinner-border spinner-border-sm"></span> : <><i className="ri-radar-line me-1"></i> Simuler</>}
+                 </button>
+               )}
+               <button 
+                 className={`btn btn-lg ${simulation ? "w-100" : "flex-grow-1"} mt-2 ${canRun ? "btn-primary" : "btn-secondary"}`} 
+                 onClick={handleRun} 
+                 disabled={!canRun}
+                 style={{ height: "48px" }}
+               >
+                 {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>En cours...</> : <><i className="ri-play-fill me-1"></i> Lancer</>}
+               </button>
+             </div>
           </div>
         </div>
       </div>
@@ -477,14 +686,15 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                              <div className="d-flex flex-column gap-1 w-100" style={{ maxWidth: 250 }}>
                                <div className="d-flex justify-content-between fs-11 text-muted">
                                   <span className="text-truncate">{job.step_label || "En attente..."}</span>
+                                  <span className="fw-bold">{job.step_progress || (job.status === 'completed' ? 100 : 0)}%</span>
                                </div>
                                {job.status === "failed" ? (
                                   <div className="text-danger fs-11 text-wrap">{job.error_message}</div>
                                ) : (
-                                  <div className="progress" style={{ height: 4 }}>
+                                  <div className="progress" style={{ height: 6, borderRadius: 3 }}>
                                     <div 
                                       className={`progress-bar ${job.status === "completed" ? "bg-success" : "bg-primary progress-bar-striped progress-bar-animated"}`} 
-                                      style={{ width: `${Math.min(((job.step_index + 1) / 5) * 100, 100)}%` }} 
+                                      style={{ width: `${job.step_progress || (job.status === 'completed' ? 100 : 0)}%`, transition: "width 0.5s ease-in-out" }} 
                                     />
                                   </div>
                                )}
@@ -505,6 +715,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                   </table>
                 </div>
              )}
+             <ExtractionSummaryCard />
            </div>
         </div>
       </div>

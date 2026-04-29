@@ -64,13 +64,24 @@ const avatarColor=(str="")=>{ let h=0; for(let i=0;i<str.length;i++) h=str.charC
 
 const CHART_COLORS=["#405189","#0ab39c","#299cdb","#f7b84b","#f06548","#3577f1"];
 
-const STATE_CFG={
-  merged:{label:"Merged",icon:"ri-git-merge-line",       bg:"#d1f3e0",color:"#0f6848"},
-  opened:{label:"Open",  icon:"ri-git-pull-request-line",bg:"#dce9ff",color:"#1a56db"},
-  closed:{label:"Closed",icon:"ri-close-circle-line",    bg:"#fde8e8",color:"#9b1c1c"},
+const LOT_COLORS = [
+  { bg: "#dce9ff", text: "#1a56db" },
+  { bg: "#d4f5f0", text: "#0a7a6a" },
+  { bg: "#ede9fb", text: "#5b21b6" },
+  { bg: "#fef3dc", text: "#92400e" },
+  { bg: "#fde8e8", text: "#9b1c1c" },
+  { bg: "#e8ecf8", text: "#405189" },
+];
+function getLotColor(lotId) {
+  return LOT_COLORS[(lotId || 0) % LOT_COLORS.length];
+}
+
+// ─── MR State Config ──────────────────────────────────────────────────────────
+const STATE_CFG = {
+  opened: { label: "Open",   icon: "ri-git-pull-request-line", bg: "#e8ecf8", color: "#405189" },
+  merged: { label: "Merged", icon: "ri-git-merge-line",        bg: "#d4f5f0", color: "#0a7a6a" },
+  closed: { label: "Closed", icon: "ri-close-circle-line",     bg: "#fde8e8", color: "#9b1c1c" },
 };
-
-
 
 // ─── MR Detail Modal ──────────────────────────────────────────────────────────
 function MRDetailModal({ mr, onClose }) {
@@ -185,31 +196,27 @@ function FilterTag({ label, onRemove, color="#f0f0f0", textColor="#495057" }) {
 }
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
-function FilterBar({ filters, onChange, projects, authors, activeCount, onReset, availableLots = [], groups = [] }) {
+function FilterBar({ filters, onChange, projects, sites, authors, activeCount, onReset, availableLots = [], availablePeriods = [], groups = [] }) {
   return (
     <div className="card mb-3"><div className="card-body pb-2">
       <div className="row g-2 align-items-end">
         <div className="col-xl-2 col-md-6"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-search-line me-1"></i>Search</label><div className="search-box"><input type="text" className="form-control form-control-sm" placeholder="Titre, développeur, projet…" value={filters.search} onChange={e=>onChange("search",e.target.value)}/><i className="ri-search-line search-icon"></i></div></div>
         
         <div className="col-xl-2 col-md-3">
-          <label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-stack-line me-1"></i>Session (Lot)</label>
-          <select className="form-select form-select-sm" value={filters.lot} onChange={e=>onChange("lot",e.target.value)}>
-            <option value="all">Toutes les extractions</option>
-            {availableLots.map(l => (
-              <option key={l.id} value={l.id}>
-                {l.extraction_type} - {l.period?.name || `Lot #${l.id}`} ({new Date(l.created_at).toLocaleDateString()})
-              </option>
+          <label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-calendar-check-line me-1"></i>Période (Mois)</label>
+          <select className="form-select form-select-sm" value={filters.period} onChange={e=>onChange("period",e.target.value)}>
+            <option value="all">Toutes les périodes</option>
+            {availablePeriods.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </div>
 
         <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-map-pin-2-line me-1"></i>Site</label><select className="form-select form-select-sm" value={filters.site} onChange={e=>onChange("site",e.target.value)}><option value="all">Tous</option>{sites.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-team-line me-1"></i>Équipe</label><select className="form-select form-select-sm" value={filters.group} onChange={e=>{onChange("group",e.target.value);onChange("author","all");}}><option value="all">Toutes</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Développeur</label><select className="form-select form-select-sm" value={filters.author} onChange={e=>onChange("author",e.target.value)}><option value="all">Tous</option>{authors.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-shield-check-line me-1"></i>Approved</label><select className="form-select form-select-sm" value={filters.approved} onChange={e=>onChange("approved",e.target.value)}><option value="all">All</option><option value="yes">Yes</option><option value="no">No</option></select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-calendar-line me-1"></i>From</label><input type="date" className="form-control form-control-sm" value={filters.dateFrom} onChange={e=>onChange("dateFrom",e.target.value)}/></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 mb-1 d-block">To</label><input type="date" className="form-control form-control-sm" value={filters.dateTo} onChange={e=>onChange("dateTo",e.target.value)}/></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 mb-1 d-block">&nbsp;</label><button onClick={onReset} className="btn btn-sm w-100" style={{background:activeCount>0?"#f06548":"#f0f0f0",color:activeCount>0?"#fff":"#878a99",border:"none",fontWeight:600,transition:"all .2s"}}>{activeCount>0?<><i className="ri-close-line me-1"></i>{activeCount}</>:<i className="ri-filter-off-line"></i>}</button></div>
       </div>
       {/* ─── Vue par Rôle ─────────────────────────────────────────────── */}
@@ -240,13 +247,13 @@ function FilterBar({ filters, onChange, projects, authors, activeCount, onReset,
       {activeCount>0&&(
         <div className="d-flex flex-wrap gap-2 mt-2">
           {filters.search&&<FilterTag label={`"${filters.search}"`} onRemove={()=>onChange("search","")}/>}
-          {filters.lot!=="all"&&<FilterTag label={`Session: #${filters.lot}`} onRemove={()=>onChange("lot","all")} color="#ede9fb" textColor="#5b21b6"/>}
+          {filters.period!=="all"&&<FilterTag label={`Période: ${availablePeriods.find(p=>p.id===parseInt(filters.period))?.name||filters.period}`} onRemove={()=>onChange("period","all")} color="#dce9ff" textColor="#1a56db"/>}
           {filters.state!=="all"&&<FilterTag label={`Status: ${STATE_CFG[filters.state]?.label}`} onRemove={()=>onChange("state","all")} color="#dce9ff" textColor="#1a56db"/>}
           {filters.project!=="all"&&<FilterTag label={`Project: ${filters.project}`} onRemove={()=>onChange("project","all")} color="#e8ecf8" textColor="#405189"/>}
+          {filters.site!=="all"&&<FilterTag label={`Site: ${filters.site}`} onRemove={()=>onChange("site","all")} color="#fef3dc" textColor="#b78a1e"/>}
           {filters.group!=="all"&&<FilterTag label={`Équipe: ${groups.find(g=>g.id===parseInt(filters.group))?.name||"Inconnue"}`} onRemove={()=>onChange("group","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
           {filters.author!=="all"&&<FilterTag label={`Développeur: ${filters.author}`} onRemove={()=>onChange("author","all")} color="#ede9fb" textColor="#5b21b6"/>}
           {filters.role!=="all"&&filters.author!=="all"&&<FilterTag label={`Rôle: ${filters.role}`} onRemove={()=>onChange("role","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
-          {filters.approved!=="all"&&<FilterTag label={`Approved: ${filters.approved}`} onRemove={()=>onChange("approved","all")} color="#d7edf9" textColor="#1a6fa3"/>}
         </div>
       )}
     </div></div>
@@ -275,7 +282,7 @@ function StatusDonut({ opened, merged, closed }) {
 }
 
 // ─── Top Contributors (Contextual Breakdown) ──────────────────────────────────
-function TopContributors({ mrs, selectedAuthor, developers }) {
+function TopContributors({ mrs, selectedAuthor, developers, filters }) {
   // Mode Individuel : Si un auteur est sélectionné (Vue Axel)
   if (selectedAuthor && selectedAuthor !== "all") {
     let authored = 0, reviewed = 0, assigned = 0;
@@ -349,7 +356,20 @@ function TopContributors({ mrs, selectedAuthor, developers }) {
 
   // Mode Global : La liste des meilleurs contributeurs (Vue Manager)
   const validDevs = new Set(
-    (developers || []).flatMap(d => [
+    (developers || [])
+    .filter(d => {
+      // [SENIOR FIX] Appliquer le filtre de site au niveau du développeur pour le graphique
+      if (filters?.site && filters.site !== "all") {
+        if (d.site !== filters.site) return false;
+      }
+      // [SENIOR FIX] Appliquer le filtre d'équipe pour la cohérence visuelle
+      if (filters?.group && filters.group !== "all") {
+        const gid = parseInt(filters.group);
+        if (!(d.group_ids || []).map(Number).includes(gid)) return false;
+      }
+      return true;
+    })
+    .flatMap(d => [
       (d.name || "").toLowerCase(), 
       (d.gitlab_username || "").toLowerCase()
     ]).filter(Boolean)
@@ -465,7 +485,7 @@ function ProjectsBreakdown({ mrs }) {
 }
 
 // ─── MR Table ─────────────────────────────────────────────────────────────────
-function MRTable({ mrs, onDetail }) {
+function MRTable({ mrs, onDetail, lots = [] }) {
   const [page,   setPage]   = useState(1);
   const [sortKey,setSortKey]= useState("created_at_gitlab");
   const [sortDir,setSortDir]= useState("desc");
@@ -541,8 +561,31 @@ function MRTable({ mrs, onDetail }) {
                   <tr key={i} style={{borderBottom:"1px solid #f0f0f0",transition:"background .12s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="#f8f9fc"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <td style={{padding:"14px 16px"}}><code style={{background:"#e8ecf8",color:"#405189",borderRadius:4,padding:"3px 8px",fontWeight:700,fontSize:12}}>!{mr.gitlab_mr_id}</code>{mr.is_draft&&<span style={{marginLeft:4,background:"#f0f0f0",color:"#6c757d",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:600}}>Draft</span>}</td>
-                    <td style={{padding:"14px 16px",maxWidth:260}}><div style={{fontWeight:600,color:"#212529",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240,cursor:"pointer"}} title={mr.title} onClick={()=>onDetail(mr)}>{mr.title}</div></td>
+                    <td style={{padding:"14px 16px"}}>
+                      <div className="d-flex align-items-center gap-2">
+                        <code style={{background:"#e8ecf8",color:"#405189",borderRadius:4,padding:"3px 8px",fontWeight:700,fontSize:12}}>!{mr.gitlab_mr_id}</code>
+                        {mr.extraction_lot_id && (
+                          <span 
+                            title={`Session d'extraction Lot #${mr.extraction_lot_id}`}
+                            style={{
+                              background: getLotColor(mr.extraction_lot_id).bg,
+                              color: getLotColor(mr.extraction_lot_id).text,
+                              borderRadius: 20, padding: "1px 6px", fontSize: 10, fontWeight: 700,
+                              border: `1px solid ${getLotColor(mr.extraction_lot_id).text}22`
+                            }}
+                          >
+                            #{mr.extraction_lot_id}
+                          </span>
+                        )}
+                        {mr.is_draft&&<span style={{background:"#f0f0f0",color:"#6c757d",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:600}}>Draft</span>}
+                      </div>
+                    </td>
+                    <td style={{padding:"14px 16px",maxWidth:260}}>
+                      <div className="d-flex flex-column">
+                        <div style={{fontWeight:600,color:"#212529",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240,cursor:"pointer"}} title={mr.title} onClick={()=>onDetail(mr)}>{mr.title}</div>
+                        {/* [CLEANUP] Retrait de l'alerte d'historique pour une UI plus épurée */}
+                      </div>
+                    </td>
                     <td style={{padding:"14px 16px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <span style={{width:30,height:30,borderRadius:"50%",background:aCol.bg,color:aCol.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{getInitials(mr.author)}</span>
@@ -629,31 +672,91 @@ function MRTable({ mrs, onDetail }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-const INITIAL_FILTERS={search:"", lot: "all", state:"all",project:"all",author:"all",role:"all",approved:"all",dateFrom:"",dateTo:"", group:"all"};
+const INITIAL_FILTERS={search:"", lot: "all", period: "all", state:"all",project:"all",site:"all",author:"all",role:"all",approved:"all",dateFrom:"",dateTo:"", group:"all", developer_id: null, site_id: null, group_id: null};
 
 export default function MergePage() {
   const [allMrs,   setAllMrs]   = useState([]);
   const [projects, setProjects]  = useState([]); 
   const [lots,     setLots]      = useState([]);    
+  const [periods,  setPeriods]   = useState([]);
   const [developers, setDevelopers] = useState([]);
   const [groups,   setGroups]    = useState([]);
+  const [allSites, setAllSites]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState({
     ...INITIAL_FILTERS,
     project: searchParams.get("project_id") || searchParams.get("project") || "all",
-    lot: searchParams.get("lot_id") || "all"
+    lot: searchParams.get("lot_id") || "all",
+    period: searchParams.get("period_id") || "all",
+    developer_id: searchParams.get("developer_id") || null,
+    site_id: searchParams.get("site_id") || null,
+    group_id: searchParams.get("group_id") || null
   });
   const [error,    setError]    = useState(null);
   const [detailMr, setDetailMr] = useState(null);
   const [spinning, setSpinning] = useState(false);
+  const [currentPeriod, setCurrentPeriod] = useState(null);
 
   useEffect(() => {
-    api.get("/projects/").then(res => {
-      const p = Array.isArray(res.data)?res.data:(res.data?.items??[]);
-      setProjects(p);
-    });
-  }, []);
+    // Phase 1 : Load configuration metadata (Projects and Periods)
+    const initData = async () => {
+      try {
+        const [projRes, perRes, currRes, siteRes] = await Promise.all([
+          api.get("/projects"),
+          api.get("/periods"),
+          api.get("/periods/current").catch(() => ({ data: null })),
+          api.get("/sites?active_only=true").catch(() => ({ data: [] }))
+        ]);
+        const projsData = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
+        const periodsData = Array.isArray(perRes.data) ? perRes.data : (perRes.data?.items ?? []);
+        const cur = currRes.data;
+
+        setProjects(projsData);
+        setPeriods(periodsData);
+        setCurrentPeriod(cur);
+        setAllSites(Array.isArray(siteRes.data) ? siteRes.data : (siteRes.data?.items ?? []));
+
+        // Default period logic: Only if NOT coming from a specific lot/context
+        if (cur && filters.period === "all" && !searchParams.get("period_id") && !searchParams.get("lot_id")) {
+          setFilters(prev => ({ ...prev, period: cur.id }));
+        }
+      } catch (err) {
+        console.error("Erreur lors de l'initialisation des filtres:", err);
+      }
+    };
+    initData();
+  }, []); // eslint-disable-line
+
+  // ✅ [SENIOR] CONTEXT HYDRATION EFFECT
+  // This ensures that if we arrive with developer_id/site_id/group_id, 
+  // we resolve them to their display names once the data is loaded.
+  useEffect(() => {
+    if (!loading && (filters.developer_id || filters.site_id || filters.group_id)) {
+      const updates = {};
+      
+      // 1. Resolve Developer Name
+      if (filters.developer_id && filters.author === "all") {
+        const dev = developers.find(d => String(d.id) === String(filters.developer_id));
+        if (dev) updates.author = dev.name || dev.gitlab_username;
+      }
+      
+      // 2. Resolve Site Name
+      if (filters.site_id && filters.site === "all") {
+        const site = allSites.find(s => String(s.id) === String(filters.site_id));
+        if (site) updates.site = site.name;
+      }
+      
+      // 3. Resolve Group ID
+      if (filters.group_id && filters.group === "all") {
+        updates.group = String(filters.group_id);
+      }
+      
+      if (Object.keys(updates).length > 0) {
+        setFilters(prev => ({ ...prev, ...updates }));
+      }
+    }
+  }, [loading, developers, allSites, filters.developer_id, filters.site_id, filters.group_id]); // eslint-disable-line
 
   useEffect(() => {
     const fetchLots = async () => {
@@ -676,84 +779,165 @@ export default function MergePage() {
   const load = useCallback(async()=>{
     setLoading(true); setSpinning(true);
     try {
-      const res = await api.get("/projects/");
-      const projs = Array.isArray(res.data)?res.data:(res.data?.items??[]);
-      setProjects(projs);
-      
+      // 1. Fetch contextual metadata
+      let devs = [];
       try {
-        const dRes = await api.get("/developers/");
-        setDevelopers(Array.isArray(dRes.data)?dRes.data:(dRes.data?.items??[]));
-        const gRes = await api.get("/developer-groups");
+        const [dRes, gRes] = await Promise.all([
+          api.get("/developers?active_only=true"),
+          api.get("/developer-groups?active_only=true")
+        ]);
+        devs = Array.isArray(dRes.data)?dRes.data:(dRes.data?.items??[]);
+        setDevelopers(devs);
         setGroups(Array.isArray(gRes.data)?gRes.data:(gRes.data?.items??[]));
       } catch (e) {
-        console.error("Failed to fetch developers/groups", e);
+        console.error("Metadata fetch error", e);
       }
+
+      // [SENIOR FIX] Dictionnaire pour résolution rapide des sites des acteurs
+      const nameToSite = {};
+      devs.forEach(d => {
+        if (d.name) nameToSite[d.name.toLowerCase()] = d.site;
+        if (d.gitlab_username) nameToSite[d.gitlab_username.toLowerCase()] = d.site;
+      });
       
-      const collected=[];
-      for(const project of projs){
-        // Isolation par projet
-        if (filters.project !== "all" && project.name !== filters.project) continue;
+      // 2. Fetch Data (Optimized Strategy)
+      let data = [];
+      const isGlobal = filters.project === "all";
+      // Resolve project: could be a name (e.g. "fdroid-client") or a numeric ID string (e.g. "1")
+      const targetProjectId = isGlobal
+        ? "all"
+        : projects.find(p => String(p.id) === String(filters.project))?.id
+          ?? projects.find(p => p.name === filters.project)?.id;
 
-        try {
-          const params = { exclude_draft: false };
-          // Isolation par lot
-          if (filters.lot !== "all") params.lot_id = filters.lot;
+      if (targetProjectId !== undefined) {
+        const params = { exclude_draft: false };
+        if (filters.period !== "all") params.period_id = parseInt(filters.period);
+        if (filters.lot !== "all") params.lot_id = parseInt(filters.lot);
 
-          const mrRes=await api.get(`/projects/${project.id}/merge-requests`, { params });
-          const data=Array.isArray(mrRes.data)?mrRes.data:(mrRes.data?.items??[]);
-          
-          data.forEach(mr=>collected.push({
+        const response = await api.get(`/projects/${targetProjectId}/merge-requests`, { params });
+        const items = Array.isArray(response.data) ? response.data : (response.data?.items ?? []);
+        
+        data = items.map(mr => {
+          const revName = (mr.reviewer?.name || mr.reviewer?.gitlab_username || "").toLowerCase();
+          const assName = (mr.assignee?.name || mr.assignee?.gitlab_username || "").toLowerCase();
+
+          return {
             ...mr,
-            project:project.name,
-            author:mr.developer?.name||mr.developer?.gitlab_username||mr.author_name||"Unknown",
+            project: mr.project_name || projects.find(p => p.id === mr.project_id)?.name || "Project",
+            author: mr.developer?.name || mr.developer?.gitlab_username || mr.author_name || "Unknown",
+            site: mr.developer?.site || null,
+            reviewer_site: nameToSite[revName] || null,
+            assignee_site: nameToSite[assName] || null,
             updated_at_gitlab: mr.updated_at_gitlab,
-            reviewer:mr.reviewer?.name||mr.reviewer?.gitlab_username||null,
-            assignee:mr.assignee?.name||mr.assignee?.gitlab_username||null
-          }));
-        } catch { /* projet sans MRs */ }
+            reviewer: mr.reviewer?.name || mr.reviewer?.gitlab_username || null,
+            assignee: mr.assignee?.name || mr.assignee?.gitlab_username || null
+          };
+        });
       }
-      setAllMrs(collected); setError(null);
-    } catch { setError("Impossible de charger les merge requests."); }
-    finally { setLoading(false); setSpinning(false); }
-  }, [filters.project, filters.lot]);
+
+      setAllMrs(data);
+      setError(null);
+    } catch (err) {
+      console.error("Load error", err);
+      setError("Impossible de charger les merge requests.");
+    } finally {
+      setLoading(false); setSpinning(false);
+    }
+  }, [filters.project, filters.lot, filters.period, projects]);
 
 
   useEffect(()=>{ load(); },[load]);
 
-  const projectList=useMemo(()=>[...new Set(allMrs.map(m=>m.project).filter(Boolean))].sort(),[allMrs]);
-  const authorList = useMemo(() => {
-    const symbols = new Set();
-    allMrs.forEach(m => {
-      if (m.author) symbols.add(m.author);
-      if (m.reviewer) symbols.add(m.reviewer);
-      if (m.assignee) symbols.add(m.assignee);
+  const projectList = useMemo(() => {
+    const fromMrs   = allMrs.map(m => m.project).filter(Boolean);
+    const fromConfig = projects.map(p => p.name).filter(Boolean);
+    return [...new Set([...fromConfig, ...fromMrs])].sort();
+  }, [allMrs, projects]);
+
+  // ✅ SENIOR INTENT-BASED FILTERING
+  // Identification des développeurs ciblés par l'extraction (Intention)
+  const trackedDevIds = useMemo(() => {
+    if (!lots || lots.length === 0) return [];
+    if (filters.lot !== "all") {
+      const selected = lots.find(l => String(l.id) === filters.lot);
+      return selected?.developer_id ? [selected.developer_id] : [];
+    }
+    return [...new Set(lots.map(l => l.developer_id).filter(Boolean))];
+  }, [lots, filters.lot]);
+
+  const groupList = useMemo(() => {
+    if (!groups || groups.length === 0) return [];
+    if (trackedDevIds.length === 0) return groups;
+
+    const activeGroupIds = new Set();
+    trackedDevIds.forEach(id => {
+      const dev = developers.find(d => d.id === id);
+      if (dev?.group_ids) dev.group_ids.forEach(gid => activeGroupIds.add(Number(gid)));
     });
+
+    return groups.filter(g => activeGroupIds.has(g.id) || filters.group === String(g.id)).sort((a,b) => a.name.localeCompare(b.name));
+  }, [trackedDevIds, groups, developers, filters.group]);
+
+  const authorList = useMemo(() => {
+    if (!developers || developers.length === 0) return [];
     
-    // Si on a la liste officielle des développeurs, on force leur affichage
-    // et on filtre les développeurs externes/bots.
-    if (developers && developers.length > 0) {
-      let filteredDevs = developers;
-      if (filters.group !== "all") {
-        const groupId = parseInt(filters.group);
-        filteredDevs = developers.filter(d => d.group_id === groupId);
-      }
-      const validNames = new Set(filteredDevs.flatMap(d => [d.name, d.gitlab_username]).filter(Boolean));
-      filteredDevs.forEach(d => {
-        if (d.name) symbols.add(d.name);
-        else if (d.gitlab_username) symbols.add(d.gitlab_username);
-      });
-      return Array.from(symbols).filter(Boolean).filter(s => validNames.has(s)).sort();
+    // Seuls les développeurs CIBLÉS par les lots d'extraction apparaissent
+    let filteredDevs = developers.filter(d => trackedDevIds.includes(d.id));
+    
+    if (filters.group !== "all") {
+      const groupId = parseInt(filters.group);
+      filteredDevs = filteredDevs.filter(d => (d.group_ids || []).map(Number).includes(groupId));
     }
     
-    return Array.from(symbols).filter(Boolean).sort();
-  }, [allMrs, developers, filters.group]);
+    return filteredDevs.map(d => d.name || d.gitlab_username).filter(Boolean).sort();
+  }, [trackedDevIds, developers, filters.group]);
+
+  // ✅ SENIOR "INTENT-BASED" FILTERING : 
+  // On ne montre que les sites présents parmi les développeurs effectivement trackés.
+  const siteList = useMemo(() => {
+    if (!developers || developers.length === 0) return [];
+
+    // 1. Identification des sites actifs dans le contexte actuel (intention d'extraction)
+    const activeSitesNames = new Set(
+      developers
+        .filter(d => trackedDevIds.includes(d.id))
+        .map(d => d.site)
+        .filter(Boolean)
+    );
+
+    // 2. Croisement avec la liste exhaustive pour l'affichage
+    if (activeSitesNames.size > 0) {
+      return allSites
+        .filter(s => activeSitesNames.has(s.name))
+        .map(s => s.name)
+        .sort();
+    }
+    
+    // Fallback minimaliste si l'API /sites est vide ou rien de tracké
+    return allSites.map(s => s.name).sort();
+  }, [allSites, developers, trackedDevIds]);
+
+  // ✅ SENIOR AUTO-RESET : Si le site sélectionné n'est plus dans le périmètre actif, 
+  // on reset à "all" pour éviter un écran vide incompréhensible.
+  useEffect(() => {
+    if (filters.site !== "all" && siteList.length > 0 && !siteList.includes(filters.site)) {
+      handleFilterChange("site", "all");
+    }
+  }, [siteList, filters.site]);
 
   const activeFilterCount=useMemo(()=>Object.entries(filters).filter(([,v])=>v!==""&&v!=="all").length,[filters]);
 
   const filtered=useMemo(()=>{
     return allMrs.filter(mr=>{
       if(filters.state!=="all"&&mr.state!==filters.state)return false;
-      if(filters.project!=="all"&&mr.project!==filters.project)return false;
+      if(filters.project!=="all"){const isNum=/^\d+$/.test(String(filters.project));const okById=isNum&&String(mr.project_id)===String(filters.project);const okByName=mr.project===filters.project;if(!okById&&!okByName)return false;}
+
+      if (filters.site !== "all") {
+        const isAuthorSite = mr.site === filters.site;
+        const isReviewerSite = mr.reviewer_site === filters.site;
+        const isAssigneeSite = mr.assignee_site === filters.site;
+        if (!isAuthorSite && !isReviewerSite && !isAssigneeSite) return false;
+      }
       
       const aut = (mr.author || "").toLowerCase();
       const rev = (mr.reviewer || "").toLowerCase();
@@ -762,7 +946,8 @@ export default function MergePage() {
       // ✅ FILTRE PAR ÉQUIPE / GROUPE — Vue 360° du groupe
       if (filters.group !== "all") {
         const groupId = parseInt(filters.group);
-        const groupDevs = developers.filter(d => d.group_id === groupId);
+        // ✅ FIX M2M : group_ids est un tableau (plus de scalaire group_id)
+        const groupDevs = developers.filter(d => (d.group_ids || []).map(Number).includes(groupId));
         const groupNames = groupDevs.flatMap(d => [(d.name || "").toLowerCase(), (d.gitlab_username || "").toLowerCase()]).filter(Boolean);
         
         // La MR doit impliquer au moins un membre de l'équipe
@@ -818,8 +1003,13 @@ export default function MergePage() {
       <div style={{marginBottom:20}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
           <div>
-            <h4 style={{margin:0,fontWeight:700,fontSize:18,color:"#212529"}}><i className="ri-git-merge-line me-2 text-primary"></i>Merge Requests</h4>
-            <ol className="breadcrumb" style={{margin:"4px 0 0",fontSize:13}}><li className="breadcrumb-item"><a href="#" style={{color:"#878a99",textDecoration:"none"}}>Projects</a></li><li className="breadcrumb-item active">Merge Requests</li></ol>
+            <h4 style={{margin:0,fontWeight:700,fontSize:18,color:"#212529"}}>
+              <i className="ri-git-merge-line me-2 text-primary"></i>Merge Requests
+              <span className="ms-2 badge bg-success-subtle text-success" style={{fontSize:10, verticalAlign:"middle"}}>
+                <i className="ri-shield-user-line me-1"></i>Tracked Human Only
+              </span>
+            </h4>
+            <ol className="breadcrumb" style={{margin:"4px 0 0",fontSize:13}}><li className="breadcrumb-item"><a href="#" onClick={e=>e.preventDefault()} style={{color:"#878a99",textDecoration:"none"}}>Analytics</a></li><li className="breadcrumb-item active">Merge Requests Logic</li></ol>
           </div>
           <div className="d-flex align-items-center gap-2 flex-wrap">
             {activeFilterCount>0&&(
@@ -834,7 +1024,7 @@ export default function MergePage() {
         </div>
       </div>
 
-      <FilterBar filters={filters} onChange={setFilter} projects={projectList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots} groups={groups}/>
+      <FilterBar filters={filters} onChange={setFilter} projects={projectList} sites={siteList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots} availablePeriods={periods} groups={groupList}/>
 
       <div className="row">
         <KPICard icon="ri-git-pull-request-line" label="Total MRs"   value={kpis.total}  bg="#e8ecf8" color="#405189" sub={`${kpis.mergeRate}% merge rate`}/>
@@ -844,14 +1034,66 @@ export default function MergePage() {
         {kpis.avgReview&&<KPICard icon="ri-timer-line" label="Moy. Revue" value={`${kpis.avgReview}h`} bg="#ede9fb" color="#5b21b6" sub="Temps d'approbation"/>}
       </div>
 
-      <div className="row">
-        <div className="col-xl-4"><StatusDonut opened={kpis.opened} merged={kpis.merged} closed={kpis.closed}/></div>
-        <div className="col-xl-8">
-          <TopContributors mrs={filtered} selectedAuthor={filters.author} developers={developers} />
+      {/* ── Dashboard Content : data is available and matches filters ──────── */}
+      {!loading && !error && allMrs.length > 0 && filtered.length > 0 && (
+        <>
+          <div className="row">
+            <div className="col-xl-4"><StatusDonut opened={kpis.opened} merged={kpis.merged} closed={kpis.closed}/></div>
+            <div className="col-xl-8">
+              <TopContributors mrs={filtered} selectedAuthor={filters.author} developers={developers} filters={filters} />
+            </div>
+          </div>
+          <div className="row">
+            <div className="col-12"><MRTable mrs={filtered} onDetail={setDetailMr} lots={lots}/></div>
+          </div>
+          <div className="row">
+            <div className="col-12"><ProjectsBreakdown mrs={filtered}/></div>
+          </div>
+        </>
+      )}
+
+      {/* ── Empty state : filtre actif mais 0 résultat de recherche ──────── */}
+      {!loading && !error && allMrs.length > 0 && filtered.length === 0 && (
+        <div className="card shadow-none border-0 py-5 text-center" style={{background: "transparent"}}>
+          <div className="card-body">
+            <div className="mb-4">
+              <i className="ri-search-line display-4 text-muted opacity-25"></i>
+            </div>
+            <h4 className="fw-bold">Aucune MR ne correspond</h4>
+            <p className="text-muted mx-auto mb-4" style={{maxWidth: 450}}>
+              Aucune Merge Request n'a été trouvée avec les filtres actuels. 
+              Réessayez avec d'autres critères ou réinitialisez les filtres.
+            </p>
+            <button className="btn btn-soft-primary" onClick={() => setFilters(INITIAL_FILTERS)}>
+              <i className="ri-refresh-line me-1"></i>Réinitialiser les filtres
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="row"><div className="col-12"><MRTable mrs={filtered} onDetail={setDetailMr}/></div></div>
-      <div className="row"><div className="col-12"><ProjectsBreakdown mrs={filtered}/></div></div>
+      )}
+
+      {/* ── Empty state : Aucune donnée extraite pour cette période/projet ── */}
+      {!loading && !error && allMrs.length === 0 && (
+        <div className="card border-0" style={{borderRadius: 16, overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.05)"}}>
+          <div className="card-body py-5 text-center">
+            <div className="mb-4" style={{width: 80, height: 80, borderRadius: "50%", background: "#f0f4ff", display: "flex", alignItems: "center", justifyCenter: "center", margin: "0 auto 20px", justifyContent: "center"}}>
+              <i className="ri-git-merge-line" style={{fontSize: 36, color: "#405189"}}></i>
+            </div>
+            <h4 className="fw-bold mb-3" style={{color: "#212529"}}>Données non disponibles</h4>
+            <p className="text-muted mx-auto mb-4" style={{maxWidth: 480, fontSize: 15, lineHeight: 1.6}}>
+              Il semble qu'aucune donnée de Merge Request n'ait encore été extraite pour cette période ou ce projet. 
+              Veuillez lancer une extraction automatisée pour synchroniser les données GitLab.
+            </p>
+            <div className="d-flex justify-content-center gap-3">
+              <button className="btn btn-primary px-4 py-2 fw-semibold" style={{borderRadius: 10}} onClick={() => window.location.href='/extraction'}>
+                <i className="ri-rocket-2-line me-2"></i>Lancer une extraction
+              </button>
+              <button className="btn btn-soft-secondary px-4 py-2 fw-semibold" style={{borderRadius: 10}} onClick={load}>
+                <i className="ri-refresh-line me-1"></i>Réessayer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.rotate-animation{animation:spin 1s linear infinite;display:inline-block}`}</style>
     </div>

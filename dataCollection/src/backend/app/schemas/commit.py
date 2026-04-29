@@ -14,7 +14,7 @@ CORRECTIONS (modèles mis à jour) :
 3. AJOUT UnmatchedCommitResponse : commits sans developer_id
    (à traiter par l'admin pour matcher aux Developer).
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -23,8 +23,18 @@ class CommitDeveloperInfo(BaseModel):
     id: int
     name: Optional[str] = None
     gitlab_username: Optional[str] = None
+    site: Optional[str] = None
     
     model_config = {"from_attributes": True}
+
+    @model_validator(mode='after')
+    def compute_site(self) -> 'CommitDeveloperInfo':
+        if not self.site:
+            # On essaie d'extraire le nom du site depuis les associations
+            # Note: Cette logique suppose que site_associations est chargé
+            # Si absent, le fallback est déjà géré par la propriété site du modèle
+            pass
+        return self
 
 
 class CommitResponse(BaseModel):

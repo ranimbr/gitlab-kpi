@@ -109,7 +109,7 @@ export default function DeveloperComparisonPage() {
 
   useEffect(() => {
     Promise.all([
-      developerService.getByTab("validated"),
+      developerService.getByTab("validated", null, true),
       projectService.getAll(),
     ]).then(([devs, projs]) => {
       setDevelopers(Array.isArray(devs) ? devs : []);

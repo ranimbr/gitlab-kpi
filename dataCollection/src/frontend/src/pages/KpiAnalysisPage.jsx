@@ -327,7 +327,7 @@ export default function KpiAnalysisPage() {
 
     const loadGroups = async () => {
       try {
-        return toArr(await developerService.getGroups());
+        return toArr(await developerService.getGroups(null, true));
       } catch (_) {
         return [];
       }

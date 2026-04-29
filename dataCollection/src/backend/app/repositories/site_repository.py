@@ -23,6 +23,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from app.models.site import Site
 from app.repositories.base import BaseRepository
+from app.services.location_service import LocationService
 
 
 class SiteRepository(BaseRepository[Site]):
@@ -84,30 +85,20 @@ class SiteRepository(BaseRepository[Site]):
 
     def create_from_import(self, db: Session, name: str) -> Site:
         """
-        ✅ NOUVEAU : crée un site minimal depuis un import CSV.
-
-        Règles métier :
-          - name      → conservé tel quel (casse du CSV)
-          - country   → "À définir"  (l'admin complètera via la page Sites)
-          - timezone  → None
-          - is_active → True  (actif immédiatement pour les KPIs)
-
-        L'admin verra le site dans la page Sites avec un libellé
-        "À définir" qui l'invite à le compléter.
-
-        Ne fait pas db.commit() — laissé à l'appelant (import_from_file).
+        ✅ AMÉLIORÉ : crée un site avec détection automatique via LocationService.
         """
         existing = self.get_by_name_ilike(db, name)
         if existing:
-            # Race condition : le site a été créé par une autre ligne du CSV
             return existing
+
+        metadata = LocationService.guess_metadata(name)
 
         site = Site(
             name      = name.strip(),
-            country   = "À définir",
-            timezone  = None,
+            country   = metadata["country"],
+            timezone  = metadata["timezone"],
             is_active = True,
         )
         db.add(site)
-        db.flush()   # génère l'id sans commit
+        db.flush()   
         return site

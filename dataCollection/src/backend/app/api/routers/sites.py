@@ -8,6 +8,7 @@ from app.database.session import get_db
 from app.api.dependencies import get_current_user, get_current_admin
 from app.schemas.site import SiteCreate, SiteUpdate, SiteResponse
 from app.services.admin.site_service import SiteService
+from app.services.location_service import LocationService
 from app.models.app_user import AppUser
 
 logger  = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def get_site(
     return service.get_site(db, site_id)
 
 
-@router.post("/", response_model=SiteResponse, status_code=201)
+@router.post("", response_model=SiteResponse, status_code=201)
 def create_site(
     request: SiteCreate,
     req: Request,
@@ -74,6 +75,18 @@ def delete_site(
         deleted_by=current_admin.id,
         ip_address=req.client.host if req.client else None,
     )
+
+
+@router.get("/timezones")
+def list_timezones(current_user: AppUser = Depends(get_current_user)):
+    """Retourne la liste complète des fuseaux horaires IANA."""
+    return LocationService.get_all_timezones()
+
+
+@router.get("/guess")
+def guess_site_info(name: str, current_user: AppUser = Depends(get_current_user)):
+    """Tente de deviner le pays et le fuseau horaire à partir d'un nom."""
+    return LocationService.guess_metadata(name)
 
 
 # =============================================================================
@@ -118,6 +131,7 @@ def get_site_team(
     query = (
         db.query(Developer)
         .options(
+            joinedload(Developer.groups),
             joinedload(Developer.project_associations).joinedload(DeveloperProject.project)
         )
         .filter(Developer.is_bot.is_(False))
@@ -172,7 +186,12 @@ def get_site_team(
 
 
     # ── 4. Charger les groupes présents sur ce site ───────────────────────────
-    group_ids = list({dev.group_id for dev in developers if dev.group_id})
+    # ✅ FIX M2M : dev.group_id n'existe plus — on passe par dev.groups
+    all_group_ids = set()
+    for dev in developers:
+        for g in dev.groups:
+            all_group_ids.add(g.id)
+    group_ids = list(all_group_ids)
     groups    = (
         db.query(DeveloperGroup)
         .filter(DeveloperGroup.id.in_(group_ids))
@@ -236,6 +255,11 @@ def get_site_team(
             active_count   += 1
             status = "active"
 
+        # Groupes du dev (M2M) — on prend le premier pour affichage
+        dev_groups = dev.groups
+        primary_group_id   = dev_groups[0].id   if dev_groups else None
+        primary_group_name = dev_groups[0].name if dev_groups else None
+
         dev_list.append({
             "id":              dev.id,
             "name":            dev.name,
@@ -245,8 +269,8 @@ def get_site_team(
             "is_validated":    dev.is_validated,
             "is_active":       dev.is_active,
             "is_primary_site": primary_map.get(dev.id, False),
-            "group_id":        dev.group_id,
-            "group_name":      group_map.get(dev.group_id) if dev.group_id else None,
+            "group_id":        primary_group_id,
+            "group_name":      primary_group_name,
             "source":          dev.source,
             "onboarding_date": dev.onboarding_date.isoformat() if dev.onboarding_date else None,
             "last_active_at":  dev.last_active_at.isoformat()  if dev.last_active_at  else None,

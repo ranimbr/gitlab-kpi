@@ -100,6 +100,17 @@ class KpiSnapshot(Base):
     delta_nb_commits       = Column(Integer, nullable=True)
     delta_avg_review_time  = Column(Float,   nullable=True)
 
+    # ── DORA METRICS ─ Standard Google / DORA Research Program ────────────────
+    # deployment_count : nombre de MRs mergées sur la branche default du projet.
+    #   Définition DORA : "un déploiement = tout changement livré en production."
+    #   Ici on proxy avec les merges sur main/master, ce qui est la norme industrie
+    #   quand il n'y a pas de tracking CD explicite.
+    # lead_time_hours  : temps moyen (premier_commit → merge) pour les deployments
+    #   du mois. Mesuré via MergeRequest.cycle_time_hours (déjà calculé à l'extraction).
+    #   Formule : SUM(cycle_time_hours) / deployment_count
+    deployment_count   = Column(Integer, default=0,   nullable=True)
+    lead_time_hours    = Column(Float,   default=0.0, nullable=True)
+
     # ── Score développeur (uniquement quand developer_id IS NOT NULL) ────────
     # Score global calculé par le KpiCalculator chaque mois
     # Formule : combinaison pondérée des KPIs du développeur

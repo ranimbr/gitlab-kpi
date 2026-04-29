@@ -376,7 +376,7 @@ export default function Sidebar() {
           <Section title="Pilotage">
             <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" />
             {isAdmin && (
-              <NavItem icon="ri-bar-chart-group-line" label="Analyse Stratégique" to="/analytics/comparison?project_id=1" />
+              <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to="/analytics/comparison?project_id=1" />
             )}
             <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" />
           </Section>
@@ -395,7 +395,6 @@ export default function Sidebar() {
           <Section title="Extraction">
             <NavItem icon="ri-database-2-line"       label="Registre des Lots"   to="/extraction-lots" />
             <NavItem icon="ri-rocket-2-line"         label="Moteur d'Extraction" to="/extraction" />
-            <NavItem icon="ri-calendar-2-line"       label="Périodes"            to="/periods" />
           </Section>
 
           {(isAdmin || isLead) && (
@@ -415,7 +414,7 @@ export default function Sidebar() {
                     { to: "/admin/dashboards",     label: "Dashboards"           },
                   ]} />
                 )}
-                <NavItem icon="ri-team-line"         label="Gestion d'Équipe"    to="/team" />
+                <NavItem icon="ri-building-2-line"   label="Business Units"    to="/team" />
                 <NavItem icon="ri-upload-2-line"     label="Import Développeurs" to="/admin/developers/import" />
                 {isAdmin && (
                   <NavItem icon="ri-shield-check-line" label="Audit Log"         to="/admin/audit-log" />

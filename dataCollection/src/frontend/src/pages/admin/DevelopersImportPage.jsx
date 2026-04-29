@@ -408,7 +408,7 @@ export default function DevelopersImportPage() {
     } finally {
       setLoading(false);
     }
-  }, [file, siteId, groupId, dryRun, createMissingSites, createMissingProjects, refreshLogs]);
+  }, [file, siteId, groupId, defaultGitlabConfigId, dryRun, createMissingSites, createMissingProjects, createMissingGroups, refreshLogs]);
 
   /**
    * Appelé par ImportResolutionStep après que l'admin a :
@@ -461,7 +461,7 @@ export default function DevelopersImportPage() {
     } finally {
       setLoading(false);
     }
-  }, [file, siteId, groupId, createMissingSites, createMissingProjects, resolutions, refreshLogs]);
+  }, [file, siteId, groupId, defaultGitlabConfigId, resolutions, createMissingSites, createMissingProjects, createMissingGroups, refreshLogs]);
 
   const hasAnyWarnings  = result?.rows?.some(r => r.warnings?.length > 0);
   const fileSize        = file ? (file.size / 1024).toFixed(1) + " Ko" : null;

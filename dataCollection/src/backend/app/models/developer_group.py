@@ -33,12 +33,12 @@ from sqlalchemy.orm import relationship
 from app.models.base import Base
 
 
-# Table d'association N-to-N entre DeveloperGroup et Site
-developer_group_site_table = Table(
-    "developer_group_site",
+# Table d'association N-to-N entre Developer et DeveloperGroup
+developer_group_link = Table(
+    "developer_group_link",
     Base.metadata,
-    Column("group_id", Integer, ForeignKey("developer_group.id", ondelete="CASCADE"), primary_key=True),
-    Column("site_id",  Integer, ForeignKey("site.id", ondelete="CASCADE"), primary_key=True)
+    Column("developer_id", Integer, ForeignKey("developer.id",       ondelete="CASCADE"), primary_key=True),
+    Column("group_id",     Integer, ForeignKey("developer_group.id", ondelete="CASCADE"), primary_key=True)
 )
 
 class DeveloperGroup(Base):
@@ -58,15 +58,22 @@ class DeveloperGroup(Base):
         nullable=True,
     )
 
+    site_id = Column(
+        Integer,
+        ForeignKey("site.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
     # ── Relations ────────────────────────────────────────────────────────────
-    # N-to-N avec Site via developer_group_site_table
-    sites = relationship("Site", secondary=developer_group_site_table, back_populates="developer_groups")
+    # Un groupe appartient à un site (1-to-Many)
+    site = relationship("Site", back_populates="developer_groups")
     manager    = relationship(
         "AppUser",
         back_populates="developer_groups_managed",
         foreign_keys=[manager_id],
     )
-    developers    = relationship("Developer",   back_populates="group")
+    # ✅ CHANGEMENT : passage en Many-to-Many
+    developers    = relationship("Developer", secondary=developer_group_link, back_populates="groups")
     kpi_snapshots = relationship("KpiSnapshot", back_populates="group",
                                   cascade="all, delete-orphan")
 

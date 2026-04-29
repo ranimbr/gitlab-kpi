@@ -50,7 +50,8 @@ const analyticsService = {
    * Résumé global d'un développeur, toutes périodes confondues.
    */
   getDeveloperSummary: async (projectId, developerId) => {
-    const { data } = await api.get(`/kpis/developer/${developerId}/summary`, { params: { project_id: projectId } });
+    const pId = (projectId === "all" || !projectId) ? null : projectId;
+    const { data } = await api.get(`/kpis/developer/${developerId}/summary`, { params: buildParams({ project_id: pId }) });
     return data;
   },
 
@@ -91,13 +92,14 @@ const analyticsService = {
    * GET /kpis/dashboard
    * Endpoint principal du dashboard frontend.
    */
-  getKpiDashboard: async (projectId, { siteId, groupId, developerId, lotId } = {}) => {
+  getKpiDashboard: async (projectId, { siteId, groupId, developerId, lotId, periodId } = {}) => {
     const params = buildParams({
       project_id:   projectId,
       site_id:      siteId,
       group_id:     groupId,
       developer_id: developerId,
       lot_id:       lotId,
+      period_id:    periodId,
     });
     const { data } = await api.get("/kpis/dashboard", { params });
     return data;
@@ -298,6 +300,10 @@ const analyticsService = {
    * GET /analytics/{projectId}/trends/comparative
    * [SENIOR] Analyse multi-courbes pour pilotage management.
    */
+  /**
+   * GET /analytics/{projectId}/trends/comparative
+   * [SENIOR] Analyse multi-courbes pour pilotage management.
+   */
   getComparativeTrends: async (projectId, { siteIds = [], groupIds = [], startDate = null, endDate = null } = {}) => {
     const params = new URLSearchParams();
     if (siteIds && siteIds.length > 0) siteIds.forEach(id => params.append("site_ids", id));
@@ -306,6 +312,26 @@ const analyticsService = {
     if (endDate) params.append("end_date", endDate);
 
     const { data } = await api.get(`/analytics/${projectId}/trends/comparative`, { params });
+    return data;
+  },
+
+  /**
+   * GET /kpis/dora
+   * [DORA — Google Research Standard]
+   * Deployment Frequency + Lead Time for Changes par site.
+   *
+   * Réponse : [
+   *   {
+   *     site_id, site_name,
+   *     deployment_count,  lead_time_hours,
+   *     dora_df_level,     dora_lt_level,   ("Elite"|"High"|"Medium"|"Low"|"N/A")
+   *     period_label
+   *   }, ...
+   * ]
+   */
+  getDoraMetrics: async (projectId, periodId = null) => {
+    const params = buildParams({ project_id: projectId, period_id: periodId });
+    const { data } = await api.get("/kpis/dora", { params });
     return data;
   },
 };

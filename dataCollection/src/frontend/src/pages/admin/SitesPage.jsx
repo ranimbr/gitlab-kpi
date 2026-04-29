@@ -35,8 +35,26 @@ function SiteModal({ site, onClose, onSave }) {
   const isEdit = !!site?.id;
   const [form, setForm] = useState({ name:site?.name||"", country:site?.country||"", timezone:site?.timezone||"", is_active:site?.is_active??true });
   const [loading, setLoading] = useState(false);
+  const [guessing, setGuessing] = useState(false);
   const [error,   setError]   = useState("");
+  const [tzList,  setTzList]  = useState([]);
+
+  useEffect(() => {
+    siteService.getTimezones().then(setTzList).catch(() => {});
+  }, []);
+
   const handle = (e) => { const{name,value,type,checked}=e.target; setForm(f=>({...f,[name]:type==="checkbox"?checked:value})); };
+
+  const handleGuess = async () => {
+    if (!form.name.trim()) return setError("Entrez un nom de ville d'abord.");
+    setGuessing(true);
+    try {
+      const res = await siteService.guessInfo(form.name);
+      setForm(f => ({ ...f, country: res.country !== "À définir" ? res.country : f.country, timezone: res.timezone || f.timezone }));
+    } catch(e) {}
+    finally { setGuessing(false); }
+  };
+
   const submit = async () => {
     setError("");
     if (!form.name.trim()) return setError("Le nom du site est requis.");
@@ -64,9 +82,28 @@ function SiteModal({ site, onClose, onSave }) {
           <div className="px-4 py-4">
             {error&&<div className="alert alert-danger py-2 fs-13 mb-3"><i className="ri-error-warning-line me-1"></i>{error}</div>}
             <div className="row g-3">
-              <div className="col-12"><label className="form-label fw-medium fs-13">Nom du site <span className="text-danger">*</span></label><div className="input-group"><span className="input-group-text bg-light"><i className="ri-map-pin-line text-muted"></i></span><input type="text" name="name" className="form-control" placeholder="ex: Paris, Tunis, Lyon…" value={form.name} onChange={handle} autoFocus/></div></div>
+              <div className="col-12">
+                <label className="form-label fw-medium fs-13">Nom du site (Ville) <span className="text-danger">*</span></label>
+                <div className="input-group shadow-sm">
+                  <span className="input-group-text bg-light border-end-0"><i className="ri-map-pin-line text-muted"></i></span>
+                  <input type="text" name="name" className="form-control border-start-0 ps-0" placeholder="ex: Paris, Tunis, Lyon…" value={form.name} onChange={handle} autoFocus/>
+                  <button className="btn btn-soft-info" type="button" onClick={handleGuess} disabled={guessing || !form.name}>
+                    {guessing ? <span className="spinner-border spinner-border-sm"></span> : <><i className="ri-magic-line me-1"></i> Auto-remplir</>}
+                  </button>
+                </div>
+              </div>
               <div className="col-md-6"><label className="form-label fw-medium fs-13">Pays</label><div className="input-group"><span className="input-group-text bg-light"><i className="ri-flag-line text-muted"></i></span><input type="text" name="country" className="form-control" placeholder="ex: France, Tunisie…" value={form.country} onChange={handle}/></div></div>
-              <div className="col-md-6"><label className="form-label fw-medium fs-13">Fuseau horaire</label><div className="input-group"><span className="input-group-text bg-light"><i className="ri-time-line text-muted"></i></span><input type="text" name="timezone" className="form-control" placeholder="ex: Europe/Paris, Africa/Tunis" value={form.timezone} onChange={handle}/></div><div className="form-text fs-11"><i className="ri-information-line me-1"></i>Format IANA (ex: Europe/Paris)</div></div>
+              <div className="col-md-6">
+                <label className="form-label fw-medium fs-13">Fuseau horaire</label>
+                <div className="input-group">
+                  <span className="input-group-text bg-light"><i className="ri-time-line text-muted"></i></span>
+                  <input type="text" name="timezone" className="form-control" placeholder="ex: Europe/Paris" value={form.timezone} onChange={handle} list="timezone-list"/>
+                  <datalist id="timezone-list">
+                    {tzList.map(tz => <option key={tz} value={tz} />)}
+                  </datalist>
+                </div>
+                <div className="form-text fs-11"><i className="ri-information-line me-1"></i>Format IANA (ex: Europe/Paris)</div>
+              </div>
               <div className="col-12">
                 <div className="rounded-3 p-3 d-flex align-items-center justify-content-between" style={{background:form.is_active?"#f0fdf4":"#f8f9fa",border:`1px solid ${form.is_active?"#d1fae5":"#e9ecef"}`}}>
                   <div><div className={`fw-medium fs-13 ${form.is_active?"text-success":"text-muted"}`}><i className={`${form.is_active?"ri-checkbox-circle-line":"ri-forbid-line"} me-1`}></i>{form.is_active?"Site actif":"Site inactif"}</div><div className="text-muted fs-12">{form.is_active?"Disponible dans les filtres et dropdowns":"Masqué dans les filtres"}</div></div>

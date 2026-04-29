@@ -20,7 +20,7 @@ router  = APIRouter(prefix="/audit-logs", tags=["Audit Logs"])
 service = AuditService()
 
 
-@router.get("/", response_model=List[AuditLogResponse])
+@router.get("", response_model=List[AuditLogResponse])
 def list_audit_logs(
     db:            Session          = Depends(get_db),
     current_admin: AppUser          = Depends(get_current_admin),

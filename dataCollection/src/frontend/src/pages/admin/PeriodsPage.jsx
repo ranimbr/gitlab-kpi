@@ -29,19 +29,90 @@ function CreatePeriodModal({ onClose, onSave }) {
   return (
     <div className="modal fade show d-block" tabIndex="-1" style={{background:"rgba(0,0,0,0.5)",zIndex:1055}} onClick={(e)=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal-dialog modal-dialog-centered">
-        <div className="modal-content border-0 shadow">
-          <div className="modal-header bg-light p-3"><h5 className="modal-title"><i className="ri-calendar-2-line me-2 text-primary"></i>Créer une nouvelle période</h5><button className="btn-close" onClick={onClose} disabled={loading}></button></div>
+        <div className="modal-content border-0 shadow-lg">
+          <div className="modal-header bg-primary p-3"><h5 className="modal-title text-white"><i className="ri-calendar-2-line me-2"></i>Nouvelle Période d'Analyse</h5><button className="btn-close btn-close-white" onClick={onClose} disabled={loading}></button></div>
           <div className="modal-body p-4">
             {error&&<div className="alert alert-danger py-2 fs-13"><i className="ri-error-warning-line me-1"></i>{error}</div>}
             <div className="row g-3">
-              <div className="col-6"><label className="form-label fw-medium">Année *</label><input type="number" className="form-control" value={year} min={2020} max={2030} onChange={(e)=>setYear(parseInt(e.target.value))}/></div>
-              <div className="col-6"><label className="form-label fw-medium">Mois *</label><select className="form-select" value={month} onChange={(e)=>setMonth(parseInt(e.target.value))}>{MONTHS.slice(1).map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select></div>
+              <div className="col-6"><label className="form-label fw-medium text-muted fs-12 uppercase">Année</label><input type="number" className="form-control form-control-lg bg-light border-light" value={year} min={2020} max={2030} onChange={(e)=>setYear(parseInt(e.target.value))}/></div>
+              <div className="col-6"><label className="form-label fw-medium text-muted fs-12 uppercase">Mois</label><select className="form-select form-select-lg bg-light border-light" value={month} onChange={(e)=>setMonth(parseInt(e.target.value))}>{MONTHS.slice(1).map((m,i)=><option key={i+1} value={i+1}>{m}</option>)}</select></div>
             </div>
-            <div className="alert alert-info mt-3 mb-0 py-2 fs-13"><i className="ri-information-line me-1"></i>La période sera créée avec le statut <strong>Open</strong>.</div>
+            <div className="mt-4 p-3 bg-primary-subtle rounded-3 border border-primary-subtle">
+              <div className="d-flex align-items-center"><i className="ri-information-fill fs-3 text-primary me-3"></i><p className="mb-0 fs-13 text-primary-emphasis">L'ouverture d'une période permet de commencer les extractions de données pour ce mois précis.</p></div>
+            </div>
           </div>
-          <div className="modal-footer">
-            <button className="btn btn-light" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>{loading?<><span className="spinner-border spinner-border-sm me-2"></span>Création...</>:<><i className="ri-add-line me-1"></i>Créer la période</>}</button>
+          <div className="modal-footer bg-light p-3">
+            <button className="btn btn-ghost-dark" onClick={onClose} disabled={loading}>Annuler</button>
+            <button className="btn btn-primary px-4 shadow-sm" onClick={handleSubmit} disabled={loading}>{loading?<><span className="spinner-border spinner-border-sm me-2"></span>Initialisation...</>:<><i className="ri-add-line me-1"></i>Créer la période</>}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdvancedCloseModal({ period, onClose, onConfirm }) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    periodService.validate(period.id)
+      .then(setData)
+      .catch(err => setError("Impossible de charger le bilan de validation."))
+      .finally(() => setLoading(false));
+  }, [period.id]);
+
+  const handleConfirm = async () => {
+    setConfirming(true);
+    try { await onConfirm(); }
+    catch(err) { setError(err.response?.data?.detail || "Erreur lors de la clôture."); setConfirming(false); }
+  };
+
+  return (
+    <div className="modal fade show d-block" tabIndex="-1" style={{background:"rgba(0,0,0,0.5)",zIndex:1056}} onClick={(e)=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal-dialog modal-dialog-centered">
+        <div className="modal-content border-0 shadow-lg">
+          <div className="modal-header bg-danger p-3"><h5 className="modal-title text-white"><i className="ri-lock-2-line me-2"></i>Clôture de Période (Governance Check)</h5><button className="btn-close btn-close-white" onClick={onClose} disabled={confirming}></button></div>
+          <div className="modal-body p-4">
+            <p className="text-muted">Analyse de l'intégrité des données pour <strong>{period.year}/{String(period.month).padStart(2,"0")}</strong> avant verrouillage définitif.</p>
+            
+            {loading ? (
+              <div className="text-center py-4"><div className="spinner-border text-primary"></div><p className="mt-3 text-muted">Vérification des extractions...</p></div>
+            ) : error ? (
+              <div className="alert alert-danger"><i className="ri-error-warning-line me-2"></i>{error}</div>
+            ) : (
+              <div className="vstack gap-3">
+                <div className={`p-3 rounded-3 border ${data.can_close ? 'bg-success-subtle border-success-subtle' : 'bg-danger-subtle border-danger-subtle'}`}>
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className={`mb-1 ${data.can_close ? 'text-success' : 'text-danger'}`}>{data.can_close ? "Prêt pour la clôture" : "Clôture bloquée"}</h6>
+                      <p className="mb-0 fs-12 text-muted">{data.running_jobs > 0 ? "Des extractions sont encore en cours d'exécution." : "Tous les jobs actifs sont terminés."}</p>
+                    </div>
+                    <i className={`${data.can_close ? 'ri-checkbox-circle-fill text-success' : 'ri-error-warning-fill text-danger'} fs-1`}></i>
+                  </div>
+                </div>
+
+                <div className="row g-2">
+                  <div className="col-4"><div className="p-2 border rounded-2 text-center bg-light"><span className="d-block fs-11 text-muted uppercase">Terminés</span><strong className="fs-16 text-success">{data.completed_jobs}</strong></div></div>
+                  <div className="col-4"><div className="p-2 border rounded-2 text-center bg-light"><span className="d-block fs-11 text-muted uppercase">En cours</span><strong className={`fs-16 ${data.running_jobs > 0 ? 'text-warning' : 'text-muted'}`}>{data.running_jobs}</strong></div></div>
+                  <div className="col-4"><div className="p-2 border rounded-2 text-center bg-light"><span className="d-block fs-11 text-muted uppercase">Échecs</span><strong className={`fs-16 ${data.failed_jobs > 0 ? 'text-danger' : 'text-muted'}`}>{data.failed_jobs}</strong></div></div>
+                </div>
+
+                {data.warnings.length > 0 && (
+                  <div className="alert alert-warning py-2 mb-0 fs-13"><i className="ri-alert-line me-2"></i>{data.warnings[0]}</div>
+                )}
+                
+                <div className="alert alert-secondary py-2 mb-0 fs-12 border-0 bg-light">
+                  <i className="ri-information-line me-2"></i>Une fois clôturée, la période devient <strong>immuable</strong>. Les snapshots KPI seront générés pour le reporting stratégique.
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="modal-footer bg-light p-3">
+            <button className="btn btn-ghost-dark" onClick={onClose} disabled={confirming}>Annuler</button>
+            <button className="btn btn-danger px-4 shadow-sm" onClick={handleConfirm} disabled={!data?.can_close || confirming}>{confirming?<><span className="spinner-border spinner-border-sm me-2"></span>Verrouillage...</>:<><i className="ri-lock-line me-1"></i>Confirmer la Clôture</>}</button>
           </div>
         </div>
       </div>
@@ -134,12 +205,41 @@ export default function PeriodsPage() {
                   {paginated.map(period=>(
                     <tr key={period.id}>
                       <td className="text-muted fs-12">#{period.id}</td>
-                      <td><span className="fw-semibold fs-14">{period.year} / {String(period.month).padStart(2,"0")}</span></td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          <div className="flex-shrink-0 avatar-xs me-2">
+                            <div className="avatar-title bg-light text-primary rounded-circle fs-12">
+                              {period.month}
+                            </div>
+                          </div>
+                          <span className="fw-semibold fs-14">{period.year} / {String(period.month).padStart(2,"0")}</span>
+                        </div>
+                      </td>
                       <td className="text-muted">{MONTHS[period.month]}</td>
                       <td><StatusBadge type="period" value={period.status}/></td>
-                      <td className="text-muted fs-12">{period.created_at?new Date(period.created_at).toLocaleDateString("fr-FR"):"—"}</td>
-                      <td className="text-muted fs-12">{period.closed_at?new Date(period.closed_at).toLocaleDateString("fr-FR"):"—"}</td>
-                      <td>{period.status==="open"?(<button className="btn btn-sm btn-soft-danger" onClick={()=>setCloseTarget(period)} title="Clôturer cette période"><i className="ri-lock-line me-1"></i>Clôturer</button>):(<span className="text-muted fs-12"><i className="ri-check-line me-1"></i>Clôturée</span>)}</td>
+                      <td className="text-muted fs-12">
+                        <i className="ri-time-line me-1"></i>
+                        {period.created_at?new Date(period.created_at).toLocaleDateString("fr-FR"):"—"}
+                      </td>
+                      <td className="fs-12">
+                        {period.closed_at ? (
+                          <div className="d-flex flex-column">
+                            <span><i className="ri-calendar-check-line me-1 text-success"></i>{new Date(period.closed_at).toLocaleDateString("fr-FR")}</span>
+                            <span className="text-muted"><i className="ri-user-follow-line me-1"></i>{period.closed_by_name || "Système"}</span>
+                          </div>
+                        ) : "—"}
+                      </td>
+                      <td>
+                        {period.status==="open" ? (
+                          <button className="btn btn-sm btn-soft-danger waves-effect waves-light" onClick={()=>setCloseTarget(period)} title="Clôturer cette période">
+                            <i className="ri-lock-password-line me-1"></i>Clôturer
+                          </button>
+                        ) : (
+                          <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1">
+                            <i className="ri-shield-user-line me-1"></i>Archive Scellée
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -152,7 +252,13 @@ export default function PeriodsPage() {
     </div>
 
     {showCreate&&<CreatePeriodModal onClose={()=>setShowCreate(false)} onSave={()=>{setShowCreate(false);showToast("Période créée avec succès.");loadPeriods();}}/>}
-    <ConfirmModal show={!!closeTarget} title="Clôturer cette période ?" message={closeTarget?`Vous allez clôturer la période ${closeTarget.year}/${String(closeTarget.month).padStart(2,"0")}. Les extractions seront bloquées (RG-01) et le dump mensuel sera déclenché.`:""} confirmLabel="Clôturer" confirmColor="danger" icon="ri-lock-line" iconColor="danger" loading={closeLoading} onConfirm={handleClose} onClose={()=>setCloseTarget(null)}/>
+    {closeTarget && (
+      <AdvancedCloseModal 
+        period={closeTarget} 
+        onClose={() => setCloseTarget(null)} 
+        onConfirm={handleClose} 
+      />
+    )}
     </div>
   );
 }

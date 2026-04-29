@@ -29,6 +29,8 @@ from app.api.dependencies import get_current_admin, get_current_user
 from app.database.session import get_db
 from app.models.app_user import AppUser
 from app.models.extraction_lot import ExtractionLot, ExtractionStatusEnum, ExtractionTypeEnum
+from app.models.commit import Commit
+from app.models.merge_request import MergeRequest
 from app.repositories.extraction_lot_repository import ExtractionLotRepository
 from app.repositories.gitlab_config_repository import GitLabConfigRepository
 from app.repositories.period_repository import PeriodRepository
@@ -138,6 +140,13 @@ async def _background_extraction(
         for idx, project in enumerate(projects_to_process):
             proj_prefix = f"[{idx+1}/{total_projects}] {project.name}"
             
+            # Calcul de la progression globale (Phase 2 Senior)
+            progress_pct = int((idx / total_projects) * 100)
+            lot.step_progress  = progress_pct
+            lot.current_action = f"Traitement {project.name}..."
+            db.add(lot)
+            db.flush()
+            
             # ── Étape 1 : Commits ─────────────────────────────────────────────
             # ─────────────────────────────────────────────────────────────────────────
             # ✅ FIX SENIOR : Smart Auto-Mapping
@@ -155,6 +164,9 @@ async def _background_extraction(
                 "step_index": 1, 
                 "step_label": f"{proj_prefix} : Récupération des commits…"
             }
+            lot.current_action = _job_progress[lot_id]["step_label"]
+            db.add(lot)
+            db.flush()
             await service._extract_commits(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
             db.flush()
             logger.info(f"[lot={lot_id}] {proj_prefix} — commits extraits")
@@ -164,6 +176,9 @@ async def _background_extraction(
                 "step_index": 2, 
                 "step_label": f"{proj_prefix} : Récupération des Merge Requests…"
             }
+            lot.current_action = _job_progress[lot_id]["step_label"]
+            db.add(lot)
+            db.flush()
             await service._extract_merge_requests(db, project, lot, client, developer_ids=developer_ids, fast_mode=fast_mode)
             db.flush()
             logger.info(f"[lot={lot_id}] {proj_prefix} — MRs extraites")
@@ -222,9 +237,11 @@ async def _background_extraction(
             logger.info(f"[lot={lot_id}] Dump JSON généré → {file_path}")
 
         # Marquer le lot comme completed
-        lot.status        = ExtractionStatusEnum.completed
-        lot.completed_at  = datetime.now(timezone.utc)
-        lot.error_message = None
+        lot.status         = ExtractionStatusEnum.completed
+        lot.completed_at   = datetime.now(timezone.utc)
+        lot.error_message  = None
+        lot.step_progress  = 100
+        lot.current_action = "Extraction terminée ✓"
         db.commit()
 
         # ── Terminé ───────────────────────────────────────────────────────────
@@ -421,7 +438,9 @@ def get_job_status(
         "lot_id":           lot.id,
         "status":           lot.status.value,          # running | completed | failed
         "step_index":       progress.get("step_index", 0),
-        "step_label":       progress.get("step_label", "En cours…"),
+        "step_label":       progress.get("step_label", lot.current_action or "En cours…"),
+        "step_progress":    lot.step_progress or 0,
+        "current_action":   lot.current_action,
         "project_id":       lot.project_id,
         "period_id":        lot.period_id,
         "extraction_type":  lot.extraction_type.value,
@@ -525,6 +544,15 @@ def list_lots(
             "step_label":      _job_progress.get(lot.id, {}).get("step_label", ""),
             "project_id":      lot.project_id,
             "period_id":       lot.period_id,
+            "developer_id":    lot.developer_id,
+            "developer": {
+                "id": lot.developer.id,
+                "name": lot.developer.name,
+                "gitlab_username": lot.developer.gitlab_username,
+                "site_id": lot.developer.primary_site_id,
+                "group_ids": lot.developer.group_ids,
+                "site_name": lot.developer.site
+            } if lot.developer else None,
             "triggered_by":    lot.triggered_by,
             "created_at":      lot.created_at.isoformat() if lot.created_at else None,
             "completed_at":    lot.completed_at.isoformat() if lot.completed_at else None,
@@ -532,19 +560,80 @@ def list_lots(
             "md5sum":          lot.md5sum,
             "has_file":        bool(lot.generated_file and os.path.exists(lot.generated_file)),
             "error_message":   lot.error_message,
+            "commit_count":    db.query(Commit).filter(Commit.extraction_lot_id == lot.id).count(),
+            "mr_count":        db.query(MergeRequest).filter(MergeRequest.extraction_lot_id == lot.id).count()
         }
         for lot in lots
     ]
 
 
-# =============================================================================
-# POST /extraction/by-team — PHASE 2 — Vision centrée-développeur
-#
-# Le manager sélectionne son équipe (par site, groupe ou liste explicite)
-# et lance l'extraction de TOUS ses développeurs en une seule requête.
-# Chaque développeur reçoit son propre ExtractionLot pour une traçabilité
-# individuelle et une progression indépendante.
-# =============================================================================
+@router.post(
+    "/simulate-team",
+    summary = "Phase 1 : Simuler l'impact d'une extraction pour une équipe",
+)
+async def simulate_extraction_by_team(
+    gitlab_config_id:  int,
+    db:                Session       = Depends(get_db),
+    current_admin:     AppUser       = Depends(get_current_admin),
+    site_id:           Optional[int] = Query(default=None),
+    group_id:          Optional[int] = Query(default=None),
+    developer_ids:     str           = Query(default=None),
+    project_ids:       str           = Query(default=None),
+):
+    """
+    Simule une extraction sans rien lancer.
+    Retourne le nombre de devs, projets et une estimation de charge.
+    """
+    from app.models.developer import Developer
+    from app.models.developer_site import DeveloperSite
+    from app.models.project import Project
+
+    # ── 1. Résoudre les développeurs (même logique que run_extraction_by_team)
+    dev_query = db.query(Developer).filter(
+        Developer.is_bot.is_(False),
+        Developer.is_active.is_(True),
+        Developer.is_validated.is_(True),
+    )
+
+    if developer_ids:
+        id_list = [int(i.strip()) for i in developer_ids.split(",") if i.strip().isdigit()]
+        dev_query = dev_query.filter(Developer.id.in_(id_list))
+    elif group_id:
+        from app.models.developer_group import developer_group_link
+        subq = db.query(developer_group_link.c.developer_id).filter(developer_group_link.c.group_id == group_id).subquery()
+        dev_query = dev_query.filter(Developer.id.in_(subq))
+    elif site_id:
+        subq = db.query(DeveloperSite.developer_id).filter(DeveloperSite.site_id == site_id).subquery()
+        dev_query = dev_query.filter(Developer.id.in_(subq))
+
+    devs = dev_query.all()
+    dev_count = len(devs)
+
+    # ── 2. Résoudre les projets
+    if project_ids:
+        proj_id_list = [int(i.strip()) for i in project_ids.split(",") if i.strip().isdigit()]
+        projects = db.query(Project).filter(Project.gitlab_project_id.in_(proj_id_list)).all()
+    else:
+        projects = db.query(Project).filter(Project.gitlab_config_id == gitlab_config_id, Project.is_active.is_(True)).all()
+    
+    proj_count = len(projects)
+
+    # ── 3. Estimation de charge (Senior Analytics)
+    # On estime 2 appels API critiques (Commits + MRs) par couple dev/projet
+    # Plus les appels de pagination (facteur 1.5)
+    est_api_calls = int(dev_count * proj_count * 3.5)
+    
+    # Temps estimé : ~1s par appel API + overhead
+    est_duration_sec = int(est_api_calls * 1.2)
+    
+    return {
+        "developer_count": dev_count,
+        "project_count":   proj_count,
+        "estimated_api_calls": est_api_calls,
+        "estimated_duration_sec": est_duration_sec,
+        "warning": "Volume important détecté" if est_api_calls > 500 else None
+    }
+
 
 @router.post(
     "/by-team",
@@ -630,8 +719,15 @@ async def run_extraction_by_team(
         dev_query = dev_query.filter(Developer.id.in_(id_list))
 
     elif group_id:
-        # Mode groupe
-        dev_query = dev_query.filter(Developer.group_id == group_id)
+        # Mode groupe — FIX M2M : Developer n'a plus de colonne group_id scalaire
+        from app.models.developer_group import developer_group_link
+        subq = (
+            db.query(developer_group_link.c.developer_id)
+            .filter(developer_group_link.c.group_id == group_id)
+            .subquery()
+        )
+        dev_query = dev_query.filter(Developer.id.in_(subq))
+
 
     elif site_id:
         # Mode site : via la table M2M DeveloperSite

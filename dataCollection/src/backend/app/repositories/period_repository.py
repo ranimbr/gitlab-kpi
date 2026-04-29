@@ -25,9 +25,11 @@ class PeriodRepository(BaseRepository[Period]):
         period = self.get_by_id(db, period_id)
         return period is not None and period.status == PeriodStatusEnum.open
 
-    def close_period(self, db: Session, period: Period) -> Period:
-        period.status    = PeriodStatusEnum.closed
-        period.closed_at = datetime.now(timezone.utc)
+    def close_period(self, db: Session, period: Period, closed_by_id: int = None, closure_summary: dict = None) -> Period:
+        period.status          = PeriodStatusEnum.closed
+        period.closed_at       = datetime.now(timezone.utc)
+        period.closed_by_id    = closed_by_id
+        period.closure_summary = closure_summary
         db.flush()
         return period
 
@@ -38,3 +40,12 @@ class PeriodRepository(BaseRepository[Period]):
             db.add(period)
             db.flush()
         return period
+
+    def get_latest_closed(self, db: Session) -> Optional[Period]:
+        """✅ AJOUT : récupère la période clôturée la plus récente (par date de clôture)."""
+        return (
+            db.query(Period)
+            .filter(Period.status == PeriodStatusEnum.closed)
+            .order_by(Period.closed_at.desc())
+            .first()
+        )

@@ -24,7 +24,7 @@ filter_repo = PeriodFilterRepository()
 
 # ─── Liste dashboards accessibles ─────────────────────────────────────────────
 
-@router.get("/", response_model=List[DashboardResponse])
+@router.get("", response_model=List[DashboardResponse])
 def list_my_dashboards(
     db:           Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
@@ -36,7 +36,7 @@ def list_my_dashboards(
 
 # ─── Créer un dashboard ───────────────────────────────────────────────────────
 
-@router.post("/", response_model=DashboardResponse, status_code=201)
+@router.post("", response_model=DashboardResponse, status_code=201)
 def create_dashboard(
     request:       DashboardCreate,
     db:            Session = Depends(get_db),

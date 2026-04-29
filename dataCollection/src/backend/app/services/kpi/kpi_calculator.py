@@ -13,7 +13,7 @@ CORRECTIONS :
    Les développeurs créés automatiquement par ExtractionService
    ont is_validated=False par défaut → exclus du calcul KPI.
    → Suppression du filtre is_validated dans _validated_dev_ids()
-     et _count_developers() pour les snapshots REALTIME.
+   e t _count_developers() pour les snapshots REALTIME.
    → Remplacement par is_active=True uniquement (les bots restent exclus).
    Note : l'admin peut toujours rejeter manuellement un dev via PATCH /validate.
 """
@@ -29,6 +29,7 @@ from app.models.developer_project import DeveloperProject
 from app.models.developer_site import DeveloperSite
 from app.models.merge_request import MergeRequest
 from app.models.comment import Comment
+from app.models.developer_group import developer_group_link
 
 
 class KpiCalculator:
@@ -117,7 +118,7 @@ class KpiCalculator:
     ) -> dict:
 
         nb_commits_project = self._count_all_project_commits(project_id, start_date, end_date)
-        nb_devs            = self._count_developers(project_id, site_id, group_id, developer_id)
+        nb_devs            = self._count_developers(project_id, start_date, end_date, site_id, group_id, developer_id)
         nb_commits_devs    = self._count_commits_by_devs(project_id, start_date, end_date, site_id, group_id, developer_id)
         nb_mrs             = self._count_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
         nb_mrs_approved    = self._count_approved_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
@@ -132,18 +133,19 @@ class KpiCalculator:
         nb_mrs_draft       = self._count_draft_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
 
         # ✅ KPIs ENTERPRISE (Niveau International)
-        # Bus Factor : nombre min de devs couvrant >= 50% du code. Valeur critique si = 1.
         bus_factor         = self._calculate_bus_factor(project_id, start_date, end_date)
-        # Sprint Velocity : commits / jours actifs. Mesure l'intensité réelle de contribution.
         sprint_velocity    = self._calculate_sprint_velocity(project_id, start_date, end_date, developer_id)
-        # Code Churn Rate : % de code réécrit/supprimé. > 40% = signe de retravail excessif.
         code_churn_rate    = self._calculate_code_churn(project_id, start_date, end_date, developer_id)
+
+        # ✅ DORA METRICS (Standard Google Research)
+        deployment_count   = self._count_deployments(project_id, start_date, end_date, site_id, group_id, developer_id)
+        lead_time_hours    = self._avg_lead_time(project_id, start_date, end_date, site_id, group_id, developer_id)
 
         denom = max(nb_devs, 1)
 
         mr_rate_per_site      = round(nb_mrs / denom, 4)
-        approved_mr_rate      = round(nb_mrs_approved / nb_mrs, 4)         if nb_mrs > 0          else 0.0
-        merged_mr_rate        = round(nb_mrs_merged / nb_mrs_approved, 4)  if nb_mrs_approved > 0 else 0.0
+        approved_mr_rate      = min(1.0, round(nb_mrs_approved / nb_mrs, 4))         if nb_mrs > 0          else 0.0
+        merged_mr_rate        = min(1.0, round(nb_mrs_merged / nb_mrs_approved, 4))  if nb_mrs_approved > 0 else 0.0
         commit_rate_per_site  = round(nb_commits_devs / denom, 4)
         avg_review_time_hours = round(sum_review_time / nb_mrs_approved, 2) if nb_mrs_approved > 0 else 0.0
 
@@ -168,6 +170,9 @@ class KpiCalculator:
             "bus_factor":              bus_factor,
             "sprint_velocity":         sprint_velocity,
             "code_churn_rate":         code_churn_rate,
+            # ─── DORA Metrics ────────────────────────────────────────────────────
+            "deployment_count":        deployment_count,
+            "lead_time_hours":         lead_time_hours,
             "site_id":                 site_id,
             "group_id":                group_id,
             "developer_id":            developer_id,
@@ -188,24 +193,8 @@ class KpiCalculator:
 
     def _active_dev_ids_query(self, project_id: int, site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int]):
         """
-        Retourne une Query SQLAlchemy (pas encore executée) des developer_ids actifs
-        pour le contexte donné.
-
-        ✅ FIX SAWarning : retourne la Query brute — l'appelant appelle .subquery()
-        au moment du .in_() pour éviter le warning SQLAlchemy 1.4+
-        "Coercing Subquery object into a select() for use in IN()".
-
-        ✅ FIX commits=0 : filtre sur is_active + is_bot uniquement.
-        is_validated n'est PAS filtré ici — les devs auto-créés par ExtractionService
-        sont actifs mais non validés. Les exclure ici viderait tous les snapshots
-        REALTIME. L'admin valide/rejette manuellement après extraction.
-
-        Filtre appliqué :
-          - Appartient au projet via DeveloperProject (M2M, is_active=True)
-          - is_active = True  (dev non archivé)
-          - is_bot   = False  (bots exclus des KPIs — toujours)
-          - Si site_id fourni  : filtre via DeveloperSite (M2M)
-          - Si developer_id fourni : filtre direct sur Developer.id
+        [SENIOR OPTIMIZATION] Retourne la Query SQLAlchemy pour les IDs de développeurs valides.
+        L'appelant peut utiliser .subquery() pour injecter le résultat dans un .in_().
         """
         q = (
             self.db.query(Developer.id)
@@ -221,7 +210,6 @@ class KpiCalculator:
             )
         )
 
-        # JOIN DeveloperSite uniquement si site_id fourni ET pas de filtre individuel
         if site_id is not None and developer_id is None:
             q = q.join(
                 DeveloperSite,
@@ -230,63 +218,36 @@ class KpiCalculator:
             )
 
         if group_id is not None and developer_id is None:
-            q = q.filter(Developer.group_id == group_id)
+            q = q.join(
+                developer_group_link,
+                (developer_group_link.c.developer_id == Developer.id) &
+                (developer_group_link.c.group_id     == group_id)
+            )
 
         if developer_id is not None:
             q = q.filter(Developer.id == developer_id)
 
-        return q  # ✅ Query brute — PAS .subquery() ici
+        return q
 
-    def _count_developers(self, project_id: int, site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int]) -> int:
+    def _count_developers(
+        self, 
+        project_id: int, 
+        start_date: datetime,
+        end_date: datetime,
+        site_id: Optional[int] = None, 
+        group_id: Optional[int] = None, 
+        developer_id: Optional[int] = None
+    ) -> int:
         """
-        COUNT des développeurs actifs pour le contexte donné.
-
-        ✅ FIX commits=0 : même logique que _active_dev_ids_query —
-        is_validated retiré du filtre.
+        [SENIOR STRATEGY] Assigned Headcount (Full Squad).
+        Compte tous les développeurs officiellement affectés au projet/site.
+        Indispensable pour le pilotage de la capacité et du ROI.
         """
-        if developer_id is not None:
-            exists = (
-                self.db.query(Developer.id)
-                .join(
-                    DeveloperProject,
-                    (DeveloperProject.developer_id == Developer.id) &
-                    (DeveloperProject.project_id   == project_id)   &
-                    (DeveloperProject.is_active.is_(True)),
-                )
-                .filter(
-                    Developer.id           == developer_id,
-                    Developer.is_active.is_(True),
-                    Developer.is_bot.is_(False),
-                )
-                .first()
-            )
-            return 1 if exists else 0
-
-        q = (
-            self.db.query(func.count(Developer.id))
-            .join(
-                DeveloperProject,
-                (DeveloperProject.developer_id == Developer.id) &
-                (DeveloperProject.project_id   == project_id)   &
-                (DeveloperProject.is_active.is_(True)),
-            )
-            .filter(
-                Developer.is_active.is_(True),
-                Developer.is_bot.is_(False),
-            )
-        )
-        if site_id is not None:
-            q = q.join(
-                DeveloperSite,
-                (DeveloperSite.developer_id == Developer.id) &
-                (DeveloperSite.site_id      == site_id),
-            )
-        if group_id is not None:
-            q = q.filter(Developer.group_id == group_id)
-        return q.scalar() or 0
+        # On utilise le helper d'ID qui gère déjà les filtres Project/Site/Group
+        q = self._active_dev_ids_query(project_id, site_id, group_id, developer_id)
+        return q.count()
 
     def _count_all_project_commits(self, project_id: int, start_date: datetime, end_date: datetime) -> int:
-        """KPI #6 : tous commits du projet, hors merges automatiques."""
         return (
             self.db.query(func.count(Commit.id))
             .filter(
@@ -302,8 +263,6 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        """KPI #5 : commits des devs actifs, hors merges automatiques."""
-        # ✅ FIX SAWarning : .subquery() appelé ici, pas dans _active_dev_ids_query
         valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(Commit.id))
@@ -312,7 +271,7 @@ class KpiCalculator:
                 Commit.authored_date       >= start_date,
                 Commit.authored_date       <  end_date,
                 Commit.is_merge_commit.is_(False),
-                Commit.developer_id.in_(select(valid_ids)),
+                Commit.developer_id.in_(valid_ids), # ✅ FIX: direct subquery
             )
             .scalar() or 0
         )
@@ -321,7 +280,6 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        """KPI #1 : MRs non-draft créées par des devs actifs."""
         valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
@@ -330,7 +288,7 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab >= start_date,
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.is_draft.is_(False),
-                MergeRequest.developer_id.in_(select(valid_ids)),
+                MergeRequest.developer_id.in_(valid_ids), # ✅ FIX: direct subquery
             )
             .scalar() or 0
         )
@@ -339,12 +297,6 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        """
-        Compte les MRs en brouillon (Draft) créées sur la période.
-        Ces MRs représentent du travail en cours non encore soumis à relecture.
-        Elles ne sont PAS comptées dans les KPIs de production (total_mrs_created)
-        mais permettent de détecter les développeurs actifs sans production finalisée.
-        """
         valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
@@ -362,7 +314,6 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        """KPI #3 : MRs approuvées."""
         valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
@@ -381,7 +332,6 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        """KPI #4 : MRs mergées."""
         valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
@@ -400,7 +350,6 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> float:
-        """KPI #7 : somme des temps de review (MRs approuvées)."""
         valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
         result = (
             self.db.query(func.sum(MergeRequest.review_time_hours))
@@ -410,24 +359,18 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.is_draft.is_(False),
                 MergeRequest.review_time_hours.isnot(None),
-                MergeRequest.developer_id.in_(select(valid_ids)),
+                MergeRequest.developer_id.in_(valid_ids), # ✅ FIX: direct subquery
             )
             .scalar()
         )
         return float(result or 0.0)
 
     def _count_comments(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
-        """Compte les commentaires faits par le(s) dev(s) UNIQUEMENT sur ce projet.
-
-        [FIX-PROJECT-FILTER] JOIN sur MergeRequest pour isoler les commentaires par projet.
-        Sans ce filtre, les commentaires d'un dev sur d'autres projets étaient comptés
-        dans les KPIs de CE projet — donnant des résultats incorrects sur les tableaux de bord.
-        """
         q = (
             self.db.query(func.count(Comment.id))
             .join(MergeRequest, Comment.merge_request_id == MergeRequest.id)
             .filter(
-                MergeRequest.project_id == project_id,  # [FIX] isolement par projet
+                MergeRequest.project_id == project_id,
                 Comment.created_at >= start_date,
                 Comment.created_at <  end_date,
             )
@@ -437,15 +380,8 @@ class KpiCalculator:
         return q.scalar() or 0
 
     def _count_reviews_involved(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
-        """
-        Compte les MRs où le dev est impliqué en tant que Reviewer ou Assignee
-        (et n'est PAS l'auteur).
-        """
         if not developer_id:
-            return 0 # Global reviews count needs more logic (count unique MRs with any non-author reviewer)
-            
-        # Enterprise Metric: Active Review Involvement
-        # Counts MRs where dev is Reviewer, Assignee, OR actively participated via Comments
+            return 0
         mr_with_comments_by_dev = self.db.query(Comment.merge_request_id).filter(
             Comment.developer_id == developer_id
         ).subquery()
@@ -454,28 +390,34 @@ class KpiCalculator:
             MergeRequest.project_id        == project_id,
             MergeRequest.created_at_gitlab >= start_date,
             MergeRequest.created_at_gitlab <  end_date,
-            MergeRequest.developer_id.is_distinct_from(developer_id), # Pas l'auteur
+            MergeRequest.developer_id.is_distinct_from(developer_id),
             (
                 (MergeRequest.reviewer_id == developer_id) | 
                 (MergeRequest.assignee_id == developer_id) |
-                MergeRequest.id.in_(select(mr_with_comments_by_dev))
+                MergeRequest.id.in_(mr_with_comments_by_dev) # ✅ FIX: direct subquery
             )
         )
         return q.scalar() or 0
 
     def _count_cross_contributions(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
-        """
-        Calcule le score de cross-contribution (MRs relues en dehors de son équipe).
-        Réservé aux KPIs individuels (developer_id is not None).
-        """
         if not developer_id:
             return 0
-            
         from sqlalchemy.orm import aliased
-        
         dev_reviewer = aliased(Developer)
         dev_author = aliased(Developer)
-        
+        from app.models.developer_group import developer_group_link as dgl
+        from sqlalchemy import exists, and_
+        dgl_rev = dgl.alias("dgl_rev")
+        dgl_aut = dgl.alias("dgl_aut")
+        reviewer_has_group = exists().where(dgl_rev.c.developer_id == dev_reviewer.id)
+        author_has_group   = exists().where(dgl_aut.c.developer_id == dev_author.id)
+        same_group = exists().where(
+            and_(
+                dgl_rev.c.developer_id == dev_reviewer.id,
+                dgl_aut.c.developer_id == dev_author.id,
+                dgl_rev.c.group_id     == dgl_aut.c.group_id,
+            )
+        )
         q = (
             self.db.query(func.count(MergeRequest.id))
             .join(dev_reviewer, MergeRequest.reviewer_id == dev_reviewer.id)
@@ -485,30 +427,14 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab >= start_date,
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.reviewer_id       == developer_id,
-                dev_reviewer.group_id.isnot(None),
-                dev_author.group_id.isnot(None),
-                dev_reviewer.group_id         != dev_author.group_id
+                reviewer_has_group,
+                author_has_group,
+                ~same_group,
             )
         )
         return q.scalar() or 0
 
-    # =========================================================================
-    # KPIs ENTERPRISE — Niveau International
-    # =========================================================================
-
     def _calculate_bus_factor(self, project_id: int, start_date: datetime, end_date: datetime) -> int:
-        """
-        Bus Factor : nombre minimum de développeurs couvrant >= 50% des commits.
-
-        Interprétation :
-          - Bus Factor = 1 → CRITIQUE (toute la valeur repose sur 1 personne)
-          - Bus Factor = 2 → Risque élevé
-          - Bus Factor >= 3 → Zone saine pour une petite équipe
-          - Bus Factor >= 5 → Équipe résiliente
-
-        Algorithme : tri décroissant des commits par dev, accumulation jusqu'à 50%.
-        Identique à la méthode utilisée par Google DORA et GitLab Engineering.
-        """
         rows = (
             self.db.query(Commit.developer_id, func.count(Commit.id).label("cnt"))
             .filter(
@@ -536,18 +462,7 @@ class KpiCalculator:
         return bus_factor
 
     def _calculate_sprint_velocity(self, project_id: int, start_date: datetime, end_date: datetime,
-                                    developer_id: Optional[int] = None) -> float:
-        """
-        Sprint Velocity : commits / jours actifs sur la période.
-
-        Mesure l'intensité réelle de contribution quotidienne.
-        Différent du commit_rate mensuel : ici on ne divise que par les jours
-        où le développeur a réellement travaillé, donnant une mesure plus précise
-        de sa productivité lors des journées actives.
-
-        Exemple : 10 commits en 4 jours actifs → Velocity = 2.5 (sain)
-        """
-        # Jours distincts avec au moins un commit
+                                     developer_id: Optional[int] = None) -> float:
         q_days = (
             self.db.query(func.count(func.distinct(func.date(Commit.authored_date))))
             .filter(
@@ -563,7 +478,6 @@ class KpiCalculator:
         if active_days == 0:
             return 0.0
 
-        # Total commits sur la même période
         q_commits = (
             self.db.query(func.count(Commit.id))
             .filter(
@@ -579,19 +493,7 @@ class KpiCalculator:
         return round(total_commits / active_days, 2)
 
     def _calculate_code_churn(self, project_id: int, start_date: datetime, end_date: datetime,
-                               developer_id: Optional[int] = None) -> float:
-        """
-        Code Churn Rate : deletions / (additions + deletions) * 100
-
-        Représente le pourcentage de code réécrit ou supprimé.
-        Un taux élevé indique beaucoup de retravail ou de dette technique.
-
-        Interprétation (standard industrie) :
-          < 20%  : Excellent — code stable, bonne planification
-          20-40% : Normal   — refactoring sain en développement agile
-          > 40%  : Attention — retravail excessif, revue de processus nécessaire
-          > 60%  : Critique  — instabilité du code, risque livraison
-        """
+                                developer_id: Optional[int] = None) -> float:
         q = (
             self.db.query(
                 func.sum(Commit.additions).label("total_add"),
@@ -613,3 +515,68 @@ class KpiCalculator:
         if total == 0:
             return 0.0
         return round((total_del / total) * 100, 1)
+
+    # =========================================================================
+    # DORA METRICS — Standard Google / DORA Research Program
+    # =========================================================================
+
+    def _count_deployments(
+        self, project_id: int, start_date: datetime, end_date: datetime,
+        site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+    ) -> int:
+        """
+        DORA Metric 1 — Deployment Frequency.
+
+        Définition : nombre de MRs non-draft mergées sur la branche de production
+        du projet (default_branch = "main", "master", "develop", "prod").
+        """
+        from app.models.project import Project
+
+        project_branch = self.db.query(Project.default_branch).filter(Project.id == project_id).scalar()
+        target_branches = [project_branch] if project_branch else ["main", "master", "develop", "prod"]
+
+        q = self.db.query(func.count(MergeRequest.id)).filter(
+            MergeRequest.project_id        == project_id,
+            MergeRequest.merged_at         >= start_date,
+            MergeRequest.merged_at         <  end_date,
+            MergeRequest.is_draft.is_(False),
+            MergeRequest.merged_at.isnot(None),
+            MergeRequest.target_branch.in_(target_branches),
+        )
+
+        # Attribution filtrée si demandée (Site, Groupe ou Dev)
+        if site_id or group_id or developer_id:
+            valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+            q = q.filter(MergeRequest.developer_id.in_(valid_ids)) # ✅ FIX: direct subquery
+        
+        return q.scalar() or 0
+
+    def _avg_lead_time(
+        self, project_id: int, start_date: datetime, end_date: datetime,
+        site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+    ) -> float:
+        """
+        DORA Metric 2 — Lead Time for Changes.
+        """
+        from app.models.project import Project
+
+        project_branch = self.db.query(Project.default_branch).filter(Project.id == project_id).scalar()
+        target_branches = [project_branch] if project_branch else ["main", "master", "develop", "prod"]
+
+        q = self.db.query(func.avg(MergeRequest.cycle_time_hours)).filter(
+            MergeRequest.project_id        == project_id,
+            MergeRequest.merged_at         >= start_date,
+            MergeRequest.merged_at         <  end_date,
+            MergeRequest.is_draft.is_(False),
+            MergeRequest.merged_at.isnot(None),
+            MergeRequest.target_branch.in_(target_branches),
+            MergeRequest.cycle_time_hours.isnot(None),
+        )
+
+        # Attribution filtrée si demandée
+        if site_id or group_id or developer_id:
+            valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+            q = q.filter(MergeRequest.developer_id.in_(valid_ids)) # ✅ FIX: direct subquery
+
+        result = q.scalar()
+        return round(float(result or 0.0), 1)

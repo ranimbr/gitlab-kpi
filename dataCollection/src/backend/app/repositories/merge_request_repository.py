@@ -41,13 +41,65 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         offset:     int = 0,
         lot_id:     Optional[int] = None,
     ) -> List[MergeRequest]:
+        """
+        ✅ SENIOR : Récupération avec filtrage strict 'Human-Only'.
+        Exclut les bots, les développeurs inactifs et non-validés.
+        """
         query = (
             db.query(MergeRequest)
-            .options(joinedload(MergeRequest.developer))
-            .filter(MergeRequest.project_id == project_id)
+            .options(joinedload(MergeRequest.developer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
+                joinedload(MergeRequest.reviewer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
+                joinedload(MergeRequest.assignee).joinedload(Developer.site_associations).joinedload(DeveloperSite.site)
+)
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .filter(
+                MergeRequest.project_id == project_id,
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            )
         )
         if lot_id is not None:
             query = query.filter(MergeRequest.extraction_lot_id == lot_id)
+
+        return (
+            query
+            .order_by(MergeRequest.created_at_gitlab.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    def get_by_period_paginated(
+        self,
+        db:         Session,
+        period_id:  int,
+        project_id: Optional[int] = None,
+        limit:      int = 50,
+        offset:     int = 0,
+    ) -> List[MergeRequest]:
+        """
+        ✅ SENIOR : Récupération fédérée par période avec filtrage 'Human-Only'.
+        """
+        from app.models.extraction_lot import ExtractionLot
+        query = (
+            db.query(MergeRequest)
+            .options(joinedload(MergeRequest.developer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
+                joinedload(MergeRequest.reviewer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
+                joinedload(MergeRequest.assignee).joinedload(Developer.site_associations).joinedload(DeveloperSite.site)
+)
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .join(ExtractionLot, MergeRequest.extraction_lot_id == ExtractionLot.id)
+            .filter(
+                ExtractionLot.period_id == period_id,
+                Developer.is_active == True,
+                Developer.is_validated == True,
+                Developer.is_bot == False
+            )
+        )
+        
+        if project_id is not None:
+            query = query.filter(MergeRequest.project_id == project_id)
 
         return (
             query

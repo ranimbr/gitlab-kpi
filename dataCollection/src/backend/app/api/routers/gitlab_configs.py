@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/gitlab-configs", tags=["GitLab Configs"])
 repo   = GitLabConfigRepository()
 
-@router.get("/", response_model=List[GitLabConfigResponse])
+@router.get("", response_model=List[GitLabConfigResponse])
 def list_configs(db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     configs = repo.get_all(db)
     counts  = dict(db.query(Project.gitlab_config_id, func.count(Project.id)).group_by(Project.gitlab_config_id).all())
@@ -24,7 +24,7 @@ def list_configs(db: Session = Depends(get_db), current_admin: AppUser = Depends
         c.projects_count = counts.get(c.id, 0)
     return configs
 
-@router.post("/", response_model=GitLabConfigResponse, status_code=201)
+@router.post("", response_model=GitLabConfigResponse, status_code=201)
 def create_config(request: GitLabConfigCreate, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     try:
         encrypted = encrypt_token(request.token)

@@ -37,10 +37,6 @@ class CommitMergeRequest(Base):
         index=True,
     )
 
-    __table_args__ = (
-        UniqueConstraint("commit_id", "mr_id", name="uq_commit_mr"),
-    )
-
     # Relations
     commit        = relationship("Commit",        back_populates="commit_mrs")
     merge_request = relationship("MergeRequest",  back_populates="commit_mrs")

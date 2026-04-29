@@ -220,18 +220,30 @@ const KpiRadarChart = ({ latest, loading }) => {
   }, [latest, loading]);
 
   if (loading) return <div className="skeleton rounded-3 w-100 h-100" style={{ minHeight: 300 }} />;
+  if (!latest) return (
+    <div className="d-flex flex-column align-items-center justify-content-center h-100 py-5 opacity-50">
+       <i className="ri-database-2-line fs-2 mb-2"></i>
+       <p className="fs-12 fw-medium mb-0">Données non disponibles</p>
+       <span className="fs-11">Sélectionnez une autre période</span>
+    </div>
+  );
   return <canvas ref={chartRef} style={{ maxHeight: 320, width: "100%" }} />;
 };
 
 // ── Executive Insight Banner ──────────────────────────────────────────────────
 const ExecutiveInsight = ({ latest, projectName }) => {
-  if (!latest) return null;
-  const isHealthy = latest.merged_mr_rate > 0.6 && latest.avg_review_time_hours < 48;
-  const healthColor = isHealthy ? 'success' : 'warning';
-  const healthIcon = isHealthy ? 'ri-shield-check-line' : 'ri-error-warning-line';
-  const message = isHealthy 
-    ? `L'équipe affiche une dynamique positive sur ${projectName}. La vélocité de revue est excellente.`
-    : `Attention : des goulots d'étranglement sont détectés sur ${projectName}. Le temps de revue moyen est élevé.`;
+  const isHealthy = latest ? (latest.merged_mr_rate > 0.6 && latest.avg_review_time_hours < 48) : false;
+  const healthColor = !latest ? 'secondary' : (isHealthy ? 'success' : 'warning');
+  const healthIcon = !latest ? 'ri-information-line' : (isHealthy ? 'ri-shield-check-line' : 'ri-error-warning-line');
+  
+  let message = "";
+  if (!latest) {
+    message = `Aucune donnée disponible pour ${projectName || "ce projet"}. Lancer une extraction pour générer les analyses stratégiques.`;
+  } else {
+    message = isHealthy 
+      ? `L'équipe affiche une dynamique positive sur ${projectName}. La vélocité de revue est excellente.`
+      : `Attention : des goulots d'étranglement sont détectés sur ${projectName}. Le temps de revue moyen est élevé.`;
+  }
 
   return (
     <div className={`card border-0 mb-4 fade-in-up glass`} style={{ borderLeft: `5px solid var(--brand-${healthColor})` }}>
@@ -241,12 +253,12 @@ const ExecutiveInsight = ({ latest, projectName }) => {
              <i className={`${healthIcon} fs-4`}></i>
           </div>
           <div className="flex-grow-1">
-            <h6 className="mb-1 fw-bold text-dark">Résumé Stratégique — {projectName}</h6>
+            <h6 className="mb-1 fw-bold text-dark">Résumé Stratégique — {projectName || "En attente"}</h6>
             <p className="mb-0 text-muted fs-13">{message}</p>
           </div>
           <div className="flex-shrink-0 text-end d-none d-md-block">
              <span className={`badge bg-${healthColor}-subtle text-${healthColor} px-3 py-2 fs-12 fw-bold`}>
-                SANTÉ : {isHealthy ? 'OPTIMALE' : 'À SURVEILLER'}
+                SANTÉ : {!latest ? 'INDÉTERMINÉE' : (isHealthy ? 'OPTIMALE' : 'À SURVEILLER')}
              </span>
           </div>
         </div>
@@ -270,8 +282,28 @@ const DoraMetricsRow = ({ latest, loading }) => {
       if (metric > 0.05) return { label: 'MEDIUM', color: 'warning' };
       return { label: 'LOW', color: 'danger' };
     }
-    return { label: 'N/A', color: 'secondary' };
+    return { label: '—', color: 'secondary' };
   };
+
+  if (!latest && !loading) {
+     return (
+        <div className="row g-3 mb-4 opacity-50">
+           {[1,2].map(i => (
+              <div key={i} className="col-12 col-md-6">
+                 <div className="card border-0 shadow-sm h-100 overflow-hidden">
+                    <div className="card-body p-4 d-flex align-items-center">
+                       <div className="avatar-lg bg-light rounded-2 me-3"></div>
+                       <div className="flex-grow-1">
+                          <div className="h-25 bg-light rounded w-50 mb-2"></div>
+                          <div className="h-50 bg-light rounded w-75"></div>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           ))}
+        </div>
+     );
+  }
 
   const leadTime = latest?.avg_review_time_hours || 0;
   const frequency = (latest?.total_mrs_created || 0) / 30; // Approximation par mois
@@ -742,45 +774,69 @@ export default function DashboardKPI() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [projects, setProjects] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(null); // null = "all"
   const [selectedSiteId, setSelectedSiteId] = useState(null);
   const [sites, setSites] = useState([]);
+  
+  const [periods, setPeriods] = useState([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
   const [currentPeriod, setCurrentPeriod] = useState(null);
+
   const [kpiData, setKpiData] = useState(null);
   const [multiPeriodData, setMultiPeriodData] = useState([]);
   const [activeMultiKpi, setActiveMultiKpi] = useState("mr_rate_per_site");
-  // ✅ NOUVEAU : index du snapshot sélectionné (0 = dernier en date)
+  
   const [selectedSnapIndex, setSelectedSnapIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  // ✅ NOUVEAU : Isolation par Lot (Session)
+  // Lots d'extraction (Session view) — on le garde mais on le rend discret
   const [lots, setLots] = useState([]);
   const [selectedLotId, setSelectedLotId] = useState(null);
 
-  // Chargement initial
+  // Chargement initial des entités
   useEffect(() => {
     let mounted = true;
+    setLoading(true);
+
     Promise.all([
       projectService.getAll(),
+      periodService.getAll(),
       periodService.getCurrent().catch(() => null),
       siteService.getAll(true).catch(() => []),
-    ]).then(([projs, period, sitesData]) => {
+    ]).then(([projs, periodsData, curPeriod, sitesData]) => {
       if (!mounted) return;
       setProjects(projs);
-      setCurrentPeriod(period);
-      const urlId = searchParams.get("project_id");
-      const first = urlId ? parseInt(urlId) : projs[0]?.id;
-      if (first) setSelectedProjectId(first);
-      
-      // Si un lot_id est dans l'URL, on le présélectionne
-      const urlLotId = searchParams.get("lot_id");
-      if (urlLotId) setSelectedLotId(parseInt(urlLotId));
+      setPeriods(periodsData || []);
+      setCurrentPeriod(curPeriod);
+      setSites(sitesData || []);
+
+      // Init filters
+      const urlProjId = searchParams.get("project_id");
+      if (urlProjId === "all") {
+        setSelectedProjectId(null);
+      } else if (urlProjId) {
+        setSelectedProjectId(parseInt(urlProjId));
+      } else if (projs.length > 0) {
+        // Optionnel : par défaut sur "Tous les projets" ou le premier projet
+        setSelectedProjectId(null); 
+      }
+
+      const urlPeriodId = searchParams.get("period_id");
+      if (urlPeriodId) {
+        setSelectedPeriodId(parseInt(urlPeriodId));
+      } else if (curPeriod) {
+        setSelectedPeriodId(curPeriod.id);
+      }
+    }).finally(() => {
+      if (mounted) setLoading(false);
     });
+
     return () => { mounted = false; };
   }, []); // eslint-disable-line
 
+  // Chargement des lots si un projet est sélectionné
   useEffect(() => {
     if (!selectedProjectId) { setLots([]); return; }
     extractionLotService.getAll(selectedProjectId)
@@ -790,34 +846,62 @@ export default function DashboardKPI() {
       .catch(() => setLots([]));
   }, [selectedProjectId]);
 
-  // Chargement KPIs + tableau multi-périodes
+  // Chargement KPIs (Pulse)
   useEffect(() => {
-    if (!selectedProjectId) return;
+    // Si pas de périodes chargées, on attend
+    if (periods.length === 0 && loading) return;
+
     let mounted = true;
     setLoading(true);
     setError(null);
+    // ✅ RESET STATE définitif : on vide tout avant chaque nouvel appel
+    setKpiData(null);
+    setMultiPeriodData([]);
 
-    const siteIdParam = selectedSiteId != null ? parseInt(selectedSiteId) : null;
-    const lotIdParam  = selectedLotId != null  ? parseInt(selectedLotId)  : null;
+    const siteIdParam   = selectedSiteId != null ? parseInt(selectedSiteId) : null;
+    const lotIdParam    = selectedLotId != null  ? parseInt(selectedLotId)  : null;
+    const periodIdParam = selectedPeriodId != null ? parseInt(selectedPeriodId) : null;
+    const projIdParam   = selectedProjectId || "all";
 
     Promise.all([
-      // KPIs principaux
-      kpiService.getDashboard(selectedProjectId, { siteId: siteIdParam, lotId: lotIdParam }),
-      // ✅ NOUVEAU : tableau multi-périodes (PDF encadrant)
-      analyticsService.getMultiPeriod(selectedProjectId, { months: 12, siteId: siteIdParam })
-        .catch(() => []),
+      // KPIs principaux (Supporte period_id et project="all")
+      kpiService.getDashboard(projIdParam, { 
+        siteId: siteIdParam, 
+        lotId: lotIdParam, 
+        periodId: periodIdParam 
+      }),
+      // Tableau multi-périodes
+      analyticsService.getMultiPeriod(selectedProjectId || projects[0]?.id || 0, { 
+        months: 12, 
+        siteId: siteIdParam 
+      }).catch(() => []),
     ]).then(([data, multiData]) => {
       if (!mounted) return;
       setKpiData(data);
       setMultiPeriodData(Array.isArray(multiData) ? multiData : []);
-    }).catch(() => {
-      if (mounted) setError("Aucune donnée KPI. Veuillez d'abord lancer une extraction.");
+    }).catch((err) => {
+      if (mounted) {
+        console.error("Dashboard fetch error:", err);
+        setError("Impossible de charger les KPIs. Vérifiez votre connexion au serveur.");
+      }
     }).finally(() => {
       if (mounted) setLoading(false);
     });
 
     return () => { mounted = false; };
-  }, [selectedProjectId, selectedSiteId, selectedLotId]);
+  }, [selectedProjectId, selectedSiteId, selectedLotId, selectedPeriodId, periods.length]);
+
+  // ✅ SYNC URL (Sépare du chargement pour plus de fiabilité)
+  useEffect(() => {
+    const params = {
+      project_id: selectedProjectId === null ? "all" : selectedProjectId
+    };
+    if (selectedPeriodId) params.period_id = selectedPeriodId;
+    if (selectedSiteId) params.site_id = selectedSiteId;
+    if (selectedLotId) params.lot_id = selectedLotId;
+
+    setSearchParams(params);
+  }, [selectedProjectId, selectedPeriodId, selectedSiteId, selectedLotId]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedProjectId) return;
@@ -839,24 +923,40 @@ export default function DashboardKPI() {
     }
   }, [selectedProjectId, selectedSiteId, selectedLotId]);
 
-  const handleProjectChange = useCallback((projectId) => {
-    setSelectedProjectId(projectId);
+  const handleProjectChange = useCallback((id) => {
+    const val = id === "all" ? null : parseInt(id);
+    setSelectedProjectId(val);
     setSelectedSiteId(null);
-    setSelectedLotId(null); // Reset lot when project changes
-    setSelectedSnapIndex(0); // ✅ reset au dernier snapshot
-    setSearchParams({ project_id: projectId });
-  }, [setSearchParams]);
+    setSelectedLotId(null);
+    setSelectedSnapIndex(0);
+  }, []);
+
+  const handlePeriodChange = useCallback((id) => {
+    const val = id === "" ? null : parseInt(id);
+    setSelectedPeriodId(val);
+    setSelectedLotId(null); // On privilégie la période au lot
+    setSelectedSnapIndex(0);
+  }, []);
 
   const history = kpiData?.history || [];
-
-  // ✅ NOUVEAU : snapshot sélectionné par l'utilisateur
-  // historyDesc[0] = plus récent, historyDesc[N] = plus ancien
   const historyDesc = [...history].reverse();
-  const latest = historyDesc[selectedSnapIndex] || kpiData?.latest_metrics || null;
-  const previous = historyDesc[selectedSnapIndex + 1] || null;
+
+  // ✅ LOGIQUE SENIOR : Fallback intelligent
+  // - Si l'utilisateur a choisi un MOIS précis : on respecte son choix strictement (pas de fallback).
+  // - Si l'utilisateur n'a rien choisi (chargement initial) : on tombe sur le plus récent.
+  const isPeriodSpecific = selectedPeriodId !== null;
+  const latest = isPeriodSpecific 
+    ? (kpiData?.latest_metrics || null) 
+    : (kpiData?.latest_metrics || historyDesc[0] || null);
+
+  const previous = historyDesc[1] || null;
+  
+  // ✅ État "Pas de données" pour ce périmètre
+  const noDataForChoice = isPeriodSpecific && !kpiData?.latest_metrics;
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
   const selectedSite = sites.find(s => s.id === selectedSiteId);
+  const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
 
   const radarScores = useMemo(() => {
     if (!latest) return null;
@@ -896,83 +996,80 @@ export default function DashboardKPI() {
                   <li className="breadcrumb-item"><Link to="/" className="text-muted">Dashboard</Link></li>
                   <li className="breadcrumb-item"><Link to="/projects" className="text-muted">Projets</Link></li>
                   {selectedProject && <li className="breadcrumb-item active fw-medium">{selectedProject.name}</li>}
-                  {currentPeriod && (
+                  {selectedPeriod && (
                     <li className="breadcrumb-item">
-                      <span className={`badge ms-1 fs-11 bg-${currentPeriod.status === "open" ? "success" : "secondary"}-subtle text-${currentPeriod.status === "open" ? "success" : "secondary"}`}>
-                        Période {currentPeriod.year}/{String(currentPeriod.month).padStart(2, "0")} — {currentPeriod.status === "open" ? "Ouverte" : "Clôturée"}
+                      <span className={`badge ms-1 fs-11 bg-${selectedPeriod.status === "open" ? "success" : "secondary"}-subtle text-${selectedPeriod.status === "open" ? "success" : "secondary"}`}>
+                        Période {selectedPeriod.year}/{String(selectedPeriod.month).padStart(2, "0")} — {selectedPeriod.status === "open" ? "Ouverte" : "Clôturée"}
                       </span>
                     </li>
                   )}
                 </ol>
               </div>
               <div className="d-flex align-items-center gap-2 flex-wrap">
+                {/* 1. Projet Selector */}
                 <select className="form-select" style={{ width: 220 }}
-                  value={selectedProjectId || ""}
-                  onChange={e => handleProjectChange(parseInt(e.target.value))}>
-                  <option value="" disabled>Choisir un projet…</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  value={selectedProjectId === null ? "all" : selectedProjectId}
+                  onChange={e => handleProjectChange(e.target.value)}>
+                  <option value="all">🌐 Tous les projets (Global)</option>
+                  <optgroup label="Projets individuels">
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </optgroup>
                 </select>
+
+                {/* 2. Period Selector (Senior Period-First) */}
+                <select className="form-select border-primary" style={{ width: 200, fontWeight: 600 }}
+                  value={selectedPeriodId || ""}
+                  onChange={e => handlePeriodChange(e.target.value)}>
+                  <option value="">📅 Toutes les périodes</option>
+                  {periods.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {MOIS_FR[p.month]} {p.year} {p.status === "closed" ? "🔒" : "📂"}
+                    </option>
+                  ))}
+                </select>
+
+                {/* 3. Site Selector */}
                 {sites.length > 0 && (
                   <select className="form-select" style={{ width: 160 }}
                     value={selectedSiteId || ""}
                     onChange={e => setSelectedSiteId(e.target.value ? Number(e.target.value) : null)}>
-                    <option value="">Tous les sites</option>
+                    <option value="">🌍 Tous les sites</option>
                     {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 )}
 
-                {/* ✅ NOUVEAU : Sélecteur de session (Lot) */}
+                {/* 4. Lot/Session Selector (Technical - Restricted) */}
                 {lots.length > 0 && (
-                  <select className="form-select border-primary" style={{ width: 180, fontWeight: 600 }}
+                  <select className="form-select border-dashed" style={{ width: 140, fontSize: 11 }}
                     value={selectedLotId || ""}
                     onChange={e => setSelectedLotId(e.target.value ? Number(e.target.value) : null)}>
-                    <option value="">🚀 Session actuelle</option>
+                    <option value="">⚙️ Sessions</option>
                     {lots.map(l => (
                       <option key={l.id} value={l.id}>
-                        Lot #{l.id} ({fmtDate(l.created_at)})
+                        Lot #{l.id}
                       </option>
                     ))}
                   </select>
-                )}
-                {selectedSiteId && (
-                  <button className="btn btn-sm btn-soft-warning" onClick={() => setSelectedSiteId(null)}>
-                    <i className="ri-close-line me-1"></i>Tous les sites
-                  </button>
-                )}
-                {latest && (
-                  <>
-                    <button className="btn btn-soft-success" onClick={() => exportSnapshotCSV(latest, selectedProject?.name)}>
-                      <i className="ri-download-2-line me-1"></i>CSV
-                    </button>
-                    <button className="btn btn-soft-danger" onClick={() => exportSnapshotPDF(selectedProject?.name)}>
-                      <i className="ri-printer-line me-1"></i>PDF
-                    </button>
-                  </>
                 )}
 
-                {/* ✅ NOUVEAU : Sélecteur de snapshot */}
-                {historyDesc.length > 1 && (
-                  <select
-                    className="form-select"
-                    style={{ width: 180 }}
-                    value={selectedSnapIndex}
-                    onChange={e => setSelectedSnapIndex(Number(e.target.value))}
-                    title="Choisir un snapshot à visualiser"
-                  >
-                    {historyDesc.map((snap, i) => (
-                      <option key={i} value={i}>
-                        {i === 0 ? "📌 " : ""}{fmtDate(snap.snapshot_date)}
-                        {i === 0 ? " (dernier)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="vr mx-2"></div>
+
+                {latest && (
+                  <div className="d-flex gap-1">
+                    <button className="btn btn-icon btn-soft-success btn-sm" title="Exporter CSV"
+                      onClick={() => exportSnapshotCSV(latest, selectedProject?.name || "Global")}>
+                      <i className="ri-file-excel-line"></i>
+                    </button>
+                    <button className="btn btn-icon btn-soft-danger btn-sm" title="Imprimer Rapport"
+                      onClick={() => exportSnapshotPDF(selectedProject?.name || "Global")}>
+                      <i className="ri-printer-line"></i>
+                    </button>
+                  </div>
                 )}
-                <button className="btn btn-soft-primary" onClick={handleRefresh}
-                  disabled={refreshing || !selectedProjectId}>
-                  {refreshing
-                    ? <span className="spinner-border spinner-border-sm"></span>
-                    : <i className="ri-refresh-line"></i>
-                  }
+                
+                <button className="btn btn-sm btn-primary" onClick={handleRefresh}
+                  disabled={refreshing}>
+                  {refreshing ? <i className="ri-refresh-line spinning"></i> : <i className="ri-refresh-line"></i>}
                 </button>
               </div>
             </div>
@@ -980,12 +1077,22 @@ export default function DashboardKPI() {
         </div>
 
         {/* Executive Summary Section */}
-        {!loading && latest && (
+        {noDataForChoice && (
+          <div className="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center">
+            <i className="ri-error-warning-line fs-24 me-3"></i>
+            <div>
+              <h6 className="alert-heading fw-bold mb-1">Aucune donnée pour cette période</h6>
+              <p className="mb-0 fs-13">Aucun snapshot KPI n'a été généré pour le mois sélectionné. Veuillez choisir une autre période ou lancer une extraction.</p>
+            </div>
+          </div>
+        )}
+
+        {!loading && (
           <ExecutiveInsight latest={latest} projectName={selectedProject?.name} />
         )}
 
         {/* DORA Metrics Transformation */}
-        {!loading && latest && (
+        {!loading && (
           <DoraMetricsRow latest={latest} loading={loading} />
         )}
 
@@ -1013,7 +1120,7 @@ export default function DashboardKPI() {
         </div>
 
         {/* Technical Insights Row */}
-        {!loading && latest && (
+        {!loading && (
           <div className="row g-3 mb-4">
              <div className="col-md-4">
                 <div className="card border-0 shadow-sm glass">
@@ -1023,7 +1130,7 @@ export default function DashboardKPI() {
                       </div>
                       <div className="flex-grow-1">
                          <p className="text-muted fs-11 text-uppercase fw-bold mb-0">Équipe Active</p>
-                         <h4 className="mb-0">{latest.nb_developers} <span className="fs-12 text-muted fw-normal">Devs</span></h4>
+                         <h4 className="mb-0">{latest ? latest.nb_developers : "—"} <span className="fs-12 text-muted fw-normal">Devs</span></h4>
                       </div>
                    </div>
                 </div>
@@ -1036,7 +1143,7 @@ export default function DashboardKPI() {
                       </div>
                       <div className="flex-grow-1">
                          <p className="text-muted fs-11 text-uppercase fw-bold mb-0">Temps de Revue</p>
-                         <h4 className="mb-0">{latest.avg_review_time_hours?.toFixed(1)}h</h4>
+                         <h4 className="mb-0">{latest ? `${latest.avg_review_time_hours?.toFixed(1)}h` : "—"}</h4>
                       </div>
                    </div>
                 </div>
@@ -1046,7 +1153,7 @@ export default function DashboardKPI() {
                    <div className="card-body py-3 d-flex align-items-center text-center">
                       <div className="flex-grow-1 text-center">
                          <p className="text-muted fs-11 text-uppercase fw-bold mb-0">Dernier Snapshot</p>
-                         <h6 className="mb-0 fw-semibold">{fmtDate(latest.snapshot_date)}</h6>
+                         <h6 className="mb-0 fw-semibold">{latest ? fmtDate(latest.snapshot_date) : "Aucun"}</h6>
                       </div>
                    </div>
                 </div>

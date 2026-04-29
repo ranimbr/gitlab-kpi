@@ -61,10 +61,11 @@ def list_groups(
     db:           Session       = Depends(get_db),
     current_user: AppUser       = Depends(get_current_user),
     site_id:      Optional[int] = Query(default=None),
+    active_only:  bool          = Query(default=False),
 ):
     if site_id:
-        return group_repo.get_by_site_id(db, site_id)
-    return group_repo.get_all(db)
+        return group_repo.get_by_site_id(db, site_id, active_only=active_only)
+    return group_repo.get_all(db, active_only=active_only)
 
 
 @router.post("/developer-groups", response_model=DeveloperGroupResponse, status_code=201)
@@ -73,16 +74,31 @@ def create_group(
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    data = request.model_dump(exclude={"site_ids"})
+    # Résolution intelligente du site_id (Backward Compatibility)
+    site_id = request.site_id
+    if site_id is None and request.site_ids:
+        site_id = request.site_ids[0]
+
+    # ✅ FALLBACK SENIOR : Si toujours None, on prend le premier site pour éviter le crash (NOT NULL constraint)
+    if site_id is None:
+        first_site = db.query(Site).first()
+        if first_site:
+            site_id = first_site.id
+            logger.warning(f"Import/API : Aucun site fourni pour le groupe '{request.name}', rattachage automatique au site '{first_site.name}' (ID {site_id})")
+
+    data = request.model_dump(exclude={"site_ids", "site_id"})
+    data["site_id"] = site_id
+    
     group = group_repo.create(db, data)
     
-    if request.site_ids:
-        sites = db.query(Site).filter(Site.id.in_(request.site_ids)).all()
-        group.sites = sites
-        
     db.commit()
     db.refresh(group)
-    return group
+    
+    # Enrichissement de la réponse pour la compatibilité
+    res = DeveloperGroupResponse.model_validate(group)
+    if group.site:
+        res.sites = [group.site]
+    return res
 
 
 @router.put("/developer-groups/{group_id}", response_model=DeveloperGroupResponse)
@@ -96,16 +112,33 @@ def update_group(
     if not group:
         raise HTTPException(status_code=404, detail="Groupe introuvable.")
         
-    update_data = request.model_dump(exclude_unset=True, exclude={"site_ids"})
+    # Résolution intelligente du site_id
+    site_id = request.site_id
+    if site_id is None and request.site_ids:
+        site_id = request.site_ids[0]
+
+    update_data = request.model_dump(exclude_unset=True, exclude={"site_ids", "site_id"})
+    
+    # ✅ FALLBACK SENIOR : Si on essaie de mettre à null un site (ou si absent à la création forcée par l'UI)
+    if site_id is not None:
+        update_data["site_id"] = site_id
+    elif "site_id" in update_data and update_data["site_id"] is None:
+        # Empêcher de mettre à NULL car la base l'interdit
+        first_site = db.query(Site).first()
+        if first_site:
+            update_data["site_id"] = first_site.id
+            logger.info(f"Update : site_id forcé au premier site ({first_site.name}) car requis.")
+
     group_repo.update(db, group, update_data)
     
-    if request.site_ids is not None:
-        sites = db.query(Site).filter(Site.id.in_(request.site_ids)).all()
-        group.sites = sites
-        
     db.commit()
     db.refresh(group)
-    return group
+
+    # Enrichissement de la réponse pour la compatibilité
+    res = DeveloperGroupResponse.model_validate(group)
+    if group.site:
+        res.sites = [group.site]
+    return res
 
 
 @router.delete("/developer-groups/{group_id}", status_code=204)
@@ -209,9 +242,13 @@ def list_developers(
     site_id:          Optional[int] = Query(default=None),
     gitlab_config_id: Optional[int] = Query(default=None),
     tab:              str           = Query(default="validated"),
+    active_only:      bool          = Query(default=False),
 ):
+    # ✅ SENIOR : active_only force le tab 'validated' pour les KPIs
+    effective_tab = "validated" if active_only else tab
+    
     devs = dev_repo.get_by_tab(
-        db=db, tab=tab, project_id=project_id, site_id=site_id, gitlab_config_id=gitlab_config_id
+        db=db, tab=effective_tab, project_id=project_id, site_id=site_id, gitlab_config_id=gitlab_config_id
     )
     results = []
     for dev in devs:
@@ -250,7 +287,7 @@ def list_developers(
             is_active       = dev.is_active,
             is_validated    = dev.is_validated,
             is_bot          = dev.is_bot,
-            group_id        = dev.group_id,
+            group_ids       = [g.id for g in dev.groups],
             primary_site_id = primary_site_id,
             sites           = sites,
             projects        = projects,
@@ -533,7 +570,7 @@ def _build_developer_response(db: Session, developer) -> DeveloperResponse:
         auto_created    = developer.auto_created,
         onboarding_date = developer.onboarding_date,
         last_active_at  = developer.last_active_at,
-        group_id        = developer.group_id,
+        group_ids       = [g.id for g in developer.groups],
         is_active       = developer.is_active,
         is_validated    = developer.is_validated,
         is_bot          = developer.is_bot,

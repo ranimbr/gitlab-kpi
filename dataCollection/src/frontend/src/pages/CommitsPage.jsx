@@ -64,7 +64,7 @@ function getAuthor(commit) {
   return commit.developer?.name || commit.developer?.gitlab_username || commit.author_name || "Unknown";
 }
 function getSite(commit) {
-  return commit.developer?.site || null;
+  return commit.site || commit.developer?.site || null;
 }
 function getCommitTitle(commit) {
   const raw = commit.title || commit.message || "";
@@ -493,7 +493,23 @@ function CommitDetailModal({ commit, onClose }) {
 }
 
 // ─── Commit Card ──────────────────────────────────────────────────────────────
-function CommitCard({ commit, index, onDetails }) {
+// [SENIOR UX] Data Lineage : chaque carte affiche clairement
+//   • authored_date  = quand le dev a écrit le code (peut être en mars)
+//   • Lot #X         = quelle session d'extraction a capturé ce commit (avril)
+// Cela évite la confusion "j'ai lancé en avril mais je vois mars".
+const LOT_COLORS = [
+  { bg: "#dce9ff", text: "#1a56db" },
+  { bg: "#d4f5f0", text: "#0a7a6a" },
+  { bg: "#ede9fb", text: "#5b21b6" },
+  { bg: "#fef3dc", text: "#92400e" },
+  { bg: "#fde8e8", text: "#9b1c1c" },
+  { bg: "#e8ecf8", text: "#405189" },
+];
+function getLotColor(lotId) {
+  return LOT_COLORS[(lotId || 0) % LOT_COLORS.length];
+}
+
+function CommitCard({ commit, index, onDetails, lots = [] }) {
   const author = getAuthor(commit);
   const site   = getSite(commit);
   const title  = getCommitTitle(commit);
@@ -502,22 +518,44 @@ function CommitCard({ commit, index, onDetails }) {
     ? Math.round(((commit.additions || 0) / commit.total_changes) * 100)
     : 0;
 
+  // [SENIOR] Trouve le lot associé pour afficher la date de capture
+  const lot = lots.find(l => l.id === commit.extraction_lot_id);
+  const lotColor = getLotColor(commit.extraction_lot_id);
+
+
   return (
     <div className="col-xxl-3 col-sm-6">
       <div className="card card-height-100">
         <div className="card-body">
           <div className="d-flex flex-column h-100">
 
-            <div className="d-flex mb-2">
+            {/* ── Header : timing + badges ─────────────────────── */}
+            <div className="d-flex mb-2 align-items-start gap-1 flex-wrap">
               <div className="flex-grow-1">
                 <p className="text-muted mb-1 fs-12">
                   <i className="ri-time-line me-1"></i>il y a {timeAgo(commit.authored_date)}
                 </p>
               </div>
+              {/* Badge Lot — data lineage */}
+              {commit.extraction_lot_id && (
+                <span
+                  title={`Capturé lors de la session d'extraction Lot #${commit.extraction_lot_id}${lot ? ` le ${formatDate(lot.created_at)}` : ""}`}
+                  style={{
+                    background: lotColor.bg, color: lotColor.text,
+                    borderRadius: 20, padding: "2px 8px",
+                    fontSize: 10, fontWeight: 700,
+                    cursor: "help", whiteSpace: "nowrap",
+                    border: `1px solid ${lotColor.text}22`,
+                  }}
+                >
+                  <i className="ri-stack-line me-1"></i>Lot #{commit.extraction_lot_id}
+                </span>
+              )}
               <span className={`badge bg-${getBadgeColor(index)}-subtle text-${getBadgeColor(index)}`}>
                 <i className="ri-git-commit-line me-1"></i>#{commit.id}
               </span>
             </div>
+
 
             <div className="d-flex mb-2">
               <div className="flex-shrink-0 me-3">
@@ -569,8 +607,9 @@ function CommitCard({ commit, index, onDetails }) {
           </div>
         </div>
 
+        {/* ── Footer : double date (authored vs capturé) ───────── */}
         <div className="card-footer bg-transparent border-top-dashed py-2">
-          <div className="d-flex align-items-center">
+          <div className="d-flex align-items-center flex-wrap gap-1">
             <div className="flex-grow-1">
               <span
                 className={`avatar-title avatar-xxs rounded-circle bg-${getBadgeColor(index)}`}
@@ -579,9 +618,14 @@ function CommitCard({ commit, index, onDetails }) {
                 {getInitials(author)}
               </span>
             </div>
-            <div className="d-flex align-items-center gap-2">
-              <span className="text-muted fs-11">
-                <i className="ri-calendar-event-fill me-1 align-bottom"></i>{formatDate(commit.authored_date)}
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              {/* Date authored (écriture du code) */}
+              <span
+                className="text-muted fs-11"
+                title="authored_date : date à laquelle le développeur a écrit ce commit dans son environnement local"
+              >
+                <i className="ri-quill-pen-line me-1 align-bottom" style={{ color: "#405189" }}></i>
+                {formatDate(commit.authored_date)}
               </span>
               <button className="btn btn-xs btn-soft-primary py-0 px-2" style={{ fontSize: 10 }}
                 onClick={() => onDetails(commit)} title="Voir détails">
@@ -596,96 +640,166 @@ function CommitCard({ commit, index, onDetails }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+const INITIAL_FILTERS = {
+  project: "all",
+  period: "all",
+  lot: "all",
+  search: "",
+  site: "all",
+  group: "all",
+  author: "all",
+  sort: "date",
+  excludeMerges: true // [SENIOR] Default to certified human contribution (excludes noise)
+};
+
 export default function CommitsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   const [projects,           setProjects]         = useState([]);
-  const [selectedProjectId,  setSelectedProjectId] = useState(null);
-  const [lots,               setLots]              = useState([]);        // [NEW] Sessions d'extraction
-  const [selectedLotId,      setSelectedLotId]    = useState("");      // [NEW] Lot sélectionné
+  const [periods,            setPeriods]          = useState([]);
+  const [lots,               setLots]              = useState([]);
   const [commits,            setCommits]           = useState([]);
   const [loading,            setLoading]           = useState(false);
   const [error,              setError]             = useState(null);
-  const [search,             setSearch]            = useState("");
-  const [siteFilter,         setSiteFilter]        = useState("all");
-  const [sortKey,            setSortKey]           = useState("date");   
-  const [page,               setPage]              = useState(1);
-  const [detailCommit,       setDetailCommit]      = useState(null);
+  const [spinning,           setSpinning]          = useState(false);
+  const [currentPeriod,      setCurrentPeriod]    = useState(null);
   
-  // [NEW] States pour Equipe et Développeur
+  const [filters, setFilters] = useState({
+    ...INITIAL_FILTERS,
+    project: searchParams.get("project_id") || "all",
+    lot: searchParams.get("lot_id") || "all",
+    period: searchParams.get("period_id") || "all",
+    group: searchParams.get("group_id") || "all",
+    // Site and Author will be hydrated in useEffect once meta-data is ready
+  });
+
   const [developers,         setDevelopers]        = useState([]);
   const [groups,             setGroups]            = useState([]);
-  const [selectedGroup,      setSelectedGroup]     = useState("all");
-  const [authorFilter,       setAuthorFilter]      = useState("all");
+  const [allSites,           setAllSites]          = useState([]);
 
   const perPage = 8;
 
   const isInitialized = useRef(false);
 
   // Chargement projets, développeurs et groupes
+  // Initialisation : Projets, Périodes, Développeurs, Groupes
   useEffect(() => {
-    projectService.getAll()
-      .then((data) => {
-        setProjects(data);
-        const urlProjId = searchParams.get("project_id");
-        const urlLotId  = searchParams.get("lot_id");
+    const initData = async () => {
+      try {
+        const [projRes, perRes, devRes, grpRes, currRes, siteRes] = await Promise.all([
+          api.get("/projects"),
+          api.get("/periods"),
+          api.get("/developers?active_only=true"),
+          api.get("/developer-groups?active_only=true"),
+          api.get("/periods/current").catch(() => ({ data: null })),
+          api.get("/sites?active_only=true").catch(() => ({ data: [] }))
+        ]);
         
-        const firstProjId = urlProjId ? parseInt(urlProjId) : data[0]?.id;
-        if (firstProjId) setSelectedProjectId(firstProjId);
-        if (urlLotId)    setSelectedLotId(urlLotId);
-      })
-      .catch(() => {});
+        const projData = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
+        const perData = Array.isArray(perRes.data) ? perRes.data : (perRes.data?.items ?? []);
+        const devData = Array.isArray(devRes.data) ? devRes.data : (devRes.data?.items ?? []);
+        const siteData = Array.isArray(siteRes.data) ? siteRes.data : (siteRes.data?.items ?? []);
+        const cur = currRes.data;
+
+        setProjects(projData);
+        setPeriods(perData);
+        setDevelopers(devData);
+        setGroups(Array.isArray(grpRes.data) ? grpRes.data : (grpRes.data?.items ?? []));
+        setAllSites(siteData);
+        setCurrentPeriod(cur);
+
+        // [SENIOR] URL Context Hydration
+        const urlDevId = searchParams.get("developer_id");
+        const urlSiteId = searchParams.get("site_id");
+        
+        setFilters(prev => {
+          let next = { ...prev };
+          
+          if (urlDevId) {
+            const dev = devData.find(d => String(d.id) === urlDevId);
+            if (dev) next.author = dev.name || dev.gitlab_username;
+          }
+          
+          if (urlSiteId) {
+            const site = siteData.find(s => String(s.id) === urlSiteId);
+            if (site) next.site = site.name;
+          }
+
+          const urlLotId = searchParams.get("lot_id");
+          const urlProjectId = searchParams.get("project_id");
+          if (urlLotId) next.lot = urlLotId;
+          if (urlProjectId) next.project = urlProjectId;
+
+          // Auto-select current period if none selected and NOT in lot/session context
+          if (cur && next.period === "all" && !searchParams.get("period_id") && !searchParams.get("lot_id")) {
+            next.period = cur.id;
+          }
+          
+          return next;
+        });
+
+      } catch (err) {
+        console.error("Initialization error", err);
+      }
+    };
+    initData();
+  }, []); // eslint-disable-line
+
+  const handleFilterChange = (key, val) => {
+    setFilters(prev => ({ ...prev, [key]: val }));
+  };
+
+  const loadCommits = useCallback(async () => {
+    setLoading(true); setSpinning(true);
+    try {
+      const isGlobal = filters.project === "all";
+      const targetId = isGlobal ? "all" : filters.project;
+
+      const params = {};
+      if (filters.period !== "all") params.period_id = parseInt(filters.period);
+      if (filters.lot    !== "all") params.lot_id    = parseInt(filters.lot);
+
+      const res = await api.get(`/projects/${targetId}/commits`, { params });
+      const data = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
       
-    api.get("/developers/").then(res => setDevelopers(Array.isArray(res.data) ? res.data : (res.data?.items ?? []))).catch(()=>{});
-    api.get("/developer-groups").then(res => setGroups(Array.isArray(res.data) ? res.data : (res.data?.items ?? []))).catch(()=>{});
-  }, []); 
+      setCommits(data.map(c => ({
+        ...c,
+        project_name: c.project_name || projects.find(p => p.id === c.project_id)?.name || "Project"
+      })));
+      setError(null);
+    } catch (err) {
+      setError("Impossible de charger les commits.");
+    } finally {
+      setLoading(false); setSpinning(false);
+    }
+  }, [filters.project, filters.period, filters.lot, projects]);
 
-  // [NEW] Charger les lots quand le projet change
+  useEffect(() => { loadCommits(); }, [loadCommits]);
+
+  // [SENIOR] Fetch contextual extraction lots to define filtering intent
   useEffect(() => {
-    if (selectedProjectId) {
-      api.get(`/extraction-lots?project_id=${selectedProjectId}`)
-        .then(res => setLots(res.data || []))
-        .catch(() => setLots([]));
-    } else {
-      setLots([]);
-    }
-
-    // On ne reset le lot que si ce n'est pas l'initialisation depuis l'URL
-    if (isInitialized.current) {
-        setSelectedLotId(""); 
-    } else if (selectedProjectId !== null) {
-        isInitialized.current = true;
-    }
-  }, [selectedProjectId]);
-
-
-  // [FIX] loadCommits — inclut maintenant lotId
-  const loadCommits = useCallback((projectId, lotId) => {
-    if (!projectId) return;
-    setLoading(true);
-    setError(null);
-    setPage(1);
-    
-    const params = {};
-    if (lotId) params.lot_id = lotId;
-
-    api.get(`/projects/${projectId}/commits`, { params })
-      .then((res) => {
-        const data = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
-        setCommits(data);
-      })
-      .catch(() => setError("Aucun commit trouvé pour cette session."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { 
-    loadCommits(selectedProjectId, selectedLotId); 
-  }, [selectedProjectId, selectedLotId, loadCommits]);
+    const fetchLots = async () => {
+      try {
+        const isGlobal = filters.project === "all";
+        let url = "/extraction-lots?limit=1000";
+        if (!isGlobal) {
+          const p = projects.find(proj => proj.id === parseInt(filters.project));
+          if (p) url = `/extraction-lots?project_id=${p.id}&limit=1000`;
+        }
+        const res = await api.get(url);
+        setLots(res.data || []);
+      } catch (err) {
+        console.error("Erreur lors du chargement des lots:", err);
+        setLots([]);
+      }
+    };
+    if (projects.length > 0) fetchLots();
+  }, [filters.project, projects]);
 
 
   // [FIX] useMemo remplace useEffect + setState sur le filtre — plus de state dérivé
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = filters.search.toLowerCase();
     let result = commits;
 
     if (q) {
@@ -695,60 +809,159 @@ export default function CommitsPage() {
         (c.gitlab_commit_id || "").toLowerCase().includes(q)
       );
     }
-    if (siteFilter !== "all") {
-      result = result.filter((c) => getSite(c) === siteFilter);
+    if (filters.site !== "all") {
+      result = result.filter((c) => getSite(c) === filters.site);
+    }
+
+    // [SENIOR] Normalisation des données (Exclusion des Merges)
+    // On détecte les merges par flag ou par titre (pattern GitLab standard)
+    if (filters.excludeMerges) {
+      result = result.filter(c => {
+        const title = getCommitTitle(c).toLowerCase();
+        return !c.is_merge && !title.startsWith("merge branch") && !title.startsWith("merge pull request");
+      });
     }
 
     // [NEW] Filtre Equipe
-    if (selectedGroup !== "all") {
-      const gId = parseInt(selectedGroup);
-      const groupDevs = developers.filter(d => d.group_id === gId);
+    if (filters.group !== "all") {
+      const gId = parseInt(filters.group);
+      const groupDevs = developers.filter(d => (d.group_ids || []).map(Number).includes(gId));
       const groupNames = groupDevs.flatMap(d => [(d.name || "").toLowerCase(), (d.gitlab_username || "").toLowerCase()]).filter(Boolean);
       result = result.filter(c => {
-         const author = getAuthor(c).toLowerCase();
-         return groupNames.some(n => author.includes(n));
+         const auth = getAuthor(c).toLowerCase();
+         return groupNames.some(n => auth.includes(n));
       });
     }
 
     // [NEW] Filtre Auteur
-    if (authorFilter !== "all") {
-      const target = authorFilter.toLowerCase().trim();
+    if (filters.author !== "all") {
+      const target = filters.author.toLowerCase().trim();
       result = result.filter(c => getAuthor(c).toLowerCase().trim() === target);
     }
 
     // [NEW] Tri
     return [...result].sort((a, b) => {
-      if (sortKey === "date")    return new Date(b.authored_date) - new Date(a.authored_date);
-      if (sortKey === "author")  return getAuthor(a).localeCompare(getAuthor(b));
-      if (sortKey === "changes") return (b.total_changes || 0) - (a.total_changes || 0);
+      if (filters.sort === "date")    return new Date(b.authored_date) - new Date(a.authored_date);
+      if (filters.sort === "author")  return getAuthor(a).localeCompare(getAuthor(b));
+      if (filters.sort === "changes") return (b.total_changes || 0) - (a.total_changes || 0);
       return 0;
     });
-  }, [commits, search, siteFilter, sortKey, selectedGroup, authorFilter, developers]);
+  }, [commits, filters, developers]);
+
+  const [page, setPage] = useState(1);
+  const [detailCommit, setDetailCommit] = useState(null);
 
   // Reset page sur tout changement de filtre
-  useEffect(() => { setPage(1); }, [search, siteFilter, sortKey, selectedGroup, authorFilter]);
+  useEffect(() => { setPage(1); }, [filters]);
 
-  // [NEW] Stats en useMemo — pas de recalcul inutile
-  const sites = useMemo(
-    () => [...new Set(commits.map(getSite).filter(Boolean))].sort(),
-    [commits]
-  );
-  const authorsList = useMemo(() => {
-    let devs = developers;
-    if (selectedGroup !== "all") {
-      const gId = parseInt(selectedGroup);
-      devs = developers.filter(d => d.group_id === gId);
+  // ✅ SENIOR INTENT-BASED FILTERING
+  // Identification des développeurs ciblés par l'extraction (Intention)
+  const trackedDevIds = useMemo(() => {
+    // 1. On récupère les IDs via les lots d'extraction (axe session)
+    let ids = [];
+    if (lots && lots.length > 0) {
+      if (filters.lot !== "all") {
+        const selected = lots.find(l => String(l.id) === filters.lot);
+        if (selected?.developer_id) ids.push(selected.developer_id);
+      } else {
+        ids = lots.map(l => l.developer_id).filter(Boolean);
+      }
     }
-    const extractedAuthors = [...new Set(commits.map(getAuthor))];
+
+    // 2. [SENIOR FIX] On complète avec les IDs présents dans les commits chargés
+    // car des commits peuvent exister sans lot spécifique (ex: extraction globale projet)
+    const commitDevIds = commits.map(c => c.developer_id).filter(Boolean);
     
-    // Si on a des devs chargés via API
-    if (developers.length > 0) {
-      const validNames = new Set(devs.flatMap(d => [d.name, d.gitlab_username]).filter(Boolean));
-      // S'il n'y a pas de filtre groupe, les commits suffisent, mais on filtre pour exclure les bots/externes
-      return extractedAuthors.filter(a => validNames.has(a)).sort();
+    const finalSet = new Set([...ids, ...commitDevIds]);
+    return [...finalSet];
+  }, [lots, commits, filters.lot]);
+
+  // ✅ SENIOR ROBUSTNESS : Source de vérité = liste globale des sites configurés.
+  // On ne dépend plus des lots ou des développeurs chargés pour peupler le dropdown,
+  // ce qui garantit une UI stable et prévisible pour la défense.
+  // ✅ SENIOR "INTENT-BASED" FILTERING : 
+  // On ne montre que les sites présents parmi les développeurs effectivement trackés.
+  // Cela évite les "filtres morts" qui mènent à un tableau vide.
+  const sites = useMemo(() => {
+    if (!developers || developers.length === 0) return [];
+    
+    // 1. On identifie les sites des développeurs ciblés par l'extraction actuelle
+    const activeSitesNames = new Set(
+      developers
+        .filter(d => trackedDevIds.includes(d.id))
+        .map(d => d.site)
+        .filter(Boolean)
+    );
+
+    // 2. On croise avec la liste globale pour garantir la cohérence des noms (et casquette pro)
+    if (activeSitesNames.size > 0) {
+      return allSites
+        .filter(s => activeSitesNames.has(s.name))
+        .map(s => s.name)
+        .sort();
     }
-    return extractedAuthors.sort();
-  }, [commits, developers, selectedGroup]);
+    // Fallback : si rien n'est tracké (ex: début), on montre tout le périmètre configuré
+    return allSites.map(s => s.name).sort();
+  }, [allSites, developers, trackedDevIds]);
+
+  // ✅ SENIOR AUTO-RESET : Si le site sélectionné n'est plus dans le périmètre actif, 
+  // on reset à "all" pour éviter un écran vide incompréhensible.
+  useEffect(() => {
+    if (filters.site !== "all" && sites.length > 0 && !sites.includes(filters.site)) {
+      handleFilterChange("site", "all");
+    }
+  }, [sites, filters.site]);
+
+
+  const groupList = useMemo(() => {
+    if (!groups || groups.length === 0) return [];
+
+    // Raffinement : on ne montre que les groupes présents dans le périmètre actuel (lots + site)
+    const activeGroupIds = new Set();
+    developers
+      .filter(d => trackedDevIds.includes(d.id))
+      .filter(d => filters.site === "all" || d.site === filters.site)
+      .forEach(dev => {
+        if (dev.group_ids) dev.group_ids.forEach(gid => activeGroupIds.add(Number(gid)));
+      });
+
+    return groups
+      .filter(g => activeGroupIds.has(g.id) || filters.group === String(g.id))
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }, [trackedDevIds, groups, developers, filters.group, filters.site]);
+
+  const authorsList = useMemo(() => {
+    if (!developers || developers.length === 0) return [];
+    
+    // Raffinement : Filtre par Lot de capture (trackedDevIds) ET par Site ET par Groupe
+    let filteredDevs = developers.filter(d => trackedDevIds.includes(d.id));
+    
+    if (filters.site !== "all") {
+      filteredDevs = filteredDevs.filter(d => d.site === filters.site);
+    }
+
+    if (filters.group !== "all") {
+      const groupId = parseInt(filters.group);
+      filteredDevs = filteredDevs.filter(d => (d.group_ids || []).map(Number).includes(groupId));
+    }
+    
+    return filteredDevs.map(d => d.name || d.gitlab_username).filter(Boolean).sort();
+  }, [trackedDevIds, developers, filters.group, filters.site]);
+
+  // ✅ SENIOR AUTO-RESETS : Cascade descendante
+  // 1. Reset Groupe si invalide par rapport au Site
+  useEffect(() => {
+    if (filters.group !== "all" && groupList.length > 0 && !groupList.find(g => String(g.id) === filters.group)) {
+      handleFilterChange("group", "all");
+    }
+  }, [groupList, filters.group]);
+
+  // 2. Reset Auteur si invalide par rapport au Site/Groupe
+  useEffect(() => {
+    if (filters.author !== "all" && authorsList.length > 0 && !authorsList.includes(filters.author)) {
+      handleFilterChange("author", "all");
+    }
+  }, [authorsList, filters.author]);
 
   const stats = useMemo(() => ({
     totalAdditions: filtered.reduce((s, c) => s + (c.additions    || 0), 0),
@@ -759,12 +972,13 @@ export default function CommitsPage() {
       : 0,
   }), [filtered]);
 
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+  const selectedProject = projects.find((p) => p.id === parseInt(filters.project));
   const totalPages      = Math.ceil(filtered.length / perPage);
   const paginated       = filtered.slice((page - 1) * perPage, page * perPage);
-  const hasActiveFilter = search || siteFilter !== "all" || selectedGroup !== "all" || authorFilter !== "all";
-
-  const resetFilters = () => { setSearch(""); setSiteFilter("all"); setSortKey("date"); setSelectedGroup("all"); setAuthorFilter("all"); };
+  const activeFilterCount = Object.keys(filters).reduce((acc, key) => {
+    if (key === "sort") return acc;
+    return acc + (filters[key] !== INITIAL_FILTERS[key] ? 1 : 0);
+  }, 0);
 
   return (
     <div className="page-content">
@@ -781,13 +995,21 @@ export default function CommitsPage() {
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
               <h4 className="mb-sm-0">
                 <i className="ri-git-commit-line me-2 text-primary"></i>
-                Commits
+                Commits {filters.excludeMerges ? "(Hors Merges)" : "(Flux Brut)"}
                 {/* [NEW] Badge total visible */}
                 {filtered.length > 0 && (
                   <span className="badge bg-primary-subtle text-primary ms-2 fs-13 fw-normal align-middle">
                     {filtered.length}
                   </span>
                 )}
+                {/* [SENIOR] Badge de Certification */}
+                <span 
+                  className={`badge border border-${filters.excludeMerges ? "success" : "warning"} text-${filters.excludeMerges ? "success" : "warning"} ms-3 fs-10 fw-medium px-2 py-1`} 
+                  style={{ verticalAlign: "middle", background: filters.excludeMerges ? "#f0fdf4" : "#fffbeb" }}
+                >
+                  <i className={filters.excludeMerges ? "ri-shield-check-line me-1" : "ri-error-warning-line me-1"}></i>
+                  {filters.excludeMerges ? "CONTRIBUTION CERTIFIÉE" : "ANALYSE BRUTE"}
+                </span>
               </h4>
               <ol className="breadcrumb m-0">
                 <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
@@ -797,121 +1019,121 @@ export default function CommitsPage() {
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="row g-2 mb-3 align-items-center">
-          <div className="col-sm-auto">
-            <select className="form-select" style={{ width: 220 }}
-              value={selectedProjectId || ""}
-              onChange={(e) => {
-                const id = parseInt(e.target.value);
-                setSelectedProjectId(id);
-                setSearchParams({ project_id: id });
-                resetFilters();
-              }}>
-              <option value="">Choisir un projet...</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-
-          {/* [NEW] Sélecteur de Lot */}
-          <div className="col-sm-auto">
-            <select className="form-select" style={{ width: 220 }}
-              value={selectedLotId}
-              onChange={(e) => setSelectedLotId(e.target.value)}>
-              <option value="">Toutes les extractions</option>
-              {lots.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.extraction_type} - {l.period?.name || `Lot #${l.id}`} ({new Date(l.created_at).toLocaleDateString()})
-                </option>
-              ))}
-            </select>
-          </div>
-
-
-          {/* [NEW] Filtre Equipe */}
-          <div className="col-sm-auto">
-            <select className="form-select" value={selectedGroup} style={{ width: 140 }}
-              onChange={(e) => {setSelectedGroup(e.target.value); setAuthorFilter("all");}}>
-              <option value="all">Équipe : Toutes</option>
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-          </div>
-
-          {/* [NEW] Filtre Auteur */}
-          <div className="col-sm-auto">
-            <select className="form-select" value={authorFilter} style={{ width: 140 }}
-              onChange={(e) => setAuthorFilter(e.target.value)}>
-              <option value="all">Développeur : Tous</option>
-              {authorsList.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-
-          {sites.length > 0 && (
-            <div className="col-sm-auto">
-              <select className="form-select" value={siteFilter} style={{ width: 140 }}
-                onChange={(e) => setSiteFilter(e.target.value)}>
-                <option value="all">Tous les sites</option>
-                {sites.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          )}
-
-          {/* [NEW] Tri */}
-          <div className="col-sm-auto">
-            <select className="form-select" value={sortKey} style={{ width: 150 }}
-              onChange={(e) => setSortKey(e.target.value)}>
-              <option value="date">Plus récents</option>
-              <option value="changes">+ de changements</option>
-              <option value="author">Auteur (A→Z)</option>
-            </select>
-          </div>
-
-          <div className="col-sm">
-            <div className="d-flex justify-content-sm-end gap-2 flex-wrap">
-              <div className="search-box">
-                <input type="text" className="form-control"
-                  placeholder="SHA, titre, auteur..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)} />
-                <i className="ri-search-line search-icon"></i>
+        {/* Toolbar Unifié Senior+++++ */}
+        <div className="card mb-3">
+          <div className="card-body pb-2">
+            <div className="row g-2 align-items-end">
+              <div className="col-xl-2 col-md-5">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Recherche</label>
+                <div className="search-box">
+                  <input type="text" className="form-control form-control-sm" placeholder="SHA, auteur, message…" value={filters.search} onChange={(e)=>handleFilterChange("search",e.target.value)} />
+                  <i className="ri-search-line search-icon"></i>
+                </div>
               </div>
 
-              {/* [NEW] Reset visible seulement si filtre actif */}
-              {hasActiveFilter && (
-                <button className="btn btn-soft-warning" onClick={resetFilters} title="Réinitialiser les filtres">
-                  <i className="ri-filter-off-line me-1"></i>Reset
-                </button>
-              )}
+              <div className="col-xl-2 col-md-3">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Période (Mois)</label>
+                <select className="form-select form-select-sm" value={filters.period} onChange={(e)=>handleFilterChange("period",e.target.value)}>
+                  <option value="all">Toutes les périodes</option>
+                  {periods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
 
-              {/* [NEW] Export CSV */}
-              {filtered.length > 0 && (
-                <button className="btn btn-soft-success"
-                  onClick={() => exportCommitsCSV(filtered, selectedProject?.name)}
-                  title={`Exporter ${filtered.length} commits en CSV`}>
-                  <i className="ri-download-2-line me-1"></i>CSV
-                </button>
-              )}
+              <div className="col-xl-1 col-md-3">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Projet</label>
+                <select className="form-select form-select-sm" value={filters.project} onChange={(e)=>handleFilterChange("project",e.target.value)}>
+                  <option value="all">Tous les projets</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
 
-              {/* [NEW] Refresh */}
-              <button className="btn btn-soft-primary"
-                onClick={() => loadCommits(selectedProjectId)}
-                disabled={loading || !selectedProjectId}
-                title="Rafraîchir">
-                <i className={`ri-refresh-line${loading ? " spinning" : ""}`}></i>
-              </button>
+              <div className="col-xl-1 col-md-3">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Site</label>
+                <select className="form-select form-select-sm" value={filters.site} onChange={(e)=>handleFilterChange("site",e.target.value)}>
+                  <option value="all">Tous</option>
+                  {sites.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
 
-              <a href="/extraction" className="btn btn-success">
-                <i className="ri-add-line align-bottom me-1"></i>Extraction
-              </a>
+              <div className="col-xl-1 col-md-3">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Équipe</label>
+                <select className="form-select form-select-sm" value={filters.group} onChange={(e)=>{handleFilterChange("group",e.target.value);handleFilterChange("author","all");}}>
+                  <option value="all">Toutes</option>
+                  {groupList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+
+              <div className="col-xl-2 col-md-3">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Développeur</label>
+                <select className="form-select form-select-sm" value={filters.author} onChange={(e)=>handleFilterChange("author",e.target.value)}>
+                  <option value="all">Tous</option>
+                  {authorsList.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+
+              <div className="col-xl-1 col-md-2">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Tri par</label>
+                <select className="form-select form-select-sm" value={filters.sort} onChange={(e)=>handleFilterChange("sort",e.target.value)}>
+                  <option value="date">Date</option>
+                  <option value="changes">Changes</option>
+                  <option value="author">Auteur</option>
+                </select>
+              </div>
+
+              <div className="col-xl-2 col-md-3">
+                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Type de flux</label>
+                <div className="d-flex align-items-center">
+                  <div className="form-check form-switch form-switch-success" title="Exclure les commits de merge pour une analyse de contribution pure">
+                    <input 
+                      className="form-check-input" 
+                      type="checkbox" 
+                      id="excludeMergesSwitch" 
+                      checked={filters.excludeMerges} 
+                      onChange={(e) => handleFilterChange("excludeMerges", e.target.checked)} 
+                    />
+                    <label className="form-check-label fs-12 ms-1 fw-medium" htmlFor="excludeMergesSwitch">
+                      {filters.excludeMerges ? "Contribution Pure" : "Flux Complet"}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-xl-2 col-md-2">
+                <div className="d-flex gap-2">
+                  <button className="btn btn-sm btn-light flex-grow-1" onClick={loadCommits} title="Rafraîchir" disabled={loading}>
+                    <i className={spinning ? "ri-restart-line spin" : "ri-restart-line"}></i>
+                  </button>
+                  {activeFilterCount > 0 && (
+                    <button className="btn btn-sm btn-soft-danger flex-grow-1" onClick={()=>setFilters(INITIAL_FILTERS)} title="Réinitialiser">
+                      <i className="ri-filter-off-line"></i> {activeFilterCount}
+                    </button>
+                  )}
+                  <button className="btn btn-sm btn-primary flex-grow-1" onClick={() => exportCommitsCSV(filtered, filters.project === "all" ? "global" : projects.find(p=>p.id===parseInt(filters.project))?.name)} title="Download CSV">
+                    <i className="ri-download-2-line"></i>
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {activeFilterCount > 0 && (
+              <div className="d-flex flex-wrap gap-2 mt-3 pt-2 border-top border-top-dashed">
+                {filters.search && <span className="badge bg-light text-dark border py-1.5 px-2">Recherche: {filters.search}</span>}
+                {filters.period !== "all" && <span className="badge bg-info-subtle text-info py-1.5 px-2">Période: {periods.find(p=>p.id===parseInt(filters.period))?.name}</span>}
+                {filters.project !== "all" && <span className="badge bg-primary-subtle text-primary py-1.5 px-2">Projet: {projects.find(p=>p.id===parseInt(filters.project))?.name}</span>}
+                {filters.site !== "all" && <span className="badge bg-success-subtle text-success py-1.5 px-2">Site: {filters.site}</span>}
+                {filters.lot !== "all" && <span className="badge bg-info-subtle text-info py-1.5 px-2">Session: {lots.find(l=>String(l.id)===String(filters.lot))?.created_at ? new Date(lots.find(l=>String(l.id)===String(filters.lot)).created_at).toLocaleDateString("fr-FR") : `#${filters.lot}`}</span>}
+                {filters.group !== "all" && <span className="badge bg-warning-subtle text-warning py-1.5 px-2">Équipe: {groups.find(g=>g.id===parseInt(filters.group))?.name}</span>}
+                {filters.author !== "all" && <span className="badge bg-secondary-subtle text-secondary py-1.5 px-2">Auteur: {filters.author}</span>}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Stat Cards */}
-        {filtered.length > 0 && (
+        {/* ── Stat Cards — toujours affichées si un filtre est actif ─────────── */}
+        {(filters.period !== "all" || filters.project !== "all" || commits.length > 0) && !loading && (
           <div className="row mb-3">
             {[
-              { label: "Total Commits",   value: filtered.length,                                     color: "primary", icon: "ri-git-commit-line", sub: `${stats.uniqueAuthors} développeurs`  },
+              { label: "Total Commits",   value: filtered.length,                                     color: "primary", icon: "ri-git-commit-line", sub: `${stats.uniqueAuthors} développeur${stats.uniqueAuthors > 1 ? 's' : ''}`  },
               { label: "Total Additions", value: `+${stats.totalAdditions.toLocaleString("fr-FR")}`, color: "success", icon: "ri-add-circle-line",  sub: "Lignes ajoutées"                      },
               { label: "Total Deletions", value: `-${stats.totalDeletions.toLocaleString("fr-FR")}`, color: "danger",  icon: "ri-subtract-line",    sub: "Lignes supprimées"                    },
               { label: "Moy. changes",    value: stats.avgChanges.toLocaleString("fr-FR"),           color: "info",    icon: "ri-file-code-line",   sub: "Par commit"                           },
@@ -938,8 +1160,7 @@ export default function CommitsPage() {
           </div>
         )}
 
-
-        {/* Charts — Sous-titres dynamiques via ChartSection (Top N sur Total) */}
+        {/* ── Charts — seulement si données ──────────────────────────────────── */}
         {filtered.length > 0 && (
           <ChartSection commits={filtered} stats={stats} />
         )}
@@ -962,7 +1183,7 @@ export default function CommitsPage() {
               <p className="text-muted fs-13 mb-0">
                 <i className="ri-git-commit-line me-1"></i>
                 <strong>{filtered.length}</strong> commit{filtered.length > 1 ? "s" : ""}
-                {search && <span className="ms-1">pour « <strong>{search}</strong> »</span>}
+                {filters.search && <span className="ms-1">pour « <strong>{filters.search}</strong> »</span>}
                 {filtered.length < commits.length && (
                   <span className="text-warning ms-1">(sur {commits.length} total)</span>
                 )}
@@ -974,7 +1195,7 @@ export default function CommitsPage() {
 
             <div className="row">
               {paginated.map((commit, index) => (
-                <CommitCard key={commit.id} commit={commit} index={index} onDetails={setDetailCommit} />
+                <CommitCard key={commit.id} commit={commit} index={index} onDetails={setDetailCommit} lots={lots} />
               ))}
             </div>
 
@@ -982,26 +1203,53 @@ export default function CommitsPage() {
           </>
         )}
 
-        {/* [NEW] Empty state filtre actif — message dédié + bouton reset */}
+        {/* ── Empty state : filtre actif mais 0 résultat de recherche ──────── */}
         {!loading && !error && filtered.length === 0 && commits.length > 0 && (
           <div className="text-center py-5">
             <i className="ri-search-line fs-1 text-muted d-block mb-3 opacity-50"></i>
             <p className="text-muted fs-14 fw-semibold mb-1">Aucun commit ne correspond à votre recherche</p>
             <p className="text-muted fs-13 mb-3">Essayez avec d'autres critères ou réinitialisez les filtres.</p>
-            <button className="btn btn-soft-primary btn-sm" onClick={resetFilters}>
+            <button className="btn btn-soft-primary btn-sm" onClick={()=>setFilters(INITIAL_FILTERS)}>
               <i className="ri-refresh-line me-1"></i>Réinitialiser les filtres
             </button>
           </div>
         )}
 
-        {!loading && !error && commits.length === 0 && selectedProjectId && (
-          <EmptyState icon="ri-git-commit-line" title="Aucun commit trouvé"
-            description="Lancez une extraction pour récupérer les commits de ce projet." />
+        {/* ── Empty state : période ou projet sélectionné mais aucun commit ── */}
+        {!loading && !error && commits.length === 0 && (filters.period !== "all" || filters.project !== "all") && (
+          <div className="card border-0" style={{borderRadius:16, overflow:"hidden"}}>
+            <div className="card-body py-5 text-center">
+              <div className="mb-3" style={{width:72,height:72,borderRadius:"50%",background:"#f0f4ff",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+                <i className="ri-git-commit-line" style={{fontSize:32,color:"#405189"}}></i>
+              </div>
+              <h5 className="fw-semibold mb-2" style={{color:"#212529"}}>Aucun commit pour cette période</h5>
+              <p className="text-muted fs-13 mb-4" style={{maxWidth:400,margin:"0 auto 20px"}}>
+                Les données ne sont pas encore extraites pour cette combinaison de filtres.
+                Lancez une extraction depuis le Moteur d'Extraction pour importer les commits GitLab.
+              </p>
+              <div className="d-flex gap-2 justify-content-center flex-wrap">
+                <a href="/extraction" className="btn btn-primary btn-sm">
+                  <i className="ri-download-cloud-2-line me-1"></i>Lancer une extraction
+                </a>
+                <button className="btn btn-soft-secondary btn-sm" onClick={()=>setFilters(INITIAL_FILTERS)}>
+                  <i className="ri-filter-off-line me-1"></i>Réinitialiser les filtres
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
-        {!selectedProjectId && !loading && (
-          <EmptyState icon="ri-git-repository-line" title="Sélectionnez un projet"
-            description="Choisissez un projet pour voir ses commits." />
+        {/* ── Empty state initial : rien sélectionné ───────────────────────── */}
+        {filters.project === "all" && filters.period === "all" && !loading && !error && commits.length === 0 && (
+          <div className="card border-0" style={{borderRadius:16}}>
+            <div className="card-body py-5 text-center">
+              <div className="mb-3" style={{width:72,height:72,borderRadius:"50%",background:"#f0f4ff",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+                <i className="ri-git-repository-line" style={{fontSize:32,color:"#405189"}}></i>
+              </div>
+              <h5 className="fw-semibold mb-2" style={{color:"#212529"}}>Sélectionnez un projet ou une période</h5>
+              <p className="text-muted fs-13 mb-0">Ou utilisez les filtres ci-dessus pour explorer les commits.</p>
+            </div>
+          </div>
         )}
 
       </div>

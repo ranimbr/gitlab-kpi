@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/kpi-definitions", tags=["KPI Definitions"])
 repo   = KpiDefinitionRepository()
 
-@router.get("/", response_model=List[KpiDefinitionResponse])
+@router.get("", response_model=List[KpiDefinitionResponse])
 def list_kpi_definitions(db: Session = Depends(get_db), current_user: AppUser = Depends(get_current_user)):
     return repo.get_active(db)
 
@@ -24,7 +24,7 @@ def get_kpi_definition(kpi_id: int, db: Session = Depends(get_db), current_user:
         raise HTTPException(404, "KPI definition not found")
     return kpi
 
-@router.post("/", response_model=KpiDefinitionResponse, status_code=201)
+@router.post("", response_model=KpiDefinitionResponse, status_code=201)
 def create_kpi_definition(request: KpiDefinitionCreate, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     if repo.code_exists(db, request.code):
         raise HTTPException(409, f"KPI code '{request.code}' already exists")

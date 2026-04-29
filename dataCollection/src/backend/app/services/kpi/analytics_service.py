@@ -69,23 +69,44 @@ class AnalyticsService:
 
     def get_dashboard_summary(
         self,
-        project_id:   int,
+        project_id:   Optional[int] = None,
         site_id:      Optional[int] = None,
         group_id:     Optional[int] = None,
         developer_id: Optional[int] = None,
         lot_id:       Optional[int] = None,
+        period_id:    Optional[int] = None,
     ) -> Dict:
+        """
+        Génère le résumé complet pour le dashboard :
+        - KPIs les plus récents (ou d'une période précise)
+        - Historique pour les graphiques
+        """
         if lot_id:
-            # Mode Senior : Isolation par lot d'extraction
+            # Mode Senior : Isolation par lot d'extraction (Session-First)
             latest = self._calculate_virtual_snapshot_for_lot(
                 project_id, lot_id, site_id, group_id, developer_id
             )
-            # On ne montre pas l'historique global si on filtre sur un lot spécifique 
-            # (car un lot n'appartient qu'à un instant T)
             history = []
             period_label = f"Session #{lot_id}"
+        elif project_id is None:
+            # ✅ NOUVEAU : Mode Senior Global (Tous les projets)
+            # On aggrège les KPIs par période
+            logger.info(f"Dashboard Summary: Aggregating global data (period_id={period_id}, site_id={site_id})")
+            latest = self._get_aggregated_global_snapshot(period_id, site_id)
+            history = self._get_global_history(site_id)
+            logger.info(f"Dashboard Summary: Aggregated global data success. History count: {len(history)}")
+            period_label = "Tous les projets"
+            if period_id and latest:
+                period_label += f" — {latest.period_label if hasattr(latest, 'period_label') else ''}"
         else:
-            latest  = self.get_latest_kpis(project_id, site_id, group_id, developer_id)
+            # Mode Classique (Projet spécifique)
+            if period_id:
+                latest = self.snapshot_repo.get_by_project_period_site(
+                    self.db, project_id, period_id, site_id, group_id, developer_id
+                )
+            else:
+                latest = self.get_latest_kpis(project_id, site_id, group_id, developer_id)
+            
             history = self.get_kpi_history(project_id, site_id, group_id, developer_id)
             
             period_label = None
@@ -103,6 +124,100 @@ class AnalyticsService:
             "developer_id":    developer_id,
             "period_label":    period_label,
         }
+
+    def _get_aggregated_global_snapshot(self, period_id: Optional[int], site_id: Optional[int]) -> Optional[KpiSnapshot]:
+        """Aggrège les snapshots de tous les projets pour une période donnée."""
+        
+        # 1. Identifier la période si non fournie (dernière période avec snapshots)
+        if not period_id:
+            last_period = (
+                self.db.query(KpiSnapshot.period_id)
+                .order_by(KpiSnapshot.snapshot_date.desc())
+                .first()
+            )
+            if not last_period: return None
+            period_id = last_period[0]
+
+        # 2. Aggréger les snapshots de niveau 'Project' (dev_id=NULL, group_id=NULL)
+        # On fait la moyenne des taux et la somme des volumes
+        q = self.db.query(
+            func.avg(KpiSnapshot.mr_rate_per_site).label("mr_rate"),
+            func.avg(KpiSnapshot.approved_mr_rate).label("approved_rate"),
+            func.avg(KpiSnapshot.merged_mr_rate).label("merged_rate"),
+            func.avg(KpiSnapshot.commit_rate_per_site).label("commit_rate"),
+            func.sum(KpiSnapshot.total_commits).label("total_commits"),
+            func.sum(KpiSnapshot.total_mrs_created).label("total_mrs"),
+            func.sum(KpiSnapshot.total_mrs_approved).label("total_mrs_approved"),
+            func.sum(KpiSnapshot.total_mrs_merged).label("total_mrs_merged"),
+            func.sum(KpiSnapshot.total_comments).label("total_comments"),
+            func.sum(KpiSnapshot.total_reviews).label("total_reviews"),
+            func.sum(KpiSnapshot.total_mrs_draft).label("total_mrs_draft"),
+            func.avg(KpiSnapshot.avg_review_time_hours).label("avg_review"),
+            func.sum(KpiSnapshot.review_time_hours).label("total_review_time"), # ✅ ADDED
+            func.sum(KpiSnapshot.nb_developers).label("nb_devs"),
+        ).filter(
+            KpiSnapshot.period_id == period_id,
+            KpiSnapshot.developer_id.is_(None),
+            KpiSnapshot.group_id.is_(None)
+        )
+        
+        if site_id:
+            q = q.filter(KpiSnapshot.site_id == site_id)
+        else:
+            # Pour le mode "Global", on prend les snapshots globaux par projet (site_id is null)
+            q = q.filter(KpiSnapshot.site_id.is_(None))
+
+        stats = q.one_or_none()
+        if not stats or stats.total_commits is None: return None
+
+        # Créer un snapshot virtuel
+        snap = KpiSnapshot(
+            project_id=0, site_id=site_id, period_id=period_id,
+            mr_rate_per_site       = round(float(stats.mr_rate or 0), 2),
+            approved_mr_rate       = round(float(stats.approved_rate or 0), 4),
+            merged_mr_rate         = round(float(stats.merged_rate or 0), 4),
+            commit_rate_per_site   = round(float(stats.commit_rate or 0), 2),
+            nb_commits_per_project = int(stats.total_commits or 0), # ✅ Required field
+            total_commits          = int(stats.total_commits or 0),
+            total_mrs_created      = int(stats.total_mrs or 0),
+            total_mrs_approved     = int(stats.total_mrs_approved or 0),
+            total_mrs_merged       = int(stats.total_mrs_merged or 0),
+            total_comments         = int(stats.total_comments or 0),
+            total_reviews          = int(stats.total_reviews or 0),
+            total_mrs_draft        = int(stats.total_mrs_draft or 0),
+            avg_review_time_hours  = round(float(stats.avg_review or 0), 1),
+            review_time_hours      = float(stats.total_review_time or 0), # ✅ CORRECTED
+            nb_developers          = int(stats.nb_devs or 0),
+            
+            # ✅ AJOUT : Initialiser les métriques Enterprise pour éviter validation fail (None -> int)
+            bus_factor             = 0,
+            sprint_velocity        = 0.0,
+            code_churn_rate        = 0.0,
+            
+            snapshot_date          = date.today()
+        )
+        logger.info(f"Global Aggregation for period {period_id}: devs={stats.nb_devs}, commits={stats.total_commits}")
+        return snap
+
+    def _get_global_history(self, site_id: Optional[int]) -> List[KpiSnapshot]:
+        """Historique aggrégé de tous les projets par période."""
+        period_ids = (
+            self.db.query(KpiSnapshot.period_id)
+            .distinct()
+            .order_by(KpiSnapshot.period_id.asc())
+            .all()
+        )
+        
+        history = []
+        for (pid,) in period_ids:
+            snap = self._get_aggregated_global_snapshot(pid, site_id)
+            if snap:
+                # Ajouter le label de période manuellement pour le frontend
+                period = self.period_repo.get_by_id(self.db, pid)
+                if period:
+                    snap.period_label = f"{_MOIS_FR.get(period.month, '')} {period.year}"
+                history.append(snap)
+        return history
 
     def get_developer_kpi_summary(
         self,
@@ -150,7 +265,7 @@ class AnalyticsService:
 
     def get_leaderboard(
         self,
-        project_id: int,
+        project_id: Optional[int],
         period_id:  int,
         site_id:    Optional[int] = None,
         group_id:   Optional[int] = None,
@@ -333,15 +448,19 @@ class AnalyticsService:
         """
         # Filtres de base
         filters_comm = [
-            Commit.project_id == project_id, 
-            Commit.extraction_lot_id == lot_id,
             Commit.is_merge_commit.is_(False)
         ]
         filters_mr   = [
-            MergeRequest.project_id == project_id, 
-            MergeRequest.extraction_lot_id == lot_id,
             MergeRequest.is_draft.is_(False)
         ]
+        
+        if project_id:
+            filters_comm.append(Commit.project_id == project_id)
+            filters_mr.append(MergeRequest.project_id == project_id)
+
+        if lot_id:
+            filters_comm.append(Commit.extraction_lot_id == lot_id)
+            filters_mr.append(MergeRequest.extraction_lot_id == lot_id)
         
         if developer_id:
             filters_comm.append(Commit.developer_id == developer_id)
@@ -356,28 +475,58 @@ class AnalyticsService:
             filters_mr.append(MergeRequest.group_id == group_id)
             
         # 1. Total Commits
-        total_commits = self.db.query(func.count(Commit.id)).filter(*filters_comm).scalar() or 0
+        total_commits = (
+            self.db.query(func.count(Commit.id))
+            .join(Developer, Commit.developer_id == Developer.id)
+            .filter(*filters_comm)
+            .filter(Developer.is_active == True, Developer.is_bot == False)
+            .scalar() or 0
+        )
         
         # 2. Total MRs
-        total_mrs = self.db.query(func.count(MergeRequest.id)).filter(*filters_mr).scalar() or 0
+        total_mrs = (
+            self.db.query(func.count(MergeRequest.id))
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .filter(*filters_mr)
+            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .scalar() or 0
+        )
         
         # 3. Approved MRs
-        approved_mrs = self.db.query(func.count(MergeRequest.id)).filter(
-            *filters_mr, MergeRequest.approved == True
-        ).scalar() or 0
+        approved_mrs = (
+            self.db.query(func.count(MergeRequest.id))
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .filter(*filters_mr, MergeRequest.approved == True)
+            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .scalar() or 0
+        )
         
         # 4. Merged MRs
-        merged_mrs = self.db.query(func.count(MergeRequest.id)).filter(
-            *filters_mr, MergeRequest.state == "merged"
-        ).scalar() or 0
+        merged_mrs = (
+            self.db.query(func.count(MergeRequest.id))
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .filter(*filters_mr, MergeRequest.state == "merged")
+            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .scalar() or 0
+        )
         
         # 5. Review Time
-        avg_review = self.db.query(func.avg(MergeRequest.review_time_hours)).filter(
-            *filters_mr, MergeRequest.approved == True
-        ).scalar() or 0.0
+        avg_review = (
+            self.db.query(func.avg(MergeRequest.review_time_hours))
+            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .filter(*filters_mr, MergeRequest.approved == True)
+            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .scalar() or 0.0
+        )
         
         # 6. NB Developers (Basé sur les auteurs de commits dans ce lot)
-        nb_devs = self.db.query(func.count(distinct(Commit.developer_id))).filter(*filters_comm).scalar() or 0
+        nb_devs = (
+            self.db.query(func.count(distinct(Commit.developer_id)))
+            .join(Developer, Commit.developer_id == Developer.id)
+            .filter(*filters_comm)
+            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .scalar() or 0
+        )
         
         # Ratios
         approved_rate = round(approved_mrs / total_mrs, 4) if total_mrs > 0 else 0.0
@@ -408,6 +557,7 @@ class AnalyticsService:
             total_commits=total_commits,
             total_mrs_created=total_mrs,
             total_mrs_approved=approved_mrs,
+            total_mrs_merged=merged_mrs,
             approved_mr_rate=approved_rate,
             merged_mr_rate=merged_rate,
             mr_rate_per_site=mr_rate,
@@ -431,40 +581,42 @@ class AnalyticsService:
         
         # 1. Aggréger les stats par développeur pour ce lot
         # Note: On simplifie en se basant sur les commits et MRs
-        query = (
-            self.db.query(
+        q_comm = self.db.query(
                 Commit.developer_id,
                 func.count(Commit.id).label("commit_count"),
                 func.sum(Commit.total_changes).label("total_changes")
-            )
-            .filter(
-                Commit.project_id == project_id, 
-                Commit.extraction_lot_id == lot_id,
-                Commit.is_merge_commit.is_(False)
-            )
-            .group_by(Commit.developer_id)
-        ).subquery()
+            ).filter(Commit.is_merge_commit.is_(False))
         
-        mr_query = (
-            self.db.query(
+        if project_id:
+            q_comm = q_comm.filter(Commit.project_id == project_id)
+        if lot_id:
+            q_comm = q_comm.filter(Commit.extraction_lot_id == lot_id)
+            
+        query = q_comm.group_by(Commit.developer_id).subquery()
+        
+        q_mr = self.db.query(
                 MergeRequest.developer_id,
                 func.count(MergeRequest.id).label("mr_count"),
                 func.count(func.nullif(MergeRequest.approved, False)).label("approved_count"),
                 func.avg(MergeRequest.review_time_hours).label("avg_review")
-            )
-            .filter(
-                MergeRequest.project_id == project_id, 
-                MergeRequest.extraction_lot_id == lot_id,
-                MergeRequest.is_draft.is_(False)
-            )
-            .group_by(MergeRequest.developer_id)
-        ).subquery()
+            ).filter(MergeRequest.is_draft.is_(False))
+            
+        if project_id:
+            q_mr = q_mr.filter(MergeRequest.project_id == project_id)
+        if lot_id:
+            q_mr = q_mr.filter(MergeRequest.extraction_lot_id == lot_id)
+
+        mr_query = q_mr.group_by(MergeRequest.developer_id).subquery()
         
         # Jointure pour obtenir le classement
         results = (
             self.db.query(Developer, query.c.commit_count, mr_query.c.mr_count, mr_query.c.approved_count, mr_query.c.avg_review)
             .outerjoin(query, Developer.id == query.c.developer_id)
             .outerjoin(mr_query, Developer.id == mr_query.c.developer_id)
+            .filter(
+                Developer.is_active == True,
+                Developer.is_bot == False
+            )
             .filter((query.c.commit_count > 0) | (mr_query.c.mr_count > 0))
             .order_by((func.coalesce(query.c.commit_count, 0) + func.coalesce(mr_query.c.mr_count, 0) * 2).desc())
             .limit(limit)
@@ -563,6 +715,7 @@ class AnalyticsService:
                     "review_time":   s.avg_review_time_hours,
                     "total_commits": s.total_commits,
                     "total_mrs":     s.total_mrs_created,
+                    "nb_developers": s.nb_developers,
                 }
             })
         return results

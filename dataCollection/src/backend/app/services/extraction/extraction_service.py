@@ -385,8 +385,10 @@ class ExtractionService:
         """
         # 🎯 STRATÉGIE SENIOR : Extraction Robuste
         target_devs = []
+        target_devs_map = {}
         if developer_ids:
             target_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
+            target_devs_map = {d.id: d for d in target_devs}
             # [FIX-ID-SYNC] S'assure que les IDs GitLab numériques sont présents
             await self._ensure_developers_ids(db, target_devs, client)
 
@@ -418,15 +420,37 @@ class ExtractionService:
         
         # Filtre temporel
         since = until = None
+        lot_start = lot_end = None
         if lot.period:
             import calendar
+            from datetime import timezone
             try:
                 year, month = lot.period.year, lot.period.month
                 since = f"{year}-{month:02d}-01T00:00:00Z"
                 last_day = calendar.monthrange(year, month)[1]
                 until = f"{year}-{month:02d}-{last_day:02d}T23:59:59Z"
+                
+                # Bornes strictes pour validation manuelle
+                lot_start = datetime(year, month, 1, tzinfo=timezone.utc)
+                lot_end   = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
             except Exception as e:
                 logger.warning(f"Calcul période échoué: {e}")
+        
+        filtered_out_period = 0
+        filtered_out_dev    = 0
+        
+        logger.info(f"[CHIRURGICAL] Isolation temporelle active: {lot_start.isoformat()} -> {lot_end.isoformat()}")
+
+        def is_in_lot_period(dt_str: Optional[str]) -> bool:
+            """[SENIOR] Filtre de Garde-Fou : rejette tout ce qui sort du mois cible."""
+            if not lot_start or not lot_end or not dt_str:
+                return True # Si pas de période définie (ex: REALTIME global), on laisse passer
+            try:
+                # Supporte Z ou +00:00
+                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                return lot_start <= dt <= lot_end
+            except Exception:
+                return True
 
         # [SENIOR - Surgical Discovery] 
         # On découvre les branches réellement touchées par les dev sélectionnés via l'API Events.
@@ -481,12 +505,19 @@ class ExtractionService:
                         all_commits_data.append(c)
 
         unique_commits = all_commits_data
-        logger.info(f"Project {project.name} - Extracted {len(unique_commits)} unique commits across {len(target_branches)} relevant branches.")
-
+        
         created = skipped = 0
         for commit_data in unique_commits:
             sha = commit_data.get("id")
             if not sha or self.commit_repo.get_by_sha(db, sha, project.id):
+                skipped += 1
+                continue
+
+            # [SENIOR] Filtre chirurgical : on valide la date de l'auteur
+            # car GitLab peut renvoyer de l'historique sur les filtres fuzzy
+            if not is_in_lot_period(commit_data.get("authored_date")):
+                logger.debug(f"Filter Out: commit {sha[:8]} falls outside target period.")
+                filtered_out_period += 1
                 skipped += 1
                 continue
 
@@ -496,47 +527,28 @@ class ExtractionService:
             author_username = commit_data.get("author_username")
 
             # [STRICT TEAM ISOLATION] - LOGIQUE DURCIE (SENIOR)
-            # Si targeting mode, on ignore tout ce qui ne matche pas un de nos devs.
-            # On utilise une normalisation agressive pour éviter les faux-négatifs.
-            if target_devs:
-                is_match = False
-                matched_dev = None
-                
-                c_email = _normalize_email(author_email)
-                c_uname = _normalize_username(author_username)
-                c_name  = author_name.lower().strip() if author_name else ""
-                c_gid   = gitlab_id
-                
-                for t_dev in target_devs:
-                    # Match par ID GitLab (Le plus fiable, grâce à notre sync préliminaire)
-                    if c_gid and c_gid == t_dev.gitlab_user_id:
-                        is_match = True
-                    # Match par Email (Normalisé)
-                    elif c_email and c_email == _normalize_email(t_dev.email):
-                        is_match = True
-                    # Match par Username (Normalisé)
-                    elif c_uname and c_uname == _normalize_username(t_dev.gitlab_username):
-                        is_match = True
-                    # Match par Nom (Fuzzy/Lower)
-                    elif c_name and t_dev.name and c_name == t_dev.name.lower().strip():
-                        is_match = True
-                    
-                    if is_match:
+            if developer_ids and not self._matches_target_devs(gitlab_id, author_name, author_email, target_devs_map):
+                logger.debug(f"Filter Out (Dev): commit {sha[:8]} by {author_name} is not in targeted team.")
+                filtered_out_dev += 1
+                skipped += 1
+                continue
+
+            # [SENIOR FIX] Si la logique ciblée a déjà trouvé le dev via _matches_target_devs, on l'utilise directement !
+            # Cela évite que `_resolve_developer` n'échoue car l'email Git public peut diverger de la DB
+            matched_dev = None
+            if developer_ids:
+                # On recherche le dev qui correspond dans notre map
+                for t_dev in target_devs_map.values():
+                    if (gitlab_id and gitlab_id == t_dev.gitlab_user_id) or \
+                       (_normalize_email(author_email) == _normalize_email(t_dev.email)) or \
+                       (_normalize_username(author_username) == _normalize_username(t_dev.gitlab_username)):
                         matched_dev = t_dev
                         break
-                
-                if not is_match:
-                    skipped += 1
-                    continue
-
-            # [SENIOR FIX] Si la logique ciblée a déjà trouvé le dev, on l'utilise directement !
-            # Cela évite que `_resolve_developer` n'échoue lamentablement car l'email Git
-            # public du développeur ne correspond pas à son email d'entreprise en base.
-            if target_devs and matched_dev:
+            
+            if matched_dev:
                 developer = matched_dev
             else:
-                # Résolution/Création
-                # Si on est en mode "Team Only", on interdit la création de nouveaux profils
+                # Résolution/Création via logic standard
                 developer = self._resolve_developer(
                     db=db,
                     project_id=project.id,
@@ -545,7 +557,6 @@ class ExtractionService:
                     gitlab_id=gitlab_id,
                     username=author_username,
                     members_map=members_map,
-                    # Senior: si mode ciblé, on ne crée pas de "bruit"
                     forbid_creation=bool(developer_ids) 
                 )
 
@@ -596,6 +607,7 @@ class ExtractionService:
 
         # Filtre temporel
         updated_after = updated_before = None
+        lot_start = lot_end = None
         try:
             period = lot.period
             year, month = period.year, period.month
@@ -603,49 +615,34 @@ class ExtractionService:
             last_day       = calendar.monthrange(year, month)[1]
             updated_before = f"{year}-{month:02d}-{last_day:02d}T23:59:59Z"
             
-            # ✅ [SENIOR] : Bornes pour le filtrage Temporel
+            # ✅ [SENIOR] : Bornes pour le filtrage Temporel de précision
             from datetime import timezone
             lot_start = datetime(year, month, 1, tzinfo=timezone.utc)
-            lot_end   = datetime(year, month, last_day, 23, 59, 59, tzinfo=timezone.utc)
+            lot_end   = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
         except Exception as e:
             logger.warning(f"Calcul période MR échoué: {e}")
 
-        mrs_dict = {}
-        
-        # Si multi-targeting, on boucle sur les usernames pour Author/Reviewer/Assignee
-        usernames_to_fetch = target_usernames if target_usernames else [None]
+        def is_in_lot_period(dt_str: Optional[str]) -> bool:
+            if not lot_start or not lot_end or not dt_str: return True
+            try:
+                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                return lot_start <= dt <= lot_end
+            except Exception:
+                return True
 
-        for username in usernames_to_fetch:
-            roles = [{"author_username": username}, {"reviewer_username": username}, {"assignee_username": username}] \
-                    if username else [{"author_username": None}]
-            
-            for role_params in roles:
-                try:
-                    # Senior Logic: Use ID if we have it, else Username
-                    req_params = role_params.copy()
-                    if username:
-                        # Find the developer in target_devs_map to see if we have an ID
-                        dev_obj = next((d for d in target_devs_map.values() if _normalize_username(d.gitlab_username) == username), None)
-                        if dev_obj and dev_obj.gitlab_user_id:
-                            # Remplace l'username par l'ID dans les filtres pour plus de fiabilité
-                            if "author_username" in req_params:
-                                req_params.pop("author_username"); req_params["author_id"] = dev_obj.gitlab_user_id
-                            if "reviewer_username" in req_params:
-                                req_params.pop("reviewer_username"); req_params["reviewer_id"] = dev_obj.gitlab_user_id
-                            if "assignee_username" in req_params:
-                                req_params.pop("assignee_username"); req_params["assignee_id"] = dev_obj.gitlab_user_id
-
-                    fetched = await client.get_project_merge_requests(
-                        project.gitlab_project_id, 
-                        updated_after=updated_after,
-                        updated_before=updated_before,
-                        **req_params
-                    )
-                    for m in fetched: mrs_dict[m["iid"]] = m
-                except Exception as e:
-                    logger.error(f"Error MR role {role_params}: {e}")
-
-        mrs = list(mrs_dict.values())
+        # [SENIOR FIX] Fetches ALL MRs for the period globally to avoid 403 errors 
+        # on certain restricted query parameters (author_username, etc.)
+        # and then filters them LOCALLY.
+        try:
+            mrs = await client.get_project_merge_requests(
+                project.gitlab_project_id, 
+                updated_after=updated_after,
+                updated_before=updated_before
+            )
+            logger.info(f"[lot={lot.id}] Global MR fetch: found {len(mrs)} MRs to filter locally.")
+        except Exception as e:
+            logger.error(f"Global MR fetch failed: {e}")
+            mrs = []
         created = updated = skipped = 0
 
         for mr_data in mrs:
@@ -760,12 +757,7 @@ class ExtractionService:
                     if a_username: target_unames.append(a_username)
 
                 def is_in_period(dt_str: str) -> bool:
-                    try:
-                        if not dt_str: return False
-                        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                        return lot_start <= dt <= lot_end
-                    except Exception:
-                        return False
+                    return is_in_lot_period(dt_str)
                     
                 def is_target_author_commit(c: dict) -> bool:
                     # [SENIOR MATCHING] Utilise TOUS les vecteurs d'identité
@@ -1050,6 +1042,41 @@ class ExtractionService:
     # =========================================================================
     # HELPERS
     # =========================================================================
+
+    def _matches_target_devs(
+        self, 
+        gitlab_id: Optional[int], 
+        name: Optional[str], 
+        email: Optional[str], 
+        target_devs_map: Dict[int, Developer]
+    ) -> bool:
+        """
+        [SENIOR IDENTIFICATION]
+        Vérifie si une contribution appartient à l'un des développeurs cibles
+        en utilisant tous les vecteurs de données disponibles.
+        """
+        if not target_devs_map:
+            return True
+            
+        norm_name  = _normalize_name(name)
+        norm_email = _normalize_email(email)
+        
+        for dev in target_devs_map.values():
+            # 1. Match ID numérique (le plus fiable)
+            if gitlab_id and dev.gitlab_user_id == gitlab_id:
+                return True
+            # 2. Match Email
+            if norm_email and _normalize_email(dev.email) == norm_email:
+                return True
+            # 3. Match Nom (Normalisé)
+            if norm_name and _normalize_name(dev.name) == norm_name:
+                return True
+            # 4. Match Username GitLab
+            if dev.gitlab_username and norm_name == _normalize_username(dev.gitlab_username):
+                return True
+                
+        return False
+
 
     def _update_project_last_commit(self, db: Session, project_id: int) -> None:
         last_date = self.commit_repo.get_last_commit_date(db, project_id)

@@ -14,7 +14,7 @@ const siteService = {
     (await api.get(`/sites/${siteId}`)).data,
 
   create: async (data) =>
-    (await api.post("/sites/", data)).data,
+    (await api.post("/sites", data)).data,
 
   update: async (siteId, data) =>
     (await api.put(`/sites/${siteId}`, data)).data,
@@ -46,6 +46,12 @@ const siteService = {
     if (projectId) params.project_id = projectId;
     return (await api.get(`/sites/${siteId}/team`, { params })).data;
   },
+
+  getTimezones: async () => 
+    (await api.get("/sites/timezones")).data,
+
+  guessInfo: async (name) =>
+    (await api.get("/sites/guess", { params: { name } })).data,
 };
 
 export default siteService;

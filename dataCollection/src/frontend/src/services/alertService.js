@@ -32,7 +32,7 @@ const alertService = {
     if (developerId != null) params.developer_id  = developerId;
     params.limit  = limit;
     params.offset = offset;
-    return (await api.get("/alerts/", { params })).data;
+    return (await api.get("/alerts", { params })).data;
   },
 
   // ✅ NOUVEAU : alertes d'un développeur spécifique

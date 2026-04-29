@@ -486,7 +486,7 @@ export default function ExtractionPage() {
             </li>
             <li className="nav-item">
                <a className={`nav-link ${activeTab === "team" ? "active" : ""}`} onClick={() => setActiveTab("team")} style={{cursor: "pointer", fontWeight: 700}}>
-                  <i className="ri-team-line me-2"></i>Par Équipe
+                  <i className="ri-building-2-line me-2"></i>Par Business Unit
                </a>
             </li>
           </ul>
@@ -590,7 +590,7 @@ export default function ExtractionPage() {
                 {/* 2bis. Développeurs technique (Multi-sélection) */}
                 <div className="col-12 mt-3">
                   <label className="form-label fw-medium d-flex justify-content-between align-items-center">
-                    <span><i className="ri-user-star-line me-1 text-muted"></i>Développeurs ciblés (Équipe officielle)</span>
+                    <span><i className="ri-user-star-line me-1 text-muted"></i>Effectif Ciblé (Membres des Business Units)</span>
                     <div className="d-flex gap-2">
                        <button className="btn btn-link py-0 fs-11" onClick={() => setSelectedDeveloperIds(developers.map(d => String(d.id)))}>Tout cocher</button>
                        <button className="btn btn-link py-0 fs-11 text-danger" onClick={() => setSelectedDeveloperIds([])}>Vider</button>

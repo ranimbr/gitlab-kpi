@@ -164,7 +164,7 @@ export default function AuditLogPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/audit-logs/", { params: { limit: 500 } });
+      const res = await api.get("/audit-logs", { params: { limit: 500 } });
       if (mountedRef.current) setLogs(Array.isArray(res.data) ? res.data : []);
     } catch {
       if (mountedRef.current) setLogs([]);
