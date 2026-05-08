@@ -1,30 +1,6 @@
 """
 models/developer_group.py
 
-Groupement logique de développeurs par équipe / site.
-
-CORRECTIONS MAJEURES (remarques encadrant) :
-─────────────────────────────────────────────
-1. SUPPRESSION de project_id comme FK directe.
-   Dans le nouveau modèle, un groupe appartient à un Site (pas à 1 projet).
-   Les développeurs d'un groupe peuvent travailler sur plusieurs projets
-   via DeveloperProject.
-   → Un groupe = une équipe fonctionnelle dans un site (ex: "Backend Tunis").
-
-2. CONSERVATION de site_id → un groupe reste rattaché à un site.
-   C'est cohérent avec les KPIs par site (#1, #5, #7).
-
-3. AJOUT de description → utile pour l'interface d'administration.
-
-Usage KPI :
-    KpiSnapshot peut être agrégé au niveau d'un groupe (group_id renseigné).
-    Cela permet de comparer les performances entre groupes d'un même site.
-
-    Exemple de groupes :
-        "Backend Tunis"   (site_id=1)
-        "Frontend Tunis"  (site_id=1)
-        "DevOps Paris"    (site_id=2)
-        "Backend Paris"   (site_id=2)
 """
 
 from sqlalchemy import Column, Integer, String, ForeignKey, Index, Table

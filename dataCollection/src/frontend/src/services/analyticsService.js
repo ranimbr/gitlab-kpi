@@ -23,10 +23,9 @@
 
 import api from "./api";
 
-// ── Helper : construit les params en excluant les nulls ───────────────────────
 const buildParams = (obj) =>
   Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v != null)
+    Object.entries(obj).filter(([, v]) => v != null && v !== "")
   );
 
 const analyticsService = {
@@ -35,11 +34,18 @@ const analyticsService = {
    * GET /analytics/{projectId}/latest
    * Dernier snapshot KPI pour un projet/site/groupe/développeur.
    */
-  getLatest: async (projectId, { siteId, groupId, developerId } = {}) => {
+  getLatest: async (projectId, { siteId, groupId, developerId, lotId, periodId } = {}) => {
+    if (projectId === "all") {
+       // [SENIOR FIX] Standard analytics route doesn't support "all". Use dashboard instead.
+       const summary = await analyticsService.getKpiDashboard("all", { siteId, groupId, developerId, lotId, periodId });
+       return summary?.latest_metrics || null;
+    }
     const params = buildParams({
       site_id:      siteId,
       group_id:     groupId,
       developer_id: developerId,
+      lot_id:       lotId,
+      period_id:    periodId, // Backend AnalyticsService handles period_id if we update it
     });
     const { data } = await api.get(`/analytics/${projectId}/latest`, { params });
     return data;
@@ -49,9 +55,11 @@ const analyticsService = {
    * GET /kpis/developer/{developerId}/summary
    * Résumé global d'un développeur, toutes périodes confondues.
    */
-  getDeveloperSummary: async (projectId, developerId) => {
+  getDeveloperSummary: async (projectId, developerId, { lotId } = {}) => {
     const pId = (projectId === "all" || !projectId) ? null : projectId;
-    const { data } = await api.get(`/kpis/developer/${developerId}/summary`, { params: buildParams({ project_id: pId }) });
+    const { data } = await api.get(`/kpis/developer/${developerId}/summary`, { 
+      params: buildParams({ project_id: pId, lot_id: lotId }) 
+    });
     return data;
   },
 
@@ -173,13 +181,15 @@ const analyticsService = {
       kpiField = "mr_rate_per_site",
       months   = 12,
       siteId   = null,
+      developerId = null,
     } = {}
   ) => {
     const params = buildParams({
-      project_id: projectId,
-      kpi_field:  kpiField,
+      project_id:   projectId,
+      kpi_field:    kpiField,
       months,
-      site_id:    siteId,
+      site_id:      siteId,
+      developer_id: developerId,
     });
     const { data } = await api.get("/kpis/trend", { params });
     return data;
@@ -281,7 +291,7 @@ const analyticsService = {
    * Analyse comparative vs moyenne du site (Manager Only).
    */
   getDeveloperInsights: async (developerId, projectId, periodId = null) => {
-    const params = buildParams({ project_id: projectId, period_id: periodId });
+    const params = buildParams({ project_id: projectId || "all", period_id: periodId });
     const { data } = await api.get(`/analytics/developer/${developerId}/insights`, { params });
     return data;
   },

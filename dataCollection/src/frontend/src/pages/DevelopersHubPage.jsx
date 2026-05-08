@@ -17,7 +17,20 @@ import { useAuth }      from "../context/AuthContext";
 import developerService from "../services/developerService";
 import DeveloperPerformanceReport from "../components/analytics/DeveloperPerformanceReport";
 import DeveloperImportModal from "../components/admin/DeveloperImportModal";
-import ReactApexChart from "react-apexcharts"; 
+import ReactApexChart from "react-apexcharts";
+import api from "../services/api";
+
+// ─── [SENIOR] Lifecycle Status Config (Binary & Deduced) ──────────────────────
+const STATUS_CONFIG = {
+  ACTIVE:     { label: 'ACTIF',    color: '#10b981', bg: 'rgba(16,185,129,0.1)',  icon: 'ri-checkbox-circle-fill' },
+  OFFBOARDED: { label: 'PARTI',    color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', icon: 'ri-logout-box-r-line'    },
+};
+
+function getRhStatus(dev) {
+  return dev.is_active ? 'ACTIVE' : 'OFFBOARDED';
+}
+
+// ─── [SENIOR] Modal Statut supprimé au profit de l'automatisation CSV ────────
 
 // ─── Helpers (Standardized with ProjectsPage) ─────────────────────────────────
 function getInitials(name="") { return(name||"?").split(/[\s._-]/).map(w=>w[0]).join("").toUpperCase().slice(0,2); }
@@ -101,8 +114,11 @@ const MiniRadar = ({ kpis }) => {
 };
 
 // ─── Component: Developer Card (Premium Grid Pattern) ─────────────────────────
-function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport, loading, projectFilter, selectedLotId }) {
+function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport, loading, projectFilter, selectedPeriodId, periods, onStatusChanged }) {
   const { isTeamLead } = useAuth();
+  const [currentStatus, setCurrentStatus]     = useState(() => getRhStatus(dev));
+
+  const statusCfg = STATUS_CONFIG[currentStatus] || STATUS_CONFIG.ACTIVE;
   
   if (loading) {
     return (
@@ -151,7 +167,7 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
               {getInitials(dev.name || dev.gitlab_username)}
             </div>
             <div className="flex-grow-1 min-w-0">
-              <Link to={`/developers/${dev.id}`}
+              <Link to={`/developers/${dev.id}?project_id=${projectFilter}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ''}`}
                 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', textDecoration: 'none', display: 'block' }}
                 className="text-truncate">
                 {dev.name || dev.gitlab_username}
@@ -159,13 +175,24 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
               <div style={{ fontSize: 12, color: '#94a3b8' }}>@{dev.gitlab_username || 'anonymous'}</div>
             </div>
             {score !== null && (
-              <div style={{
-                background: score >= 70 ? 'rgba(16,185,129,0.1)' : score >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
-                color: scoreColor, fontWeight: 800, fontSize: 14,
-                padding: '4px 10px', borderRadius: 8, flexShrink: 0,
-                zIndex: 2,
-              }}>
-                {score}%
+              <div className="d-flex align-items-center gap-2">
+                {/* Trend Indicator */}
+                {devKpis?.trend && (
+                  <div title={devKpis.trend > 0 ? "Progression Positive" : "Déclin de performance"} style={{
+                    color: devKpis.trend > 0 ? '#10b981' : '#ef4444',
+                    fontSize: 18, animation: 'bounceTrend 2s infinite'
+                  }}>
+                    <i className={devKpis.trend > 0 ? 'ri-arrow-right-up-line' : 'ri-arrow-right-down-line'} />
+                  </div>
+                )}
+                <div style={{
+                  background: score >= 70 ? 'rgba(16,185,129,0.1)' : score >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                  color: scoreColor, fontWeight: 800, fontSize: 14,
+                  padding: '4px 10px', borderRadius: 8, flexShrink: 0,
+                  zIndex: 2,
+                }}>
+                  {score}%
+                </div>
               </div>
             )}
           </div>
@@ -216,21 +243,21 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
             {[
               { 
                 label: 'Commits', 
-                value: devKpis?.total_commits ?? (devKpis ? 0 : '—'), 
+                value: devKpis?.total_commits ?? 0, 
                 color: '#4361ee',
                 tooltip: 'Voir les commits de ce développeur',
-                link: `/commits?project_id=${projectFilter}&developer_id=${dev.id}${selectedLotId ? `&lot_id=${selectedLotId}` : ''}`
+                link: `/commits?project_id=${projectFilter}&developer_id=${dev.id}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ''}`
               },
               { 
                 label: 'MRs', 
-                value: devKpis?.total_mrs_created ?? (devKpis ? 0 : '—'), 
+                value: devKpis?.total_mrs_created ?? 0, 
                 color: '#06b6d4',
                 tooltip: 'Voir les MRs de ce développeur',
-                link: `/merge?project_id=${projectFilter}&developer_id=${dev.id}${selectedLotId ? `&lot_id=${selectedLotId}` : ''}`
+                link: `/merge?project_id=${projectFilter}&developer_id=${dev.id}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ''}`
               },
               { 
                 label: 'Taux MR', 
-                value: devKpis?.approved_mr_rate != null ? `${(devKpis.approved_mr_rate * 100).toFixed(0)}%` : '—', 
+                value: devKpis?.approved_mr_rate != null ? `${(devKpis.approved_mr_rate * 100).toFixed(0)}%` : '0%', 
                 color: '#10b981',
                 tooltip: 'Taux de MRs approuvées',
                 link: null
@@ -248,34 +275,67 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
               </div>
             ))}
           </div>
-          {/* ✅ [SENIOR] No-data state: show context if KPIs are missing */}
-          {!devKpis && (
-            <div style={{ marginTop: 8, fontSize: 10, color: '#94a3b8', textAlign: 'center', fontStyle: 'italic' }}>
-              Sélectionnez un projet pour voir les KPIs
-            </div>
-          )}
+          {/* ✅ [SENIOR] No-data state removed: KPIs are now always aggregated globally if no project selected */}
         </div>
 
         {/* Footer CTA */}
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', padding: '10px 20px', background: '#fafbfc' }}>
-          <Link to={`/developers/${dev.id}`}
+          <Link to={`/developers/${dev.id}/performance?project_id=${projectFilter}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ''}`}
             style={{ fontSize: 12, fontWeight: 600, color: '#4361ee', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             Analyse détaillée <i className="ri-arrow-right-line" style={{ fontSize: 13 }} />
           </Link>
         </div>
 
-        {/* Action Managériale : Générer Bilan (Manager Only) */}
-        {isTeamLead() && (
-          <div style={{ padding: '0 20px 15px 20px', background: '#fafbfc' }}>
-            <button 
-              onClick={() => onShowReport(dev.id)}
-              className="btn btn-soft-primary btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
-              style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px' }}
-            >
-              <i className="ri-file-chart-line"></i> GÉNÉRER BILAN
-            </button>
+        {/* [SENIOR] Lifecycle Information (Deduced from CSV/Sync) */}
+        <div style={{ padding: '0 20px 15px 20px', background: '#fafbfc', display:'flex', flexDirection:'column', gap:6 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:2 }}>
+            <span style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.5px' }}>Statut RH</span>
+            <span style={{
+              fontSize:10, fontWeight:800, padding:'3px 9px', borderRadius:99,
+              background: statusCfg.bg, color: statusCfg.color,
+              display:'flex', alignItems:'center', gap:4,
+            }}>
+              <i className={statusCfg.icon} />
+              {statusCfg.label}
+            </span>
           </div>
-        )}
+
+          <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', border: '1px solid #edf2f7' }}>
+            <div className="d-flex justify-content-between mb-1">
+              <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8' }}>ENTRÉE</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#475569' }}>
+                {dev.onboarding_date ? new Date(dev.onboarding_date).toLocaleDateString('fr-FR') : 'Non renseignée'}
+              </span>
+            </div>
+            {!dev.is_active && (
+              <div className="d-flex justify-content-between">
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444' }}>SORTIE</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444' }}>
+                  {dev.offboarding_date ? new Date(dev.offboarding_date).toLocaleDateString('fr-FR') : 'Automatique'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Bouton Timeline & Bilan */}
+          <div className="d-flex gap-2 mt-1">
+            <button
+              onClick={() => onShowReport(dev.id)}
+              className="btn btn-soft-primary btn-sm flex-grow-1 d-flex align-items-center justify-content-center gap-1"
+              style={{ fontSize:10, fontWeight:700 }}
+            >
+              <i className="ri-file-chart-line" /> BILAN
+            </button>
+            <Link 
+              to={`/developers/${dev.id}#timeline`}
+              className="btn btn-soft-info btn-sm flex-grow-1 d-flex align-items-center justify-content-center gap-1"
+              style={{ fontSize:10, fontWeight:700 }}
+            >
+              <i className="ri-history-line" /> TIMELINE
+            </Link>
+          </div>
+        </div>
+
       </div>
     </div>
   );
@@ -375,94 +435,120 @@ export default function DevelopersHubPage() {
   const [alertCounts, setAlertCounts] = useState({});
   const [leaderboard, setLeaderboard] = useState([]);
 
-  // ✅ NOUVEAU : Isolation par Lot et Période
-  const [lots, setLots] = useState([]);
-  const [selectedLotId, setSelectedLotId] = useState(null);
   const [periods, setPeriods] = useState([]);
-  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
 
-  const [search,       setSearch]       = useState(searchParams.get("q") || "");
-  const [siteFilter,   setSiteFilter]   = useState(searchParams.get("site") || "all");
-  const [groupFilter,  setGroupFilter]  = useState("all");
-  const [validatedOnly, setValidatedOnly] = useState(false);
-  const [sortBy,       setSortBy]       = useState("score");
-  const [groups,       setGroups]       = useState([]);
-  const [page,         setPage]         = useState(1);
+  // [SENIOR] Standardized Filter Names & Robust URL Hydration
+  const [projectFilter, setProjectFilter] = useState(searchParams.get("project_id") || searchParams.get("project") || localStorage.getItem("last_project_id") || "");
+  const [siteFilter,    setSiteFilter]    = useState(searchParams.get("site_id")    || searchParams.get("site")    || "all");
+  const [groupFilter,   setGroupFilter]   = useState(searchParams.get("group_id")   || "all");
+  const [selectedPeriodId, setSelectedPeriodId] = useState(searchParams.get("period_id") ? Number(searchParams.get("period_id")) : null);
+  const [search,        setSearch]        = useState(searchParams.get("q") || "");
+  const [validatedOnly, setValidatedOnly] = useState(searchParams.get("validated") === "true");
+  const [showInactive,   setShowInactive]   = useState(searchParams.get("inactive") === "true");
+  const [sortBy,        setSortBy]        = useState(searchParams.get("sort") || "score");
+  const [groups,        setGroups]        = useState([]);
+  const [page,          setPage]          = useState(Number(searchParams.get("page")) || 1);
   const perPage = 9;
 
   const [projects,    setProjects]    = useState([]);
-  const [projectFilter, setProjectFilter] = useState(searchParams.get("project") || "");
-
-  const [loading,         setLoading]         = useState(true);
+  const [loading,     setLoading]     = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [selectedDevId,    setSelectedDevId]    = useState(null);
   const [showImportModal,  setShowImportModal]  = useState(false);
 
-  const loadData = useCallback(async (projId = projectFilter) => {
+  // [SENIOR] Unified Data Loader
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [devsData, summaryData, sitesData, projsData, periodsData, groupsData] = await Promise.all([
-        developerService.getByTab("all", projId),
-        developerService.getSummary(projId),
-        siteService.getAll(),
+      const [projData, sitesData, periodsData, groupsData] = await Promise.all([
         projectService.getAll(),
+        siteService.getAll(),
         periodService.getAll(),
         developerService.getGroups()
       ]);
 
-      setDevelopers(Array.isArray(devsData) ? devsData : []);
-      setSummary(summaryData || { total: 0, validated: 0, pending: 0, bots: 0 });
-      setSites(Array.isArray(sitesData) ? sitesData : []);
-      setPeriods(Array.isArray(periodsData) ? periodsData : []);
-      setGroups(Array.isArray(groupsData) ? groupsData : []);
-      const projList = Array.isArray(projsData) ? projsData : [];
+      const projList = Array.isArray(projData) ? projData : [];
       setProjects(projList);
+      setSites(Array.isArray(sitesData) ? sitesData : []);
+      const periodList = Array.isArray(periodsData) ? periodsData : [];
+      setPeriods(periodList);
+      if (!selectedPeriodId && periodList.length > 0) {
+        setSelectedPeriodId(periodList[0].id);
+      }
       
-      if (!projectFilter && projList.length > 0) {
-        setProjectFilter(String(projList[0].id));
+      setGroups(Array.isArray(groupsData) ? groupsData : []);
+
+      // Logic: Prioritize URL > LocalStorage > First Project available
+      let activeProjId = projectFilter;
+      if (!activeProjId && projList.length > 0) {
+        activeProjId = String(projList[0].id);
+        setProjectFilter(activeProjId);
       }
 
-      if (!selectedPeriodId && Array.isArray(periodsData) && periodsData.length > 0) {
-        setSelectedPeriodId(periodsData[0].id);
+      if (activeProjId) {
+        const [devsData, summData] = await Promise.all([
+          developerService.getByTab("all", activeProjId, false, selectedPeriodId),
+          developerService.getSummary(activeProjId, null, false, selectedPeriodId)
+        ]);
+        setDevelopers(Array.isArray(devsData) ? devsData : []);
+        setSummary(summData || { total: 0, validated: 0, pending: 0, bots: 0 });
       }
+    } catch (err) {
+      console.error("Critical Data Load Error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectFilter, selectedPeriodId]);
 
-      const urlLotId = searchParams.get("lot_id");
-      if (urlLotId) setSelectedLotId(parseInt(urlLotId));
-    } catch { /* err */ } 
-    finally { setLoading(false); }
-  }, [searchParams, projectFilter, selectedPeriodId]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  useEffect(() => { 
-    loadData(projectFilter); 
-  }, [projectFilter]);
+  // Lots effect removed as requested by USER
 
-  useEffect(() => {
-    if (!projectFilter) { setLots([]); return; }
-    extractionLotService.getAll(projectFilter)
-      .then(data => setLots(Array.isArray(data) ? data : (data.items || [])))
-      .catch(() => setLots([]));
-  }, [projectFilter]);
   
   useEffect(() => {
-    if (!projectFilter || projectFilter === "all") return;
+    // [SENIOR] Now loading KPIs even in "all" mode to track developers globally
+    if (!projectFilter) return; 
     setLoadingLeaderboard(true);
 
     developerService.getLeaderboard(projectFilter, { 
       limit: 50, 
-      lotId: selectedLotId,
       periodId: selectedPeriodId,
       siteId: siteFilter !== "all" ? siteFilter : null
     })
-      .then(lb => {
+      .then(async lb => {
         setLeaderboard(lb?.entries || []);
         const kpiMap = {};
+        
+        // [SENIOR] Trend Calculation
+        let prevKpiMap = {};
+        if (selectedPeriodId && periods.length > 0) {
+          const currentIndex = periods.findIndex(p => p.id === selectedPeriodId);
+          if (currentIndex < periods.length - 1) {
+            const prevPeriod = periods[currentIndex + 1]; // periods are likely reversed (newest first)
+            try {
+              const prevLb = await developerService.getLeaderboard(projectFilter, { 
+                limit: 50, periodId: prevPeriod.id, siteId: siteFilter !== "all" ? siteFilter : null 
+              });
+              (prevLb?.entries || []).forEach(e => { prevKpiMap[e.developer_id] = e.developer_score; });
+            } catch(e) {}
+          }
+        }
+
         (lb?.entries || []).forEach(entry => {
+          const currentScore = entry.developer_score;
+          const prevScore = prevKpiMap[entry.developer_id];
+          let trend = 0;
+          if (prevScore != null && currentScore != null) {
+             trend = currentScore - prevScore;
+          }
+
           kpiMap[entry.developer_id] = {
-            developer_score:     entry.developer_score,
+            developer_score:     currentScore,
             total_commits:       entry.commit_count,
             total_mrs_created:   entry.mr_count,
             approved_mr_rate:    entry.approved_rate,
             avg_review_time_hours: entry.avg_review_hours,
+            trend:               trend !== 0 ? trend : null
           };
         });
         setLatestKpis(kpiMap);
@@ -480,25 +566,43 @@ export default function DevelopersHubPage() {
         setAlertCounts(map);
       });
     });
-  }, [projectFilter, selectedLotId, selectedPeriodId, siteFilter]);
+  }, [projectFilter, selectedPeriodId, siteFilter]);
 
   useEffect(() => { setPage(1); }, [search, siteFilter, sortBy, projectFilter]);
 
+  // [SENIOR] Sync all filters to URL & LocalStorage
   useEffect(() => {
-    const p = {};
-    if (search) p.q = search;
-    if (siteFilter !== "all") p.site = siteFilter;
-    if (projectFilter) p.project = projectFilter;
-    if (selectedLotId) p.lot_id = selectedLotId;
-    setSearchParams(p, { replace: true });
-  }, [search, siteFilter, projectFilter, selectedLotId, setSearchParams]);
+    const params = {};
+    if (search) params.q = search;
+    if (siteFilter !== "all")    params.site_id = siteFilter;
+    if (groupFilter !== "all")   params.group_id = groupFilter;
+    if (selectedPeriodId)        params.period_id = selectedPeriodId;
+    if (validatedOnly)           params.validated = "true";
+    if (showInactive)            params.inactive  = "true";
+    if (sortBy !== "score")      params.sort = sortBy;
+    if (page > 1)                params.page = page;
+
+    if (projectFilter) {
+      params.project_id = projectFilter;
+      localStorage.setItem("last_project_id", projectFilter);
+    }
+    
+    const currentParams = Object.fromEntries(searchParams.entries());
+    if (JSON.stringify(currentParams) !== JSON.stringify(params)) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [search, siteFilter, groupFilter, selectedPeriodId, validatedOnly, sortBy, page, projectFilter]);
 
   const filtered = useMemo(() => {
     let result = developers.filter(dev => {
       if (dev.is_bot) return false;
+      if (validatedOnly && !dev.is_validated) return false;
+      // [SENIOR] Si une période est sélectionnée, on montre tout le monde (Cohorte), sinon on filtre les inactifs
+      if (!selectedPeriodId && !showInactive && !dev.is_active) return false;
       const q = search.toLowerCase();
       if (q && !(dev.name || "").toLowerCase().includes(q) && !(dev.gitlab_username || "").toLowerCase().includes(q)) return false;
-      if (siteFilter !== "all" && String(dev.primary_site_id) !== siteFilter) return false;
+      if (siteFilter  !== "all" && String(dev.primary_site_id) !== String(siteFilter)) return false;
+      if (groupFilter !== "all" && String(dev.group_id)        !== String(groupFilter)) return false;
       return true;
     });
 
@@ -509,10 +613,21 @@ export default function DevelopersHubPage() {
         const sb = latestKpis[b.id]?.developer_score ?? -1;
         return sb - sa;
       }
+      if (sortBy === "commits") {
+        const ca = latestKpis[a.id]?.total_commits ?? -1;
+        const cb = latestKpis[b.id]?.total_commits ?? -1;
+        return cb - ca;
+      }
+      if (sortBy === "mrs") {
+        const ma = latestKpis[a.id]?.total_mrs_created ?? -1;
+        const mb = latestKpis[b.id]?.total_mrs_created ?? -1;
+        return mb - ma;
+      }
+      if (sortBy === "recent") return (b.id || 0) - (a.id || 0);
       return (b.id || 0) - (a.id || 0);
     });
     return result;
-  }, [developers, search, siteFilter, sortBy, latestKpis]);
+  }, [developers, search, siteFilter, groupFilter, validatedOnly, sortBy, latestKpis]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
@@ -574,6 +689,8 @@ export default function DevelopersHubPage() {
                   ))}
                 </select>
 
+
+
                 <select className="form-select form-select-sm" value={siteFilter} onChange={e => setSiteFilter(e.target.value)} style={{ width: 140 }}>
                   <option value="all">Tous les sites</option>
                   {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -593,11 +710,11 @@ export default function DevelopersHubPage() {
                 </select>
 
                 <div className="form-check form-switch ms-2 d-flex align-items-center gap-2">
-                  <input className="form-check-input" type="checkbox" id="validatedSwitch" checked={validatedOnly} onChange={e => setValidatedOnly(e.target.checked)} />
-                  <label className="form-check-label fs-11 fw-bold text-muted mb-0" htmlFor="validatedSwitch">VALIDÉS SEULS</label>
+                  <input className="form-check-input" type="checkbox" id="inactiveSwitch" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+                  <label className="form-check-label fs-11 fw-bold text-muted mb-0" htmlFor="inactiveSwitch">VOIR INACTIFS</label>
                 </div>
 
-                <button className="btn btn-soft-danger btn-sm ms-auto" onClick={() => { setSearch(""); setSiteFilter("all"); setGroupFilter("all"); setProjectFilter(""); setSelectedLotId(null); setSelectedPeriodId(null); setValidatedOnly(false); }} title="Réinitialiser">
+                <button className="btn btn-soft-danger btn-sm ms-auto" onClick={() => { setSearch(""); setSiteFilter("all"); setGroupFilter("all"); setProjectFilter(""); setSelectedPeriodId(null); setValidatedOnly(false); setShowInactive(false); }} title="Réinitialiser">
                   <i className="ri-refresh-line"></i>
                 </button>
                 
@@ -651,7 +768,11 @@ export default function DevelopersHubPage() {
                         onShowReport={setSelectedDevId}
                         loading={false}
                         projectFilter={projectFilter}
-                        selectedLotId={selectedLotId}
+                        selectedPeriodId={selectedPeriodId}
+                        periods={periods}
+                        onStatusChanged={(devId, ns) => {
+                          setDevelopers(prev => prev.map(d => d.id === devId ? { ...d, is_active: ns === 'ACTIVE' } : d));
+                        }}
                       />
                     ))
                   )}

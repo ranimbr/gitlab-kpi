@@ -1,18 +1,6 @@
 """
 schemas/commit.py
 
-CORRECTIONS (modèles mis à jour) :
-────────────────────────────────────
-1. AJOUT des nouveaux champs du modèle Commit :
-       is_merge_commit → distingue les vrais commits des merges automatiques
-       branch_name     → branche source du commit
-       author_name     → nom brut de l'auteur (fallback quand developer_id=NULL)
-       author_email    → email brut de l'auteur (fallback)
-
-2. AJOUT CommitSummary : version allégée pour les listes.
-
-3. AJOUT UnmatchedCommitResponse : commits sans developer_id
-   (à traiter par l'admin pour matcher aux Developer).
 """
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List

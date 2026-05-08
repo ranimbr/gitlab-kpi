@@ -45,16 +45,16 @@
   --topbar-shadow:    0 1px 2px rgba(0,0,0,0.05);
 
   /* Page & Cards */
-  --page-bg:          #f3f6f9; /* Lighter, cleaner background */
+  --page-bg:          #f0f2f8; /* Lighter, cleaner background */
   --card-bg:          #ffffff;
   --card-radius:      12px;
   --card-shadow:      0 2px 4px rgba(0,0,0,0.02), 0 8px 16px rgba(0,0,0,0.03);
 
   /* Premium Font */
   --font-family:      'Inter', sans-serif;
-  --text-primary:     #0f172a;
-  --text-secondary:   #64748b;
-  --text-muted:       #94a3b8;
+  --text-primary:     #1a1d2e;
+  --text-secondary:   #6b7280;
+  --text-muted:       #9ca3af;
 
   /* Support for Glassmorphism */
   --glass-bg:         rgba(255, 255, 255, 0.7);
@@ -62,6 +62,10 @@
   --glass-blur:       12px;
   --glass-shadow:     0 8px 32px 0 rgba(31, 38, 135, 0.07);
 }
+
+.fw-800 { font-weight: 800 !important; }
+.letter-spacing-1 { letter-spacing: 0.06em !important; }
+.hover-bg-light:hover { background-color: #f9fafb !important; }
 
 /* ══════════════════════════════════════════════════════════
    2. RESET + GLOBAL BASE
@@ -179,6 +183,7 @@ body {
 .main-content {
   margin-left: var(--sidebar-width) !important;
   width: calc(100% - var(--sidebar-width)) !important;
+  padding-top: var(--topbar-height) !important; /* CRITICAL FIX: Offset for fixed Topbar */
   padding-bottom: 40px;
   background: var(--page-bg) !important;
   position: relative;
@@ -232,7 +237,7 @@ body {
 
 /* Page Content — Standard SaaS Grid (24px) */
 .page-content {
-  padding: 16px 24px 40px !important; /* Unified Horizontal Padding */
+  padding: 48px 32px 60px !important; /* SENIOR: Increased top padding to avoid Topbar overlap */
   min-height: calc(100vh - var(--topbar-height));
   position: relative;
   z-index: 1;

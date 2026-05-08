@@ -32,6 +32,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 import enum
+from typing import Optional
 
 from app.models.base import Base
 
@@ -91,6 +92,10 @@ class Alert(Base):
         back_populates="alerts",
         foreign_keys=[developer_id],
     )
+
+    @property
+    def acknowledged_by_name(self) -> Optional[str]:
+        return self.acknowledger.name if self.acknowledger else None
 
     # ── Index ────────────────────────────────────────────────────────────────
     __table_args__ = (

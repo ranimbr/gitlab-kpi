@@ -1,25 +1,7 @@
 """
 repositories/commit_repository.py
 
-CORRECTIONS MAJEURES (modèles mis à jour) :
-─────────────────────────────────────────────
-1. count_by_project_period() : filtre site via DeveloperSite (M2M)
-   au lieu de Developer.site_id (FK directe supprimée).
 
-2. AJOUT filtre is_merge_commit=False dans les requêtes KPI #5 et #6.
-   Les commits de merge automatiques (is_merge_commit=True) sont exclus
-   car ils ne représentent pas du travail de développement réel.
-
-3. AJOUT get_unmatched() : commits sans developer_id.
-   Retournés par GET /commits/unmatched pour que l'admin puisse matcher
-   manuellement les commits aux Developer (nouveaux champs author_name/email).
-
-4. AJOUT get_last_commit_date() : date du dernier commit d'un projet
-   (utilisé pour mettre à jour Project.last_commit_date après extraction).
-
-5. AJOUT count_by_developer_period() : KPI individuel par développeur.
-
-6. AJOUT get_daily_activity() : activité jour par jour — heatmap GitHub-style.
 """
 from datetime import datetime
 from typing import List, Optional
@@ -47,7 +29,7 @@ class CommitRepository(BaseRepository[Commit]):
         limit:      int = 50,
         offset:     int = 0,
         lot_id:     Optional[int] = None,
-        exclude_merge_commits: bool = True,
+        exclude_merge_commits: bool = False,
     ) -> List[Commit]:
         query = (
             db.query(Commit)
@@ -65,7 +47,12 @@ class CommitRepository(BaseRepository[Commit]):
             )
         )
         if exclude_merge_commits:
-            query = query.filter(Commit.is_merge_commit.is_(False))
+            query = query.filter(
+                Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
+            )
             
         if lot_id is not None:
             query = query.filter(Commit.extraction_lot_id == lot_id)
@@ -85,7 +72,7 @@ class CommitRepository(BaseRepository[Commit]):
         project_id: Optional[int] = None,
         limit:      int = 50,
         offset:     int = 0,
-        exclude_merge_commits: bool = True,
+        exclude_merge_commits: bool = False,
     ) -> List[Commit]:
         """
         ✅ SENIOR : Récupération fédérée par période.
@@ -114,7 +101,12 @@ class CommitRepository(BaseRepository[Commit]):
             query = query.filter(Commit.project_id == project_id)
             
         if exclude_merge_commits:
-            query = query.filter(Commit.is_merge_commit.is_(False))
+            query = query.filter(
+                Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
+            )
 
         return (
             query
@@ -129,9 +121,9 @@ class CommitRepository(BaseRepository[Commit]):
         self,
         db:         Session,
         project_id: Optional[int] = None,
-        limit:      int = 500,
+        limit:      int = 5000,
         offset:     int = 0,
-        exclude_merge_commits: bool = True,
+        exclude_merge_commits: bool = False,
     ) -> List[Commit]:
         """
         [SENIOR] Retourne TOUS les commits de TOUTES les périodes.
@@ -154,7 +146,12 @@ class CommitRepository(BaseRepository[Commit]):
         if project_id is not None:
             query = query.filter(Commit.project_id == project_id)
         if exclude_merge_commits:
-            query = query.filter(Commit.is_merge_commit.is_(False))
+            query = query.filter(
+                Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
+            )
 
         return (
             query
@@ -213,7 +210,12 @@ class CommitRepository(BaseRepository[Commit]):
             )
         )
         if exclude_merge_commits:
-            q = q.filter(Commit.is_merge_commit.is_(False))
+            q = q.filter(
+                Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
+            )
 
         if site_id is not None:
             q = (
@@ -251,7 +253,12 @@ class CommitRepository(BaseRepository[Commit]):
             )
         )
         if exclude_merge_commits:
-            q = q.filter(Commit.is_merge_commit.is_(False))
+            q = q.filter(
+                Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
+            )
         return q.scalar() or 0
 
     def get_by_developer_period(
@@ -347,6 +354,9 @@ class CommitRepository(BaseRepository[Commit]):
                 Commit.authored_date       >= start_date,
                 Commit.authored_date       <  end_date,
                 Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
             )
             .group_by(func.date(Commit.authored_date))
             .order_by(func.date(Commit.authored_date))

@@ -1,21 +1,6 @@
 """
 repositories/user_repository.py
 
-CORRECTIONS (modèles mis à jour) :
-─────────────────────────────────────
-1. UserRoleEnum mis à jour : super_admin/site_manager/team_lead/developer.
-   get_admins() → get_by_role() + get_super_admins().
-
-2. create_user() : role par défaut = developer (au lieu de user).
-   Ajout site_id et group_id.
-
-3. update_user() : ajout site_id et group_id.
-
-4. AJOUT get_by_role() : filtre par rôle.
-
-5. AJOUT get_by_site_id() : site_managers d'un site.
-
-6. AJOUT get_by_group_id() : team_leads d'un groupe.
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session

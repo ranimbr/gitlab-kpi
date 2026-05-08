@@ -1,22 +1,5 @@
 """
 api/routers/projects.py
-
-CORRECTIONS MAJEURES (modèles mis à jour — remarques encadrant) :
-──────────────────────────────────────────────────────────────────
-1. create_project() : Project.site_id supprimé → ProjectSite M2M.
-   Après création du projet, créer les associations via project_site_repo.sync().
-
-2. ProjectCreate.site_ids → liste de site_ids (plus site_id unique).
-
-3. list_projects() : get_by_site_id() via ProjectSite M2M.
-
-4. AJOUT POST /projects/{id}/sites/{site_id} : associer un site à un projet.
-   AJOUT DELETE /projects/{id}/sites/{site_id} : dissocier un site.
-   AJOUT GET /projects/{id}/sites : lister les sites d'un projet.
-
-5. ProjectResponse.sites : liste imbriquée (plus site_id unique).
-
-6. Rôle admin → super_admin.
 """
 import logging
 from typing import List, Optional
@@ -31,6 +14,8 @@ from app.database.session import get_db
 from app.models.app_user import AppUser
 from app.models.gitlab_config import GitLabConfig
 from app.models.project import Project, VisibilityEnum
+from app.models.extraction_lot import ExtractionLot
+from app.models.commit import Commit
 from app.repositories.commit_repository import CommitRepository
 from app.repositories.merge_request_repository import MergeRequestRepository
 from app.repositories.project_repository import ProjectRepository
@@ -49,6 +34,11 @@ project_site_repo = ProjectSiteRepository()
 commit_repo   = CommitRepository()
 mr_repo       = MergeRequestRepository()
 site_repo     = SiteRepository()
+
+
+def _http_error(status_code: int, code: str, message: str) -> HTTPException:
+    """Return standardized error payload without leaking internals."""
+    return HTTPException(status_code=status_code, detail=f"{code}: {message}")
 
 
 def _build_project_response(db: Session, project: Project) -> ProjectResponse:
@@ -98,22 +88,20 @@ async def create_project(
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    """
-    ✅ FIX : suppression de Project.site_id → associations via ProjectSite M2M.
-    project_data.site_ids → liste de site_ids à associer.
-    """
+    
     config = db.query(GitLabConfig).filter(
         GitLabConfig.id == project_data.gitlab_config_id
     ).first()
     if not config:
-        raise HTTPException(status_code=404, detail="GitLab config introuvable.")
+        raise _http_error(404, "PROJECT_GITLAB_CONFIG_NOT_FOUND", "GitLab config introuvable.")
     if not config.is_active:
-        raise HTTPException(status_code=400, detail="Configuration GitLab inactive.")
+        raise _http_error(400, "PROJECT_GITLAB_CONFIG_INACTIVE", "Configuration GitLab inactive.")
 
     try:
         plain_token = decrypt_token(config.token)
     except Exception:
-        raise HTTPException(status_code=500, detail="Impossible de déchiffrer le token GitLab.")
+        logger.warning("GitLab token decryption failed for config_id=%s", config.id)
+        raise _http_error(500, "PROJECT_GITLAB_TOKEN_INVALID", "Configuration GitLab invalide.")
 
     url     = f"{config.domain.rstrip('/')}/api/v4/projects/{project_data.gitlab_project_id}"
     headers = {"PRIVATE-TOKEN": plain_token}
@@ -121,25 +109,22 @@ async def create_project(
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, headers=headers)
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=503, detail=f"Impossible de joindre GitLab : {e}")
+    except httpx.RequestError:
+        raise _http_error(503, "PROJECT_GITLAB_UNREACHABLE", "Impossible de joindre GitLab.")
 
     if response.status_code == 401:
-        raise HTTPException(status_code=400, detail="Token GitLab invalide.")
+        raise _http_error(400, "PROJECT_GITLAB_TOKEN_UNAUTHORIZED", "Token GitLab invalide.")
     if response.status_code == 404:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Projet id={project_data.gitlab_project_id} introuvable sur GitLab.",
-        )
+        raise _http_error(404, "PROJECT_GITLAB_NOT_FOUND", "Projet introuvable sur GitLab.")
     if response.status_code != 200:
-        raise HTTPException(status_code=400, detail=f"Erreur API GitLab {response.status_code}.")
+        raise _http_error(400, "PROJECT_GITLAB_API_ERROR", f"Erreur API GitLab ({response.status_code}).")
 
     data = response.json()
 
     if db.query(Project).filter(Project.gitlab_project_id == data["id"]).first():
-        raise HTTPException(status_code=409, detail="Ce projet existe déjà.")
+        raise _http_error(409, "PROJECT_ALREADY_EXISTS", "Ce projet existe deja.")
 
-    # ✅ FIX : pas de site_id dans Project — association via ProjectSite
+   
     project = Project(
         gitlab_project_id = data["id"],
         name              = data["name"],
@@ -154,7 +139,7 @@ async def create_project(
     db.add(project)
     db.flush()
 
-    # ✅ AJOUT : associations sites via ProjectSite (M2M)
+    
     if project_data.site_ids:
         project_site_repo.sync(db, project.id, project_data.site_ids)
 
@@ -170,12 +155,7 @@ def create_project_import(
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    """
-    ✅ NOUVEAU : Création résiliente pour l'assistant d'import.
-    N'effectue PAS d'appel API GitLab bloquant. Permet de créer un projet
-    'offline' s'il n'est pas trouvable ou accessible immédiatement.
-    """
-    # 1. Création via la logique de repository dédiée à l'import
+   
     project = project_repo.create_from_import(
         db, 
         name=project_data.name, 
@@ -183,7 +163,7 @@ def create_project_import(
         gitlab_config_id=project_data.gitlab_config_id
     )
     
-    # 2. Association des sites (M2M)
+    
     if project_data.site_ids:
         project_site_repo.sync(db, project.id, project_data.site_ids)
         
@@ -203,18 +183,17 @@ def list_projects(
     site_id:      Optional[int]  = Query(default=None, description="Filtrer par site (via ProjectSite M2M)"),
     archived:     Optional[bool] = Query(default=None),
     all_projects: bool           = Query(default=False),
+    period_id:    Optional[int]  = Query(default=None, description="Filtrer les compteurs par période"),
 ):
-    """
-    ✅ FIX : site_id filtre via ProjectSite (M2M) — plus Project.site_id.
-    """
+    
     from app.models.app_user import UserRoleEnum
     is_admin    = current_user.role == UserRoleEnum.super_admin
     active_only = not (all_projects and is_admin)
 
     if site_id is not None:
-        projects = project_repo.get_by_site_id(db, site_id)
+        projects = project_repo.get_by_site_id(db, site_id, period_id=period_id)
     else:
-        projects = project_repo.get_all(db, active_only=active_only, archived=archived)
+        projects = project_repo.get_all(db, active_only=active_only, archived=archived, period_id=period_id)
 
     return [_build_project_response(db, p) for p in projects]
 
@@ -245,11 +224,11 @@ def update_project(
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
 
-    # Extraire site_ids avant l'update (géré séparément via M2M)
+   
     update_data = request.model_dump(exclude_unset=True, exclude={"site_ids"})
     updated     = project_repo.update(db, project_id, update_data)
 
-    # ✅ FIX : mise à jour des sites via ProjectSite (M2M)
+   
     if request.site_ids is not None:
         project_site_repo.sync(db, project_id, request.site_ids)
 
@@ -267,7 +246,7 @@ def get_project_sites(
     db:           Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
-    """✅ NOUVEAU : liste les sites associés à un projet."""
+  
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
     site_ids = project_site_repo.get_site_ids_for_project(db, project_id)
@@ -281,7 +260,7 @@ def assign_site_to_project(
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    """✅ NOUVEAU : associe un site à un projet (M2M)."""
+    
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
     if not site_repo.get_by_id(db, site_id):
@@ -298,7 +277,7 @@ def remove_site_from_project(
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    """✅ NOUVEAU : dissocie un site d'un projet (M2M)."""
+    
     removed = project_site_repo.remove(db, project_id, site_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Association projet-site introuvable.")
@@ -310,30 +289,63 @@ def remove_site_from_project(
 @router.get("/{project_id}/commits", response_model=List[CommitResponse])
 def get_project_commits(
     project_id:            str,
-    limit:                 int           = Query(100, ge=1, le=5000),
+    limit:                 int           = Query(5000, ge=1, le=10000),
     offset:                int           = Query(0, ge=0),
-    lot_id:                Optional[int] = Query(None, description="Filtrer par session d'extraction"),
+    lot_id:                Optional[int] = Query(None, description="Filtrer par session d'extraction — priorité maximale"),
     period_id:             Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
+    developer_id:          Optional[str] = Query(None, description="Filtrer par développeur"),
     exclude_merge_commits: bool          = Query(False, description="Exclure les merge commits"),
     db:                    Session       = Depends(get_db),
     current_user:          AppUser       = Depends(get_current_user),
 ):
+    from app.models.commit import Commit
+
     # Mapping Senior : support pour "all" ou ID numérique
     p_id = None if project_id == "all" else int(project_id)
-    
+
     if p_id and not project_repo.get_by_id(db, p_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
-    
-    # Priorité 1 : Recherche unifiée par Période (Modern)
+
+    # Robustesse contre le 'NaN' ou 'null' du frontend
+    dev_id = None
+    if developer_id and developer_id not in ["null", "undefined", "NaN", "none"]:
+        try:
+            dev_id = int(developer_id)
+        except (ValueError, TypeError):
+            dev_id = None
+
+   
+    if lot_id is not None:
+        lot = db.query(ExtractionLot).filter(ExtractionLot.id == lot_id).first()
+        if not lot:
+            raise HTTPException(status_code=404, detail="Lot d'extraction introuvable.")
+        
+        # On définit le périmètre à partir du lot
+        target_project_id = lot.project_id
+        target_period_id  = lot.period_id
+        
+        # On délègue à la logique de période qui est robuste et inclut tous les lots du mois
+        commits = commit_repo.get_by_period_paginated(
+            db, target_period_id, target_project_id, limit, offset,
+            exclude_merge_commits=exclude_merge_commits
+        )
+        if dev_id is not None:
+            commits = [c for c in commits if c.developer_id == dev_id]
+        return commits
+
+    # ── PRIORITÉ 2 : Période (filtre mensuel standard)
     if period_id is not None:
-        return commit_repo.get_by_period_paginated(
+        commits = commit_repo.get_by_period_paginated(
             db, period_id, p_id, limit, offset,
             exclude_merge_commits=exclude_merge_commits
         )
-    
-    # Priorité 2 : Recherche par Lot (Legacy/Debug)
+        # Appliquer le filtre developer_id côté Python si le repo ne le supporte pas
+        if dev_id is not None:
+            commits = [c for c in commits if c.developer_id == dev_id]
+        return commits
+
+    # ── PRIORITÉ 3 : Tous les commits du projet (vue globale)
     if not p_id:
-        # [SENIOR FIX] "Toutes les périodes" = retourner TOUS les commits, pas juste la dernière période
         return commit_repo.get_all_paginated(
             db, project_id=None, limit=limit, offset=offset,
             exclude_merge_commits=exclude_merge_commits
@@ -353,7 +365,8 @@ def get_project_mrs(
     offset:        int  = Query(0, ge=0),
     exclude_draft: bool = Query(True),
     lot_id:        Optional[int] = Query(None, description="Filtrer par session d'extraction"),
-    period_id:     Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
+    period_id:             Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
+    developer_id:          Optional[str] = Query(None, description="Filtrer par développeur (Auteur)"),
     db:            Session = Depends(get_db),
     current_user:  AppUser = Depends(get_current_user),
 ):
@@ -362,65 +375,92 @@ def get_project_mrs(
 
     if p_id and not project_repo.get_by_id(db, p_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
+
+    # [SENIOR FIX] Robustesse contre le 'NaN' ou 'null' du frontend
+    dev_id = None
+    if developer_id and developer_id not in ["null", "undefined", "NaN", "none"]:
+        try:
+            dev_id = int(developer_id)
+        except (ValueError, TypeError):
+            dev_id = None
     
-    # Option 1 : Recherche unifiée par Période (Modern)
-    if period_id is not None:
-        return mr_repo.get_by_period_paginated(
-            db, period_id, p_id, limit, offset
-        )
-    
-    # Option 2 : "Toutes les périodes" — retourner TOUTES les MRs
-    if not p_id:
-        from app.models.merge_request import MergeRequest
-        from app.models.developer import Developer
-        query = (
-            db.query(MergeRequest)
-            .options(
-                joinedload(MergeRequest.developer),
-                joinedload(MergeRequest.reviewer),
-                joinedload(MergeRequest.assignee)
-            )
-            .join(Developer, MergeRequest.developer_id == Developer.id)
-            .filter(
-                Developer.is_active == True,
-                Developer.is_validated == True,
-                Developer.is_bot == False
-            )
-        )
-        if exclude_draft:
-            query = query.filter(MergeRequest.is_draft.is_(False))
+    # ── LOGIQUE UNIFIÉE & INCLUSIVE (Senior Architecture) ──────────────────────
+    from app.models.developer import Developer
+    from app.models.merge_request import MergeRequest
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import or_
+
+    Rev = aliased(Developer)
+    Ass = aliased(Developer)
+
+    def is_valid_human(dev_alias):
+        """Vérifie si le développeur est un humain actif et validé."""
         return (
-            query
-            .order_by(MergeRequest.created_at_gitlab.desc())
-            .limit(limit)
-            .offset(offset)
-            .all()
+            (dev_alias.id.isnot(None)) &
+            (dev_alias.is_active.is_(True)) &
+            (dev_alias.is_validated.is_(True)) &
+            (dev_alias.is_bot.is_(False))
         )
 
-    from app.models.merge_request import MergeRequest
-    from app.models.developer import Developer
+    # 1. Construction de la base avec chargement optimisé
     query = (
         db.query(MergeRequest)
+        .outerjoin(Developer, MergeRequest.developer_id == Developer.id)
+        .outerjoin(Rev,       MergeRequest.reviewer_id  == Rev.id)
+        .outerjoin(Ass,       MergeRequest.assignee_id  == Ass.id)
         .options(
             joinedload(MergeRequest.developer),
             joinedload(MergeRequest.reviewer),
             joinedload(MergeRequest.assignee)
         )
-        .join(Developer, MergeRequest.developer_id == Developer.id)
-        .filter(
-            MergeRequest.project_id == p_id,
-            Developer.is_active == True,
-            Developer.is_validated == True,
-            Developer.is_bot == False
-        )
     )
+
+    # 2. Filtre par développeur (Vue 360 : Auteur, Reviewer ou Assignee)
+    if dev_id is not None:
+        query = query.filter(
+            or_(
+                MergeRequest.developer_id == dev_id,
+                MergeRequest.reviewer_id == dev_id,
+                MergeRequest.assignee_id == dev_id
+            )
+        )
+    else:
+        # Filtre Inclusif par défaut : On accepte la MR si l'auteur est externe OU si l'un des participants est un humain validé
+        query = query.filter(
+            or_(
+                Developer.id.is_(None), # Auteur externe
+                is_valid_human(Developer),
+                is_valid_human(Rev),
+                is_valid_human(Ass)
+            )
+        )
+
+    # 3. Application des filtres contextuels
+    if p_id is not None:
+        query = query.filter(MergeRequest.project_id == p_id)
     
     if exclude_draft:
         query = query.filter(MergeRequest.is_draft.is_(False))
     
+    # Priorité : Lot (Smart Contextual Filtering) > Période
+    target_period_id = period_id
     if lot_id is not None:
-        query = query.filter(MergeRequest.extraction_lot_id == lot_id)
-        
+        lot = db.query(ExtractionLot).filter(ExtractionLot.id == lot_id).first()
+        if not lot:
+            raise HTTPException(status_code=404, detail="Lot d'extraction introuvable.")
+        # On définit le périmètre à partir du lot
+        target_period_id = lot.period_id
+        if p_id is None: # Si project_id était 'all', on prend celui du lot
+            query = query.filter(MergeRequest.project_id == lot.project_id)
+
+    if target_period_id is not None:
+        # On rejoint ExtractionLot pour filtrer par période, 
+        # mais on accepte TOUS les lots de cette période pour ce projet.
+        query = query.join(ExtractionLot, MergeRequest.extraction_lot_id == ExtractionLot.id).filter(
+            ExtractionLot.period_id == target_period_id
+        )
+
+    # 4. Exécution paginée
     return (
         query
         .order_by(MergeRequest.created_at_gitlab.desc())
@@ -428,6 +468,8 @@ def get_project_mrs(
         .offset(offset)
         .all()
     )
+
+
 
 
 

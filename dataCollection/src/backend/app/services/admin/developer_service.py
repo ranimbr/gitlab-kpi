@@ -106,13 +106,24 @@ class DeveloperService:
 
         for site_assoc in payload.sites:
             self.dev_site_repo.add(db, developer.id, site_assoc.site_id, site_assoc.is_primary)
-        for proj_assoc in payload.projects:
-            self.dev_proj_repo.add(db, developer.id, proj_assoc.project_id)
+        
+        # ✅ FIX SENIOR : Si on crée manuellement, on peut vouloir l'affecter à une période
+        # Sinon on prend par défaut la période ouverte actuelle.
+        target_period_id = getattr(payload, "period_id", None)
+        if not target_period_id:
+            from app.models.period import Period, PeriodStatusEnum
+            p = db.query(Period).filter(Period.status == PeriodStatusEnum.open).order_by(Period.year.desc(), Period.month.desc()).first()
+            if p: target_period_id = p.id
+
+        if target_period_id:
+            for proj_assoc in payload.projects:
+                self.dev_proj_repo.add(db, developer.id, proj_assoc.project_id, target_period_id)
 
         self.audit_repo.log(
             db=db, user_id=created_by, action="CREATE_DEVELOPER",
             entity_type="Developer", entity_id=developer.id,
-            new_value={"name": developer.name, "email": developer.email, "source": "manual"},
+            entity_name=developer.name,
+            new_value={"name": developer.name, "email": developer.email, "source": "manual", "period_id": target_period_id},
             ip_address=ip_address,
         )
 
@@ -156,6 +167,7 @@ class DeveloperService:
         self.audit_repo.log(
             db=db, user_id=validated_by, action="UPDATE_DEVELOPER",
             entity_type="Developer", entity_id=developer_id,
+            entity_name=developer.name,
             old_value=old_value,
             new_value={"is_validated": payload.is_validated, "is_bot": payload.is_bot},
             ip_address=ip_address,
@@ -180,7 +192,7 @@ class DeveloperService:
         if not developer:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Développeur introuvable.")
 
-        update_data = payload.model_dump(exclude_unset=True, exclude={"sites", "projects", "group_ids"})
+        update_data = payload.model_dump(exclude_unset=True, exclude={"sites", "projects", "group_ids", "period_id"})
         if update_data:
             self.dev_repo.update(db, developer, update_data)
         
@@ -191,12 +203,17 @@ class DeveloperService:
                 db, developer_id,
                 [{"site_id": s.site_id, "is_primary": s.is_primary} for s in payload.sites],
             )
+        
+        # ✅ FIX SENIOR : Sync des projets pour une période donnée
         if payload.projects is not None:
-            self.dev_proj_repo.sync(db, developer_id, [p.project_id for p in payload.projects])
+            target_period_id = getattr(payload, "period_id", None)
+            if target_period_id:
+                self.dev_proj_repo.sync_for_period(db, developer_id, [p.project_id for p in payload.projects], target_period_id)
 
         self.audit_repo.log(
             db=db, user_id=updated_by, action="UPDATE_DEVELOPER",
             entity_type="Developer", entity_id=developer_id,
+            entity_name=developer.name,
             new_value=update_data, ip_address=ip_address,
         )
         db.commit()
@@ -297,6 +314,7 @@ class DeveloperService:
             self.audit_repo.log(
                 db=db, user_id=merged_by, action="MERGE_DEVELOPER",
                 entity_type="Developer", entity_id=canonical_id,
+                entity_name=canonical.name,
                 old_value={"duplicate_id_merged": duplicate_id, "duplicate_email": duplicate.email},
                 new_value={"status": "merged"}, ip_address=ip_address,
             )
@@ -325,6 +343,7 @@ class DeveloperService:
         db:                      Session,
         file_content:            bytes,
         file_name:               str,
+        period_id:               int,  # ✅ REQUIS POUR ENTERPRISE SYNC
         imported_by:             Optional[int] = None,
         default_site_id:         Optional[int] = None,
         default_group_id:        Optional[int] = None,
@@ -333,6 +352,7 @@ class DeveloperService:
         create_missing_sites:    bool = False,
         create_missing_projects: bool = False,
         create_missing_groups:   bool = False,
+        full_sync:               bool = False,
     ) -> dict:
         """
         Import enterprise complet.
@@ -370,6 +390,13 @@ class DeveloperService:
         all_sites    = {s.name.lower().strip(): s for s in self.site_repo.get_all(db)}
         all_groups   = {g.name.lower().strip(): g for g in self.group_repo.get_all(db)}
         
+        # ✅ LOGIQUE SENIOR : Tracking pour Full Sync
+        # ⚠️ FIX ARCHITECTURAL : Le scope du full_sync est PROJET × PÉRIODE, pas global.
+        # Objectif : ne désactiver que les devs absents d'un projet SPÉCIFIQUE pour ce mois.
+        # Importer le CSV inkscape ne doit JAMAIS toucher les devs de gitlab-shell.
+        csv_project_ids: set = set()  # Projets référencés dans le CSV (rempli pendant la boucle)
+        processed_ids: set = set()
+
         logger.info("Import: %d sites et %d groupes chargés en cache.", len(all_sites), len(all_groups))
         
         # Projets : double indexation (Nom et ID GitLab)
@@ -390,11 +417,11 @@ class DeveloperService:
         created_groups_names   : Set[str] = set()
 
         for row_num, row in enumerate(rows, start=2):
-            # ✅ DIAGNOSTIC SENIOR : On log les clés une seule fois
+            #  DIAGNOSTIC SENIOR : On log les clés une seule fois
             if row_num == 2:
                 logger.info("Import DEBUG: Clés détectées dans le CSV: %s", list(row.keys()))
 
-            # ✅ LOGIQUE RESILIENTE (Senior) : On cherche avec une tolérance maximale
+            #  LOGIQUE RESILIENTE (Senior) : On cherche avec une tolérance maximale
             def get_val(keys):
                 keys_lower = [k.lower().strip() for k in keys]
                 for row_k, val in row.items():
@@ -409,6 +436,23 @@ class DeveloperService:
             
             # Détection flexible de la colonne Groupe
             group_csv_raw = get_val(["group", "groups", "groupe", "groupes", "equipe", "équipe", "team"])
+            
+            #  AJOUT SENIOR : Dates de cycle de vie historiques
+            onboarding_csv_raw  = get_val(["onboarding_date", "date_entree", "date_arrivee", "join_date"])
+            offboarding_csv_raw = get_val(["offboarding_date", "date_sortie", "date_depart", "leave_date"])
+
+            from datetime import datetime
+            def parse_csv_date(val):
+                if not val: return None
+                try:
+                    # On supporte YYYY-MM-DD et DD/MM/YYYY
+                    if "/" in val:
+                        return datetime.strptime(val, "%d/%m/%Y").date()
+                    return datetime.fromisoformat(val).date()
+                except: return None
+
+            onboarding_date  = parse_csv_date(onboarding_csv_raw)
+            offboarding_date = parse_csv_date(offboarding_csv_raw)
 
             # ── Validation champs obligatoires ────────────────────────────────
             if not name or not email or not username:
@@ -516,7 +560,7 @@ class DeveloperService:
                         logger.warning("Import: projet '%s' introuvable (ligne %d)", pname, row_num)
                         continue
                 else:
-                    # ✅ LOGIQUE AMÉLIORÉE : Réparation des projets orphelins (sans config)
+                    #  LOGIQUE AMÉLIORÉE : Réparation des projets orphelins (sans config)
                     updates = {}
                     
                     # 1. Update ID GitLab si fourni dans CSV et manquant en base
@@ -530,6 +574,7 @@ class DeveloperService:
                     if updates:
                         self.project_repo.update(db, proj.id, updates)
                 resolved_projects.append(proj)
+                csv_project_ids.add(proj.id)  # ✅ FIX: Scope full_sync au projet du CSV
 
             # ── Résolution des groupes ────────────────────────────────────────
             groups_csv = [g.strip() for g in group_csv_raw.split(",") if g.strip()]
@@ -567,24 +612,65 @@ class DeveloperService:
             # ── UPSERT du développeur ─────────────────────────────────────────
             try:
                 if existing_dev:
-                    developer_id = existing_dev.id
-                    
-                    # Mise à jour des groupes
+                    # ── [SENIOR] Politique de réactivation Enterprise ──────────
+                    # Cas 1 : offboarding_date fixée → Départ délibéré RH → BLOQUER l'import
+                    #          Un dev qui a officiellement quitté l'entreprise ne doit pas
+                    #          être réintégré via un simple re-import CSV.
+                    # Cas 2 : is_active=False SANS offboarding_date → Bug ou erreur système
+                    #          → Réactivation automatique tolérée (correction de données)
+                    if existing_dev.offboarding_date is not None:
+                        error_list.append({
+                            "row": row_num, "status": "skipped",
+                            "name": name, "email": email,
+                            "reason": (
+                                f"Développeur officiellement offboardé le {existing_dev.offboarding_date}. "
+                                "Action manuelle admin requise pour réintégration."
+                            ),
+                        })
+                        logger.warning(
+                            "Import Ligne %d: DEV_OFFBOARDED_SKIP — %s a une date de départ (%s), import ignoré.",
+                            row_num, name, existing_dev.offboarding_date
+                        )
+                        continue  # Ne pas traiter ce dev — action RH requise
+
+                    elif not existing_dev.is_active:
+                        # is_active=False sans offboarding_date → erreur système, on corrige
+                        self.dev_repo.update(db, existing_dev, {"is_active": True})
+                        row_warnings.append(
+                            "[AUTO-CORRECTION] Développeur marqué inactif sans date de départ — réactivé automatiquement."
+                        )
+                        logger.info(
+                            "Import Ligne %d: AUTO_REACTIVATE — %s réactivé (is_active=False sans offboarding_date).",
+                            row_num, name
+                        )
+
+                    # Mise à jour des dates si fournies dans le CSV (Correction historique)
+                    hist_updates = {}
+                    if onboarding_date: hist_updates["onboarding_date"] = onboarding_date
+                    if offboarding_date is not None: hist_updates["offboarding_date"] = offboarding_date
+                    if hist_updates:
+                        self.dev_repo.update(db, existing_dev, hist_updates)
+
+                    # Synchronisation des groupes
                     if resolved_group_ids:
                         self.dev_repo.sync_groups(db, existing_dev, resolved_group_ids)
                         
-                    # Ajout des sites (sans écraser)
+                    # [STRICT MISSION] Synchronisation des sites (remplace l'ancien par le nouveau)
                     if resolved_sites:
-                        for rs in resolved_sites:
-                            self.dev_site_repo.add(
-                                db, developer_id, rs["site"].id, is_primary=rs["is_primary"]
-                            )
+                        self.dev_site_repo.sync(
+                            db, existing_dev.id, 
+                            [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites]
+                        )
                     elif default_site_id:
-                        self.dev_site_repo.add(db, developer_id, default_site_id, is_primary=False)
+                        self.dev_site_repo.sync(db, existing_dev.id, [{"site_id": default_site_id, "is_primary": True}])
                         
-                    # Ajout des projets (sans écraser)
-                    for proj in resolved_projects:
-                        self.dev_proj_repo.add(db, developer_id, proj.id)
+                    # [STRICT MISSION] Synchronisation des projets POUR LA PÉRIODE CIBLÉE
+                    if resolved_projects:
+                        project_ids = [p.id for p in resolved_projects]
+                        self.dev_proj_repo.sync_for_period(db, existing_dev.id, project_ids, period_id)
+                    else:
+                        # Si aucun projet dans le CSV, on vide les missions actives pour ce mois
+                        self.dev_proj_repo.sync_for_period(db, existing_dev.id, [], period_id)
                         
                     db.flush()
                     
@@ -599,6 +685,7 @@ class DeveloperService:
                         row_result["warnings"] = row_warnings
                     
                     success_list.append(row_result)
+                    processed_ids.add(existing_dev.id)
                     
                 else:
                     # Création standard
@@ -612,21 +699,25 @@ class DeveloperService:
                         "auto_created":    False,
                         "source":          "csv_import",
                         "created_by":      imported_by,
+                        "onboarding_date": onboarding_date, # ✅ AJOUT : Date historique
+                        "offboarding_date": offboarding_date,
                     }
 
                     developer = self.dev_repo.create(db, dev_data, group_ids=resolved_group_ids)
                     db.flush()
 
                     if resolved_sites:
-                        for rs in resolved_sites:
-                            self.dev_site_repo.add(
-                                db, developer.id, rs["site"].id, is_primary=rs["is_primary"]
-                            )
+                        self.dev_site_repo.sync(
+                            db, developer.id,
+                            [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites]
+                        )
                     elif default_site_id:
-                        self.dev_site_repo.add(db, developer.id, default_site_id, is_primary=True)
+                        self.dev_site_repo.sync(db, developer.id, [{"site_id": default_site_id, "is_primary": True}])
 
-                    for proj in resolved_projects:
-                        self.dev_proj_repo.add(db, developer.id, proj.id)
+                    if resolved_projects:
+                        project_ids = [p.id for p in resolved_projects]
+                        self.dev_proj_repo.sync_for_period(db, developer.id, project_ids, period_id)
+
 
                     row_result: dict = {
                         "row":    row_num,
@@ -638,6 +729,7 @@ class DeveloperService:
                         row_result["warnings"] = row_warnings
 
                     success_list.append(row_result)
+                    processed_ids.add(developer.id)
 
             except Exception as e:
                 db.rollback()
@@ -645,6 +737,52 @@ class DeveloperService:
                     "row": row_num, "status": "error",
                     "name": name, "email": email, "reason": str(e),
                 })
+
+        # ── RÉCONCILIATION (Full Sync) ────────────────────────────────────────
+        #  [ARCHITECTURE CORRIGÉE] : Le full_sync ne touche JAMAIS Developer.is_active.
+        #
+        # Règle métier fondamentale :
+        #   Developer.is_active = False → Départ définitif de l'entreprise (action admin manuelle)
+        #   DeveloperProject.is_active  = False → Absent de ce projet ce mois-ci (temporel)
+        #
+        # La synchronisation période est déjà faite par sync_for_period() dans la boucle ci-dessus.
+        # Ce bloc ne fait que reporter QUI a été retiré du scope de la période pour le rapport.
+        deactivated_list = []
+        if full_sync and csv_project_ids:
+            from app.models.developer_project import DeveloperProject
+
+            # Devs qui étaient actifs sur ces projets ce mois-ci mais absents du CSV
+            active_in_scope = (
+                db.query(DeveloperProject.developer_id)
+                .filter(
+                    DeveloperProject.project_id.in_(csv_project_ids),
+                    DeveloperProject.period_id == period_id,
+                    DeveloperProject.is_active.is_(True),
+                )
+                .distinct()
+                .all()
+            )
+            active_ids_in_scope = {row[0] for row in active_in_scope}
+
+            # Identification des devs retirés du périmètre (sync_for_period l'a déjà fait)
+            removed_from_period = active_ids_in_scope - processed_ids
+            for d_id in removed_from_period:
+                dev = self.dev_repo.get_by_id(db, d_id)
+                if dev:
+                    if not dry_run:
+                        self.audit_repo.log(
+                            db=db, user_id=imported_by, action="DEV_REMOVED_FROM_PERIOD",
+                            entity_type="Developer", entity_id=d_id,
+                            entity_name=dev.name or dev.gitlab_username or dev.email,
+                            old_value={"period_id": period_id, "project_ids": list(csv_project_ids)},
+                            new_value={"reason": "Absent du fichier CSV pour cette période — retiré de la mission"},
+                        )
+                    deactivated_list.append({"id": d_id, "name": dev.name, "email": dev.email})
+
+            logger.info(
+                "Full Sync [period=%d, projets=%s]: %d devs retirés de la période (Developer.is_active NON MODIFIÉ).",
+                period_id, csv_project_ids, len(deactivated_list)
+            )
 
         # ── Finalisation ──────────────────────────────────────────────────────
         self.import_log_repo.complete(
@@ -683,6 +821,8 @@ class DeveloperService:
             "success_count":     len(success_list),
             "error_count":       len(error_list),
             "duplicate_count":   len(duplicate_list),
+            "deactivated_count": len(deactivated_list),
+            "deactivated_list":  deactivated_list,
             "dry_run":           dry_run,
             "rows":              (success_list + error_list + duplicate_list) if len(rows) <= 100 else None,
             "unknown_sites":     sorted(list(unknown_sites_names))    or None,
@@ -708,7 +848,7 @@ class DeveloperService:
         unknown_groups_names:  Set[str],
     ) -> None:
         """
-        ✅ NOUVEAU : en dry-run, analyse les entités de chaque ligne
+        NOUVEAU : en dry-run, analyse les entités de chaque ligne
         pour remonter les inconnues dans le rapport SANS créer quoi que ce soit.
         Permet à l'admin de voir TOUS les conflits avant l'import réel.
         """
@@ -752,7 +892,7 @@ class DeveloperService:
 
     def _parse_file(self, content: bytes, file_type: str) -> List[dict]:
         if file_type == "csv":
-            # ✅ SENIOR : Chaîne de décodage robuste (UTF8 -> CP1252 -> Latin1)
+            #  SENIOR : Chaîne de décodage robuste (UTF8 -> CP1252 -> Latin1)
             text = None
             for enc in ["utf-8-sig", "cp1252", "latin-1"]:
                 try:

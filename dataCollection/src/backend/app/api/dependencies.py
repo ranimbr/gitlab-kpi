@@ -1,26 +1,5 @@
 """
 api/dependencies.py
-
-CORRECTIONS MAJEURES (modèles mis à jour — remarques encadrant) :
-──────────────────────────────────────────────────────────────────
-1. get_current_admin() : vérification role == "super_admin" uniquement.
-   Les site_managers et team_leads NE sont PAS des admins.
-
-2. AJOUT get_current_super_admin() : alias explicite pour les opérations
-   critiques (suppression, configuration système).
-
-3. AJOUT get_current_site_manager() : accès limité à son site.
-   Vérifie que l'utilisateur est super_admin OU site_manager.
-
-4. AJOUT get_current_team_lead() : accès limité à son groupe.
-
-5. check_dashboard_access() : inchangé fonctionnellement.
-
-6. AJOUT require_site_access() : vérifie qu'un site_manager
-   a bien accès au site demandé (site_id dans URL).
-
-7. AJOUT require_developer_access() : vérifie qu'un utilisateur
-   a accès aux données d'un développeur spécifique.
 """
 from fastapi import Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
@@ -122,7 +101,7 @@ def require_site_access(
     current_user: AppUser = Depends(get_current_user),
 ) -> None:
     """
-    ✅ AJOUT : vérifie qu'un site_manager a accès au site demandé.
+     AJOUT : vérifie qu'un site_manager a accès au site demandé.
     super_admin → accès à tous les sites.
     site_manager → accès uniquement à son site (site_id FK dans AppUser).
     """

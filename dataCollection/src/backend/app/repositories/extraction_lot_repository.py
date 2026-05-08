@@ -1,19 +1,7 @@
 """
 repositories/extraction_lot_repository.py
 
-CORRECTIONS :
 
-    1. FIX CRITIQUE — renommage ExtractionLot.type → ExtractionLot.extraction_type
-       Tous les filtres utilisant .type sont mis à jour.
-
-    2. FIX — get_realtime_lots() et get_latest_monthly() utilisaient .type.
-
-    3. FIX — monthly_exists() idem.
-
-    4. ✅ AJOUT — get_monthly() : retourne le lot MONTHLY existant (pas juste bool).
-       Utilisé par extraction_service.py en mode Backfill pour réutiliser le lot.
-
-    5. AJOUT — get_by_status() pour le monitoring scheduler.
 """
 from typing import Optional, List
 
@@ -89,7 +77,7 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         developer_id: Optional[int] = None,
     ) -> Optional[ExtractionLot]:
         """
-        ✅ AJOUT — Retourne le lot MONTHLY existant tous statuts confondus.
+         AJOUT — Retourne le lot MONTHLY existant tous statuts confondus.
 
         Différence avec get_latest_monthly() :
             get_latest_monthly() → filtre status=completed uniquement
@@ -151,14 +139,45 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
             
         return q.first() is not None
 
+    def realtime_exists_for_dev(
+        self,
+        db:           Session,
+        period_id:    int,
+        developer_id: int,
+    ) -> bool:
+        """
+        Vérifie qu'un lot REALTIME complété existe déjà pour ce développeur
+        sur cette période. Utilisé pour bloquer les re-runs qui créent des
+        valeurs incohérentes (idempotence REALTIME).
+        """
+        return (
+            db.query(ExtractionLot.id)
+            .filter(
+                ExtractionLot.period_id       == period_id,
+                ExtractionLot.developer_id    == developer_id,
+                ExtractionLot.status          == ExtractionStatusEnum.completed,
+            )
+            .first() is not None
+        )
+
     def delete_realtime_lots(
         self,
-        db:         Session,
-        period_id:  int,
-        project_id: int,
+        db:           Session,
+        period_id:    int,
+        project_id:   Optional[int] = None,
+        developer_id: Optional[int] = None,
     ) -> int:
-        """Supprime tous les lots REALTIME d'un projet/période après la clôture mensuelle."""
-        lots  = self.get_realtime_lots(db, period_id, project_id)
+        """Supprime tous les lots REALTIME d'un projet ou développeur sur une période."""
+        q = db.query(ExtractionLot).filter(
+            ExtractionLot.period_id == period_id,
+            ExtractionLot.extraction_type == ExtractionTypeEnum.REALTIME
+        )
+        if project_id:
+            q = q.filter(ExtractionLot.project_id == project_id)
+        if developer_id:
+            q = q.filter(ExtractionLot.developer_id == developer_id)
+            
+        lots = q.all()
         count = len(lots)
         for lot in lots:
             db.delete(lot)

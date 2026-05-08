@@ -38,6 +38,7 @@ import developerService from "../../services/developerService";
 import siteService      from "../../services/siteService";
 import projectService   from "../../services/projectService";
 import gitlabConfigService from "../../services/gitlabConfigService";
+import periodService from "../../services/periodService";
 import ImportResolutionStep from "../../components/common/ImportResolutionStep";
 
 const ACCEPTED_EXTS = [".csv", ".xlsx", ".xls"];
@@ -101,7 +102,9 @@ function ImportResultBanners({ result }) {
   const hasCreatedProjects = result.created_projects?.length > 0;
   const hasUnknownSites    = result.unknown_sites?.length    > 0;
   const hasUnknownProjects = result.unknown_projects?.length > 0;
-  if (!hasCreatedSites && !hasCreatedProjects && !hasUnknownSites && !hasUnknownProjects) return null;
+  const hasDeactivations   = result.deactivated_count > 0;
+
+  if (!hasCreatedSites && !hasCreatedProjects && !hasUnknownSites && !hasUnknownProjects && !hasDeactivations) return null;
 
   return (
     <div className="d-flex flex-column gap-2 mt-3">
@@ -139,6 +142,20 @@ function ImportResultBanners({ result }) {
                 </span>
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {hasDeactivations && (
+        <div className="d-flex align-items-start gap-3 p-3 rounded-3"
+          style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
+          <i className="ri-user-unfollow-line text-danger fs-20 flex-shrink-0 mt-1"></i>
+          <div className="flex-grow-1">
+            <p className="fw-semibold fs-13 mb-1 text-danger">Synchronisation Totale : Turnover détecté</p>
+            <p className="fs-12 text-muted mb-0">
+              <strong>{result.deactivated_count} développeur(s)</strong> ont été marqués comme <strong>Inactifs</strong> car ils ne figurent plus dans votre liste mensuelle.
+              Leurs données historiques sont conservées mais ils n'apparaissent plus dans les KPIs actifs.
+            </p>
           </div>
         </div>
       )}
@@ -249,6 +266,12 @@ function CsvFormatInfo() {
               </div>
             </div>
             <div className="d-flex align-items-start gap-2">
+              <i className="ri-calendar-event-line flex-shrink-0 mt-1"></i>
+              <div>
+                <strong>Simulation Historique :</strong> utilisez <code>onboarding_date</code> (format AAAA-MM-JJ) pour importer des données du passé. Le système calculera les KPIs rétroactivement pour ces périodes.
+              </div>
+            </div>
+            <div className="d-flex align-items-start gap-2">
               <i className="ri-alert-line flex-shrink-0 mt-1 text-warning"></i>
               <div>
                 <strong>Cas "site/projet inconnu" (ex: Paris non créé) :</strong> lancez d'abord le
@@ -278,6 +301,9 @@ export default function DevelopersImportPage() {
   const [createMissingSites,    setCreateMissingSites]    = useState(false);
   const [createMissingProjects, setCreateMissingProjects] = useState(false);
   const [createMissingGroups,  setCreateMissingGroups]   = useState(false);
+  const [fullSync,              setFullSync]             = useState(false);
+  const [periods,               setPeriods]              = useState([]);
+  const [periodId,              setPeriodId]             = useState("");
   const [loading,               setLoading]              = useState(false);
   const [gitlabConfigs,         setGitlabConfigs]        = useState([]);
   const [defaultGitlabConfigId, setDefaultGitlabConfigId] = useState("");
@@ -310,11 +336,12 @@ export default function DevelopersImportPage() {
     let cancelled = false;
     const refreshData = async () => {
       try {
-        const [sitesData, projectsData, groupsData, configsData, logsData] = await Promise.allSettled([
+        const [sitesData, projectsData, groupsData, configsData, periodsData, logsData] = await Promise.allSettled([
           siteService.getAll(false),
           projectService.getAll?.() || Promise.resolve([]),
           developerService.getGroups(),
           gitlabConfigService.getAll(),
+          periodService.getAll(),
           developerService.getImportLogs(10, 0),
         ]);
 
@@ -324,7 +351,18 @@ export default function DevelopersImportPage() {
         setProjects(projectsData.status === 'fulfilled' ? projectsData.value : []);
         setGroups(groupsData.status === 'fulfilled' ? groupsData.value : []);
         setGitlabConfigs(configsData.status === 'fulfilled' ? configsData.value : []);
-        setImportLogs(logsData.status === 'fulfilled' ? logsData.value : []);
+        
+        if (logsData.status === 'fulfilled') {
+          setImportLogs(logsData.value);
+        }
+
+        if (periodsData.status === 'fulfilled') {
+          const sortedPeriods = [...periodsData.value].sort((a, b) => b.id - a.id);
+          setPeriods(sortedPeriods);
+          // Auto-select current period if open
+          const current = sortedPeriods.find(p => p.status === "open") || sortedPeriods[0];
+          if (current) setPeriodId(current.id);
+        }
 
         if (configsData.status === 'rejected') {
           console.error("Erreur chargement configs GitLab:", configsData.reason);
@@ -388,10 +426,11 @@ export default function DevelopersImportPage() {
         defaultGroupId:        groupId || null,
         defaultGitlabConfigId: defaultGitlabConfigId || null,
         dryRun:                forceDryRun,
-        // Lors d'un dry-run, on ne crée jamais rien — détection uniquement
         createMissingSites:    forceDryRun ? false : createMissingSites,
         createMissingProjects: forceDryRun ? false : createMissingProjects,
         createMissingGroups:   forceDryRun ? false : createMissingGroups,
+        fullSync:               forceDryRun ? false : fullSync,
+        periodId:               periodId || null,
       });
 
       setResult(res);
@@ -408,7 +447,7 @@ export default function DevelopersImportPage() {
     } finally {
       setLoading(false);
     }
-  }, [file, siteId, groupId, defaultGitlabConfigId, dryRun, createMissingSites, createMissingProjects, createMissingGroups, refreshLogs]);
+  }, [file, siteId, groupId, defaultGitlabConfigId, dryRun, createMissingSites, createMissingProjects, createMissingGroups, fullSync, refreshLogs]);
 
   /**
    * Appelé par ImportResolutionStep après que l'admin a :
@@ -449,6 +488,8 @@ export default function DevelopersImportPage() {
         createMissingSites:    hadSiteCreations || createMissingSites,
         createMissingProjects: hadProjCreations || createMissingProjects,
         createMissingGroups:   hadGroupCreations || createMissingGroups,
+        fullSync:               fullSync,
+        periodId:               periodId || null,
       });
 
       setResult(res);
@@ -461,7 +502,7 @@ export default function DevelopersImportPage() {
     } finally {
       setLoading(false);
     }
-  }, [file, siteId, groupId, defaultGitlabConfigId, resolutions, createMissingSites, createMissingProjects, createMissingGroups, refreshLogs]);
+  }, [file, siteId, groupId, defaultGitlabConfigId, resolutions, createMissingSites, createMissingProjects, createMissingGroups, fullSync, refreshLogs]);
 
   const hasAnyWarnings  = result?.rows?.some(r => r.warnings?.length > 0);
   const fileSize        = file ? (file.size / 1024).toFixed(1) + " Ko" : null;
@@ -531,6 +572,8 @@ export default function DevelopersImportPage() {
                         { col: "sites",             type: "Texte", ex: "Paris,Tunis",           desc: "Noms séparés par virgule — 1er = site principal"      },
                         { col: "projects",          type: "Texte", ex: "backend-api,frontend",  desc: "Noms séparés par virgule"                            },
                         { col: "group",             type: "Texte", ex: "Backend Tunis",         desc: "Nom du groupe d'équipe"                              },
+                        { col: "onboarding_date",   type: "Date",  ex: "2024-01-01",            desc: "Date d'entrée (Optionnel - pour historique)"         },
+                        { col: "offboarding_date",  type: "Date",  ex: "2024-12-31",            desc: "Date de départ (Optionnel)"                          },
                       ].map((row, i) => (
                         <tr key={i}>
                           <td className="py-2 ps-3 fw-medium">{row.col}</td>
@@ -617,9 +660,41 @@ export default function DevelopersImportPage() {
                     </label>
                     <select className="form-select" value={siteId} onChange={e => setSiteId(e.target.value)}>
                       <option value="">-- Aucun --</option>
-                      {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
+
+                  <div className="col-md-12">
+                    <div className="p-3 rounded-3 mb-2" style={{ background: "#F0F9FF", border: "1px solid #B9E6FE" }}>
+                      <label className="form-label fw-bold fs-13 text-primary mb-2">
+                        <i className="ri-calendar-event-line me-1"></i> Période de Mission (Obligatoire)
+                      </label>
+                      <div className="d-flex align-items-center gap-3">
+                        <select 
+                          className="form-select flex-grow-1" 
+                          value={periodId} 
+                          onChange={e => setPeriodId(e.target.value)}
+                          style={{ border: "2px solid #0EA5E9" }}
+                          required
+                        >
+                          <option value="">-- Sélectionner la période cible --</option>
+                          {periods.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex-shrink-0">
+                          <span className="badge bg-primary px-3 py-2">Scope Temporel</span>
+                        </div>
+                      </div>
+                      <p className="text-muted fs-11 mt-2 mb-0">
+                        <i className="ri-information-line me-1"></i>
+                        Les associations développeurs-projets (missions) seront isolées pour ce mois uniquement. 
+                        <strong>Mirroring :</strong> les affectations précédentes pour ce mois seront remplacées par le contenu du CSV.
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="col-md-6">
                     <label className="form-label fw-medium fs-13">
                       Groupe par défaut{" "}
@@ -726,6 +801,17 @@ export default function DevelopersImportPage() {
                         colorOn="#059669"
                       />
                     </div>
+                    <div className="mb-0 mt-3">
+                      <EnterpriseToggle
+                        checked={fullSync}
+                        onChange={() => setFullSync(v => !v)}
+                        labelOn="Mode Synchronisation Totale (Full Sync) — ACTIF"
+                        labelOff="Mode Mise à jour simple (Append/Update)"
+                        descOn="Désactive les développeurs absents du CSV pour synchroniser avec l'effectif actuel."
+                        descOff="Ajoute les nouveaux et met à jour les existants sans toucher aux autres."
+                        colorOn="#DC2626"
+                      />
+                    </div>
                     {(createMissingSites || createMissingProjects || createMissingGroups) && (
                       <div className="mt-3 d-flex align-items-start gap-2 p-3 rounded-3"
                         style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
@@ -828,7 +914,7 @@ export default function DevelopersImportPage() {
                       { label: "Total lignes", value: result.total_rows,      color: "#4F46E5", bg: "#EEF2FF", icon: "ri-file-list-line"      },
                       { label: "Succès",        value: result.success_count,   color: "#059669", bg: "#ECFDF5", icon: "ri-checkbox-circle-line" },
                       { label: "Erreurs",       value: result.error_count,     color: "#DC2626", bg: "#FEF2F2", icon: "ri-close-circle-line"    },
-                      { label: "Doublons",      value: result.duplicate_count, color: "#D97706", bg: "#FFFBEB", icon: "ri-file-copy-line"        },
+                      { label: "Désactivés",    value: result.deactivated_count, color: "#DC2626", bg: "#FEF2F2", icon: "ri-user-unfollow-line" },
                     ].map((s, i) => (
                       <div key={i} className="col-sm-3">
                         <div className="text-center p-3 rounded-3" style={{ background: s.bg }}>
@@ -851,6 +937,7 @@ export default function DevelopersImportPage() {
                           { key: "success",   label: `Succès (${result.rows.filter(r => r.status === "success").length})`,    show: result.success_count > 0   },
                           { key: "error",     label: `Erreurs (${result.rows.filter(r => r.status === "error").length})`,      show: result.error_count > 0     },
                           { key: "duplicate", label: `Doublons (${result.rows.filter(r => r.status === "duplicate").length})`, show: result.duplicate_count > 0 },
+                          { key: "deactivated", label: `Désactivés (${result.deactivated_count})`, show: result.deactivated_count > 0 },
                         ].filter(t => t.show).map(tab => (
                           <button key={tab.key}
                             className={`btn btn-sm ${activeTab === tab.key ? "btn-primary" : "btn-light"}`}
@@ -877,34 +964,46 @@ export default function DevelopersImportPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {result.rows
-                              .filter(r => r.status === activeTab)
-                              .slice(0, 50)
-                              .map((row, i) => (
-                                <tr key={i}
-                                  style={row.warnings?.length > 0 ? { background: "#FFFBEB" } : {}}>
-                                  <td className="py-2 ps-3 text-muted">#{row.row}</td>
-                                  <td className="py-2"><StatusBadge status={row.status} /></td>
-                                  <td className="py-2 fw-medium">{row.name  || "—"}</td>
-                                  <td className="py-2 text-muted">{row.email || "—"}</td>
-                                  <td className="py-2 text-muted">{row.reason || "—"}</td>
-                                  {hasAnyWarnings && activeTab === "success" && (
-                                    <td className="py-2">
-                                      {row.warnings?.length > 0 ? (
-                                        <div className="d-flex flex-column gap-1">
-                                          {row.warnings.map((w, wi) => (
-                                            <span key={wi} className="fs-11 d-flex align-items-start gap-1"
-                                              style={{ color: "#92400E" }}>
-                                              <i className="ri-alert-line flex-shrink-0 mt-1 text-warning"></i>
-                                              {w}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      ) : <span className="text-muted fs-11">—</span>}
-                                    </td>
-                                  )}
+                            {activeTab === "deactivated" ? (
+                              result.deactivated_list?.map((row, i) => (
+                                <tr key={i} style={{ background: "#FEF2F2" }}>
+                                  <td className="py-2 ps-3 text-muted">Offboard</td>
+                                  <td className="py-2"><StatusBadge status="failed" /></td>
+                                  <td className="py-2 fw-medium">{row.name}</td>
+                                  <td className="py-2 text-muted">{row.email}</td>
+                                  <td className="py-2 text-danger">Désactivé (Full Sync)</td>
                                 </tr>
-                              ))}
+                              ))
+                            ) : (
+                              result.rows
+                                .filter(r => r.status === activeTab)
+                                .slice(0, 50)
+                                .map((row, i) => (
+                                  <tr key={i}
+                                    style={row.warnings?.length > 0 ? { background: "#FFFBEB" } : {}}>
+                                    <td className="py-2 ps-3 text-muted">#{row.row}</td>
+                                    <td className="py-2"><StatusBadge status={row.status} /></td>
+                                    <td className="py-2 fw-medium">{row.name  || "—"}</td>
+                                    <td className="py-2 text-muted">{row.email || "—"}</td>
+                                    <td className="py-2 text-muted">{row.reason || "—"}</td>
+                                    {hasAnyWarnings && activeTab === "success" && (
+                                      <td className="py-2">
+                                        {row.warnings?.length > 0 ? (
+                                          <div className="d-flex flex-column gap-1">
+                                            {row.warnings.map((w, wi) => (
+                                              <span key={wi} className="fs-11 d-flex align-items-start gap-1"
+                                                style={{ color: "#92400E" }}>
+                                                <i className="ri-alert-line flex-shrink-0 mt-1 text-warning"></i>
+                                                {w}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        ) : <span className="text-muted fs-11">—</span>}
+                                      </td>
+                                    )}
+                                  </tr>
+                                ))
+                            )}
                           </tbody>
                         </table>
                       </div>

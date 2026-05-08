@@ -1,19 +1,6 @@
 """
 schemas/alert.py
 
-CORRECTIONS (remarques encadrant + modèles mis à jour) :
-──────────────────────────────────────────────────────────
-1. AJOUT de developer_id dans AlertResponse :
-   Une alerte peut concerner un développeur spécifique (ajouté au modèle Alert).
-   Exemples : 0 commit depuis 2 semaines, chute du score, temps de review critique.
-   NULL = alerte globale (site/projet).
-
-2. AJOUT de developer_id dans AlertFilterParams :
-   Permet de filtrer les alertes d'un développeur spécifique
-   (utile pour la page profil développeur).
-
-3. AJOUT de DeveloperAlertSummary : résumé des alertes actives
-   pour un développeur donné (affiché dans sa page profil).
 """
 from pydantic import BaseModel, model_validator, Field
 from typing import Optional, List
@@ -33,6 +20,7 @@ class AlertResponse(BaseModel):
     threshold_id:    int
     kpi_snapshot_id: int
     acknowledged_by: Optional[int]
+    acknowledged_by_name: Optional[str] = None
     # ✅ AJOUT : développeur concerné (NULL = alerte globale)
     developer_id:    Optional[int] = None
     created_at:      datetime

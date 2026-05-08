@@ -1,15 +1,6 @@
 """
 schemas/site.py — CORRIGÉ
 
-Corrections :
-  [FIX-422] validate_timezone : une chaîne vide "" était rejetée par le regex
-            au lieu d'être convertie en None. Ajout de la conversion "" → None
-            avant le test regex.
-  [FIX-422] Regex IANA assoupli : accepte les villes avec chiffres ou tirets
-            ex: "America/New_York", "America/Indiana/Indianapolis",
-            "Etc/GMT+5", "US/Eastern" qui étaient rejetés.
-  [FIX-422] validate_name : idem, string vide après strip → erreur claire.
-  [FIX]     SiteUpdate.timezone : même correction string vide → None.
 """
 
 from pydantic import BaseModel, Field, field_validator

@@ -1,24 +1,6 @@
 """
 services/gitlab/gitlab_mapper.py
 
-CORRECTIONS MAJEURES (modèles mis à jour — remarques encadrant) :
-──────────────────────────────────────────────────────────────────
-1. map_developer() :
-   - Suppression de project_id et site_id (FKs directes supprimées du modèle).
-   - Ajout de gitlab_username (nouveau champ pour le matching commits/MRs).
-   - Ajout de avatar_url (photo de profil GitLab).
-   - L'association Developer ↔ Project se fait via DeveloperProjectRepository.add()
-     dans ExtractionService après création du Developer.
-
-2. map_commit() :
-   - Ajout is_merge_commit : détecté via le message du commit (pattern "Merge branch").
-   - Ajout branch_name : extrait depuis l'endpoint de commits si disponible.
-   - Ajout author_name et author_email : stockés comme fallback quand developer_id=NULL.
-
-3. map_merge_request() :
-   - Ajout source_branch et target_branch.
-   - Ajout reviewer_id (nouveau paramètre).
-   - Ajout author_name (fallback).
 """
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -189,10 +171,10 @@ class GitLabMapper:
         review_time_hours = None
         if approved_at and created_at:
             delta             = approved_at - created_at
-            # ✅ FIX [SENIOR] : On ne peut pas avoir un temps de revue négatif (timezone/bot drift)
+            #  FIX : On ne peut pas avoir un temps de revue négatif (timezone/bot drift)
             review_time_hours = max(0.0, round(delta.total_seconds() / 3600, 2))
 
-        # ✅ AJOUT : auteur brut (fallback)
+        #  AJOUT : auteur brut (fallback)
         author = data.get("author") or {}
 
         return {

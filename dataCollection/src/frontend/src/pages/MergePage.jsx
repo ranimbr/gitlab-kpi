@@ -189,7 +189,7 @@ function KPICard({ icon, label, value, bg, color, sub, onClick, active }) {
 function FilterTag({ label, onRemove, color="#f0f0f0", textColor="#495057" }) {
   return (
     <span style={{background:color,color:textColor,borderRadius:20,padding:"3px 10px",fontSize:12,fontWeight:600,display:"inline-flex",alignItems:"center",gap:6}}>
-      {label}
+      {typeof label === 'object' && label !== null ? JSON.stringify(label) : String(label || "")}
       <button onClick={onRemove} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:textColor,lineHeight:1,fontSize:14}}>×</button>
     </span>
   );
@@ -213,10 +213,10 @@ function FilterBar({ filters, onChange, projects, sites, authors, activeCount, o
         </div>
 
         <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-map-pin-2-line me-1"></i>Site</label><select className="form-select form-select-sm" value={filters.site} onChange={e=>onChange("site",e.target.value)}><option value="all">Tous</option>{sites.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-team-line me-1"></i>Équipe</label><select className="form-select form-select-sm" value={filters.group} onChange={e=>{onChange("group",e.target.value);onChange("author","all");}}><option value="all">Toutes</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Développeur</label><select className="form-select form-select-sm" value={filters.author} onChange={e=>onChange("author",e.target.value)}><option value="all">Tous</option>{authors.map(a=><option key={a} value={a}>{a}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-map-pin-2-line me-1"></i>Site</label><select className="form-select form-select-sm" value={filters.siteId} onChange={e=>onChange("siteId",e.target.value)}><option value="all">Tous</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-team-line me-1"></i>Équipe</label><select className="form-select form-select-sm" value={filters.groupId} onChange={e=>{onChange("groupId",e.target.value);onChange("developerId","all");}}><option value="all">Toutes</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Développeur</label><select className="form-select form-select-sm" value={filters.developerId} onChange={e=>onChange("developerId",e.target.value)}><option value="all">Tous</option>{authors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
         <div className="col-xl-1 col-md-3"><label className="form-label fs-12 mb-1 d-block">&nbsp;</label><button onClick={onReset} className="btn btn-sm w-100" style={{background:activeCount>0?"#f06548":"#f0f0f0",color:activeCount>0?"#fff":"#878a99",border:"none",fontWeight:600,transition:"all .2s"}}>{activeCount>0?<><i className="ri-close-line me-1"></i>{activeCount}</>:<i className="ri-filter-off-line"></i>}</button></div>
       </div>
       {/* ─── Vue par Rôle ─────────────────────────────────────────────── */}
@@ -238,7 +238,7 @@ function FilterBar({ filters, onChange, projects, sites, authors, activeCount, o
             <i className={`${r.icon} me-1`}></i>{r.label}
           </button>
         ))}
-        {filters.role!=="all"&&filters.author==="all"&&(
+        {filters.role!=="all"&&filters.developerId==="all"&&(
           <span style={{fontSize:11,color:"#f7b84b",fontStyle:"italic"}}>
             <i className="ri-information-line me-1"></i>Sélectionnez un auteur pour activer le filtre par rôle
           </span>
@@ -247,13 +247,13 @@ function FilterBar({ filters, onChange, projects, sites, authors, activeCount, o
       {activeCount>0&&(
         <div className="d-flex flex-wrap gap-2 mt-2">
           {filters.search&&<FilterTag label={`"${filters.search}"`} onRemove={()=>onChange("search","")}/>}
-          {filters.period!=="all"&&<FilterTag label={`Période: ${availablePeriods.find(p=>p.id===parseInt(filters.period))?.name||filters.period}`} onRemove={()=>onChange("period","all")} color="#dce9ff" textColor="#1a56db"/>}
+          {filters.period!=="all"&&<FilterTag label={`Période: ${availablePeriods.find(p=>String(p.id)===String(filters.period))?.name||filters.period}`} onRemove={()=>onChange("period","all")} color="#dce9ff" textColor="#1a56db"/>}
           {filters.state!=="all"&&<FilterTag label={`Status: ${STATE_CFG[filters.state]?.label}`} onRemove={()=>onChange("state","all")} color="#dce9ff" textColor="#1a56db"/>}
           {filters.project!=="all"&&<FilterTag label={`Project: ${filters.project}`} onRemove={()=>onChange("project","all")} color="#e8ecf8" textColor="#405189"/>}
-          {filters.site!=="all"&&<FilterTag label={`Site: ${filters.site}`} onRemove={()=>onChange("site","all")} color="#fef3dc" textColor="#b78a1e"/>}
-          {filters.group!=="all"&&<FilterTag label={`Équipe: ${groups.find(g=>g.id===parseInt(filters.group))?.name||"Inconnue"}`} onRemove={()=>onChange("group","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
-          {filters.author!=="all"&&<FilterTag label={`Développeur: ${filters.author}`} onRemove={()=>onChange("author","all")} color="#ede9fb" textColor="#5b21b6"/>}
-          {filters.role!=="all"&&filters.author!=="all"&&<FilterTag label={`Rôle: ${filters.role}`} onRemove={()=>onChange("role","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
+          {filters.siteId!=="all"&&<FilterTag label={`Site: ${(sites||[]).find(s=>String(s.id)===filters.siteId)?.name}`} onRemove={()=>onChange("siteId","all")} color="#fef3dc" textColor="#b78a1e"/>}
+          {filters.groupId!=="all"&&<FilterTag label={`Équipe: ${groups.find(g=>String(g.id)===String(filters.groupId))?.name||"Inconnue"}`} onRemove={()=>onChange("groupId","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
+          {filters.developerId!=="all"&&<FilterTag label={`Développeur: ${(authors||[]).find(d=>String(d.id)===filters.developerId)?.name||filters.developerId}`} onRemove={()=>onChange("developerId","all")} color="#ede9fb" textColor="#5b21b6"/>}
+          {filters.role!=="all"&&filters.developerId!=="all"&&<FilterTag label={`Rôle: ${filters.role}`} onRemove={()=>onChange("role","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
         </div>
       )}
     </div></div>
@@ -321,7 +321,7 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
           <h5 className="card-title mb-0 flex-grow-1">
             <i className="ri-user-star-line me-2 text-primary"></i>Contribution Analysis
           </h5>
-          <span className="badge bg-success-subtle text-success">{selectedAuthor}</span>
+          <span className="badge bg-success-subtle text-success">{String(selectedAuthor || "")}</span>
         </div>
         <div className="card-body">
           <ReactApexChart type="bar" height={210} series={seriesData}
@@ -355,25 +355,19 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
   }
 
   // Mode Global : La liste des meilleurs contributeurs (Vue Manager)
-  const validDevs = new Set(
-    (developers || [])
-    .filter(d => {
-      // [SENIOR FIX] Appliquer le filtre de site au niveau du développeur pour le graphique
-      if (filters?.site && filters.site !== "all") {
-        if (d.site !== filters.site) return false;
+  const validDevs = useMemo(() => {
+    const map = new Map();
+    (developers || []).forEach(d => {
+      const siteMatch = !filters?.site || filters.site === "all" || d.site === filters.site;
+      const groupMatch = !filters?.group || filters.group === "all" || (d.group_ids || []).map(Number).includes(parseInt(filters.group));
+      
+      if (siteMatch && groupMatch) {
+        if (d.name) map.set(d.name.toLowerCase(), d);
+        if (d.gitlab_username) map.set(d.gitlab_username.toLowerCase(), d);
       }
-      // [SENIOR FIX] Appliquer le filtre d'équipe pour la cohérence visuelle
-      if (filters?.group && filters.group !== "all") {
-        const gid = parseInt(filters.group);
-        if (!(d.group_ids || []).map(Number).includes(gid)) return false;
-      }
-      return true;
-    })
-    .flatMap(d => [
-      (d.name || "").toLowerCase(), 
-      (d.gitlab_username || "").toLowerCase()
-    ]).filter(Boolean)
-  );
+    });
+    return map;
+  }, [developers, filters?.site, filters?.group]);
 
   const map={};
   mrs.forEach(mr=>{
@@ -385,14 +379,27 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
     roles.forEach(r => {
       if (!r.name || r.name === "Unknown") return;
       
-      // ✅ FIX: Exclure les bots et devs hors liste (si la liste des developpeurs est chargée)
-      if (validDevs.size > 0 && !validDevs.has(r.name.toLowerCase())) return;
+      const lowerName = r.name.toLowerCase();
+      // ✅ FUZZY MATCHING : On cherche si le nom contient ou est contenu dans un dev valide
+      let matchedDev = validDevs.get(lowerName);
+      if (!matchedDev) {
+        // Fallback : recherche par inclusion si le Set.has() échoue
+        for (const [key, dev] of validDevs.entries()) {
+          if (lowerName.includes(key) || key.includes(lowerName)) {
+            matchedDev = dev;
+            break;
+          }
+        }
+      }
 
-      if(!map[r.name]) map[r.name]={total:0, merged:0, opened:0, auth:0, rev:0, assig:0};
-      map[r.name].total++;
-      map[r.name][r.type]++;
-      if(mr.state==="merged") map[r.name].merged++;
-      if(mr.state==="opened") map[r.name].opened++;
+      if (!matchedDev) return;
+      
+      const displayName = matchedDev.name || r.name;
+      if(!map[displayName]) map[displayName]={total:0, merged:0, opened:0, auth:0, rev:0, assig:0};
+      map[displayName].total++;
+      map[displayName][r.type]++;
+      if(mr.state==="merged") map[displayName].merged++;
+      if(mr.state==="opened") map[displayName].opened++;
     });
   });
 
@@ -428,7 +435,7 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
                 const col=avatarColor(name);
                 return (
                   <div key={i} className="d-flex align-items-center gap-2 mb-2">
-                    <span style={{width:26,height:26,borderRadius:"50%",background:col.bg,color:col.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{getInitials(name)}</span>
+                    <span style={{width:26,height:26,borderRadius:"50%",background:col.bg,color:col.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{String(getInitials(name) || "")}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div className="d-flex justify-content-between mb-1"><span style={{fontSize:12,fontWeight:600,color:"#212529"}}>{name}</span><span style={{fontSize:11,color:"#878a99"}}>{v.total} MRs · {rate}%</span></div>
                       <div style={{height:4,background:"#f0f0f0",borderRadius:4}}><div style={{height:"100%",width:`${rate}%`,background:rate>=70?"#0ab39c":rate>=40?"#f7b84b":"#f06548",borderRadius:4,transition:"width .8s"}}/></div>
@@ -447,7 +454,13 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
 // ─── Projects Breakdown ───────────────────────────────────────────────────────
 function ProjectsBreakdown({ mrs }) {
   const map={};
-  mrs.forEach(mr=>{ const p=mr.project||"Unknown"; if(!map[p])map[p]={total:0,merged:0,opened:0,closed:0}; map[p].total++; if(map[p][mr.state]!==undefined)map[p][mr.state]++; });
+  mrs.forEach(mr=>{ 
+    const rawP = mr.project || "Unknown";
+    const p = typeof rawP === "object" ? (rawP.name || "Unknown") : String(rawP);
+    if(!map[p])map[p]={total:0,merged:0,opened:0,closed:0}; 
+    map[p].total++; 
+    if(map[p][mr.state]!==undefined)map[p][mr.state]++; 
+  });
   const top=Object.entries(map).sort((a,b)=>b[1].total-a[1].total).slice(0,6);
   const max=Math.max(...top.map(([,v])=>v.total),1);
   return (
@@ -462,7 +475,7 @@ function ProjectsBreakdown({ mrs }) {
               return (
                 <div key={i} className="col-md-6 mb-4">
                   <div className="d-flex justify-content-between align-items-center mb-1">
-                    <span style={{fontSize:13,fontWeight:600,color:"#212529",maxWidth:"60%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><i className="ri-folder-2-line me-1" style={{color}}></i>{name}</span>
+                    <span style={{fontSize:13,fontWeight:600,color:"#212529",maxWidth:"60%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><i className="ri-folder-2-line me-1" style={{color}}></i>{String(name || "")}</span>
                     <div className="d-flex align-items-center gap-2">
                       <span style={{fontSize:12,color:"#878a99"}}>{v.total} MRs</span>
                       <span style={{fontSize:10,fontWeight:700,borderRadius:20,padding:"2px 8px",background:rate>=70?"#d1f3e0":rate>=40?"#fef3dc":"#fde8e8",color:rate>=70?"#0f6848":rate>=40?"#b78a1e":"#9b1c1c"}}>{rate}% merged</span>
@@ -574,7 +587,7 @@ function MRTable({ mrs, onDetail, lots = [] }) {
                               border: `1px solid ${getLotColor(mr.extraction_lot_id).text}22`
                             }}
                           >
-                            #{mr.extraction_lot_id}
+                            #{String(mr.extraction_lot_id || "")}
                           </span>
                         )}
                         {mr.is_draft&&<span style={{background:"#f0f0f0",color:"#6c757d",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:600}}>Draft</span>}
@@ -582,23 +595,23 @@ function MRTable({ mrs, onDetail, lots = [] }) {
                     </td>
                     <td style={{padding:"14px 16px",maxWidth:260}}>
                       <div className="d-flex flex-column">
-                        <div style={{fontWeight:600,color:"#212529",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240,cursor:"pointer"}} title={mr.title} onClick={()=>onDetail(mr)}>{mr.title}</div>
+                        <div style={{fontWeight:600,color:"#212529",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240,cursor:"pointer"}} title={String(mr.title || "")} onClick={()=>onDetail(mr)}>{String(mr.title || "")}</div>
                         {/* [CLEANUP] Retrait de l'alerte d'historique pour une UI plus épurée */}
                       </div>
                     </td>
                     <td style={{padding:"14px 16px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{width:30,height:30,borderRadius:"50%",background:aCol.bg,color:aCol.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{getInitials(mr.author)}</span>
+                        <span style={{width:30,height:30,borderRadius:"50%",background:aCol.bg,color:aCol.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{String(getInitials(mr.author) || "")}</span>
                         <div style={{display:"flex",flexDirection:"column"}}>
-                          <span style={{color:"#495057",fontSize:13,whiteSpace:"nowrap",fontWeight:600}}>{mr.author||"Unknown"}</span>
+                          <span style={{color:"#495057",fontSize:13,whiteSpace:"nowrap",fontWeight:600}}>{String(mr.author||"Unknown")}</span>
                           <div style={{display: "flex", gap: "4px", marginTop: "2px", flexWrap: "wrap"}}>
-                            {mr.reviewer && <span style={{fontSize:10,color:"#e8ecf8",background:"#405189",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Rev: {mr.reviewer}</span>}
-                            {mr.assignee && mr.assignee !== mr.reviewer && <span style={{fontSize:10,color:"#1a6fa3",background:"#d7edf9",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Assig: {mr.assignee}</span>}
+                            {mr.reviewer && <span style={{fontSize:10,color:"#e8ecf8",background:"#405189",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Rev: {String(mr.reviewer || "")}</span>}
+                            {mr.assignee && mr.assignee !== mr.reviewer && <span style={{fontSize:10,color:"#1a6fa3",background:"#d7edf9",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Assig: {String(mr.assignee || "")}</span>}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td style={{padding:"14px 16px"}}><span style={{color:"#6c757d",fontSize:13,whiteSpace:"nowrap"}}><i className="ri-folder-3-line me-1" style={{color:"#878a99"}}></i>{mr.project||"Unknown"}</span></td>
+                    <td style={{padding:"14px 16px"}}><span style={{color:"#6c757d",fontSize:13,whiteSpace:"nowrap"}}><i className="ri-folder-3-line me-1" style={{color:"#878a99"}}></i>{String(mr.project||"Unknown")}</span></td>
                     <td style={{padding:"14px 16px"}}><span style={{background:cfg.bg,color:cfg.color,borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><i className={cfg.icon}></i>{cfg.label}</span></td>
                     <td style={{padding:"14px 16px"}}>{isApproved?<span style={{background:"#d7edf9",color:"#1a6fa3",borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5}}><i className="ri-shield-check-line"></i>Yes</span>:<span style={{color:"#c8cbcf",fontSize:18}}>—</span>}</td>
                     
@@ -606,9 +619,7 @@ function MRTable({ mrs, onDetail, lots = [] }) {
                     <td style={{padding:"14px 16px"}}>
                       <div className="d-flex align-items-center gap-1">
                         <i className="ri-chat-1-line text-muted"></i>
-                        <span style={{fontWeight: 600, color: (mr.user_notes_count > 0 ? "#405189" : "#adb5bd")}}>
-                          {mr.user_notes_count || 0}
-                        </span>
+                          {String(mr.user_notes_count || 0)}
                       </div>
                     </td>
 
@@ -616,9 +627,7 @@ function MRTable({ mrs, onDetail, lots = [] }) {
                     <td style={{padding:"14px 16px"}}>
                       <div className="d-flex align-items-center gap-1">
                         <i className="ri-git-commit-line text-muted"></i>
-                        <span style={{fontWeight: 600, color: (mr.commits_count > 0 ? "#212529" : "#adb5bd")}}>
-                          {mr.commits_count || 0}
-                        </span>
+                          {String(mr.commits_count || 0)}
                       </div>
                     </td>
                     {/* Colonne REVUE — exact ou proxy Lead Time (DORA) */}
@@ -672,11 +681,37 @@ function MRTable({ mrs, onDetail, lots = [] }) {
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-const INITIAL_FILTERS={search:"", lot: "all", period: "all", state:"all",project:"all",site:"all",author:"all",role:"all",approved:"all",dateFrom:"",dateTo:"", group:"all", developer_id: null, site_id: null, group_id: null};
+const INITIAL_FILTERS = {
+  search: "",
+  lot: "all",
+  period: "all",
+  state: "all",
+  project: "all",
+  siteId: "all",
+  groupId: "all",
+  developerId: "all",
+  role: "all",
+  approved: "all",
+  dateFrom: "",
+  dateTo: ""
+};
+// [SENIOR UTILS] Extraction unique des projets pour la liste déroulante
+const extractProjects = (mrs) => {
+  if (!mrs || !Array.isArray(mrs)) return [];
+  // On s'assure d'extraire des chaînes de caractères (noms de projets)
+  const names = [...new Set(mrs.map(m => {
+    if (typeof m.project === "object" && m.project !== null) return m.project.name || m.project.id;
+    return m.project;
+  }).filter(Boolean))];
+  
+  return names
+    .map(n => ({ id: String(n), name: String(n) }))
+    .sort((a,b) => String(a.name).localeCompare(String(b.name)));
+};
 
 export default function MergePage() {
   const [allMrs,   setAllMrs]   = useState([]);
-  const [projects, setProjects]  = useState([]); 
+  const [projects, setProjects]  = useState([]);
   const [lots,     setLots]      = useState([]);    
   const [periods,  setPeriods]   = useState([]);
   const [developers, setDevelopers] = useState([]);
@@ -689,9 +724,9 @@ export default function MergePage() {
     project: searchParams.get("project_id") || searchParams.get("project") || "all",
     lot: searchParams.get("lot_id") || "all",
     period: searchParams.get("period_id") || "all",
-    developer_id: searchParams.get("developer_id") || null,
-    site_id: searchParams.get("site_id") || null,
-    group_id: searchParams.get("group_id") || null
+    developerId: searchParams.get("developer_id") || "all",
+    siteId: searchParams.get("site_id") || "all",
+    groupId: searchParams.get("group_id") || "all"
   });
   const [error,    setError]    = useState(null);
   const [detailMr, setDetailMr] = useState(null);
@@ -706,7 +741,7 @@ export default function MergePage() {
           api.get("/projects"),
           api.get("/periods"),
           api.get("/periods/current").catch(() => ({ data: null })),
-          api.get("/sites?active_only=true").catch(() => ({ data: [] }))
+          api.get("/sites").catch(() => ({ data: [] }))
         ]);
         const projsData = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
         const periodsData = Array.isArray(perRes.data) ? perRes.data : (perRes.data?.items ?? []);
@@ -728,51 +763,56 @@ export default function MergePage() {
     initData();
   }, []); // eslint-disable-line
 
-  // ✅ [SENIOR] CONTEXT HYDRATION EFFECT
-  // This ensures that if we arrive with developer_id/site_id/group_id, 
-  // we resolve them to their display names once the data is loaded.
+  // [SENIOR] URL Context Hydration (Responsive to URL changes)
   useEffect(() => {
-    if (!loading && (filters.developer_id || filters.site_id || filters.group_id)) {
-      const updates = {};
+    if (projects.length === 0 || periods.length === 0) return;
+
+    const urlDevId = searchParams.get("developer_id");
+    const urlSiteId = searchParams.get("site_id");
+    const urlGroupId = searchParams.get("group_id");
+    const urlLotId = searchParams.get("lot_id");
+    const urlProjectId = searchParams.get("project_id");
+    const urlPeriodId = searchParams.get("period_id");
+
+    setFilters(prev => {
+      let next = { ...prev };
       
-      // 1. Resolve Developer Name
-      if (filters.developer_id && filters.author === "all") {
-        const dev = developers.find(d => String(d.id) === String(filters.developer_id));
-        if (dev) updates.author = dev.name || dev.gitlab_username;
+      if (urlDevId) next.developerId = urlDevId;
+      if (urlSiteId) next.siteId = urlSiteId;
+      if (urlGroupId) next.groupId = urlGroupId;
+      if (urlLotId) next.lot = urlLotId;
+      if (urlProjectId) next.project = urlProjectId;
+      if (urlPeriodId) next.period = urlPeriodId;
+
+      // Auto-select current period ONLY if no period is in URL and no lot context
+      if (currentPeriod && next.period === "all" && !urlPeriodId && !urlLotId) {
+        next.period = String(currentPeriod.id);
       }
       
-      // 2. Resolve Site Name
-      if (filters.site_id && filters.site === "all") {
-        const site = allSites.find(s => String(s.id) === String(filters.site_id));
-        if (site) updates.site = site.name;
-      }
-      
-      // 3. Resolve Group ID
-      if (filters.group_id && filters.group === "all") {
-        updates.group = String(filters.group_id);
-      }
-      
-      if (Object.keys(updates).length > 0) {
-        setFilters(prev => ({ ...prev, ...updates }));
-      }
-    }
-  }, [loading, developers, allSites, filters.developer_id, filters.site_id, filters.group_id]); // eslint-disable-line
+      return next;
+    });
+  }, [searchParams, projects, periods, currentPeriod]);
 
   useEffect(() => {
     const fetchLots = async () => {
       try {
         let url = "/extraction-lots";
         if (filters.project !== "all") {
-          const proj = projects.find(p => p.name === filters.project);
+          const proj = projects.find(p => String(p.id) === String(filters.project)) || projects.find(p => p.name === filters.project);
           if (proj) url += `?project_id=${proj.id}`;
         }
-        const res = await api.get(url);
-        setLots(res.data || []);
+        const response = await api.get(url);
+        const fetchedLots = Array.isArray(response.data) ? response.data : (response.data?.items ?? []);
+        setLots(fetchedLots);
       } catch (err) {
         console.error("Erreur lors du chargement des lots:", err);
         setLots([]);
       }
     };
+    
+    // Only fetch lots when projects are loaded if a project filter is active
+    if (filters.project !== "all" && projects.length === 0) return;
+    
     fetchLots();
   }, [filters.project, projects]);
 
@@ -782,11 +822,14 @@ export default function MergePage() {
       // 1. Fetch contextual metadata
       let devs = [];
       try {
+        const periodParam = filters.period !== "all" ? `?active_only=true&period_id=${filters.period}` : "?active_only=true";
         const [dRes, gRes] = await Promise.all([
-          api.get("/developers?active_only=true"),
-          api.get("/developer-groups?active_only=true")
+          api.get(`/developers${periodParam}`),
+          api.get("/developer-groups")
         ]);
-        devs = Array.isArray(dRes.data)?dRes.data:(dRes.data?.items??[]);
+        const rawDevs = Array.isArray(dRes.data)?dRes.data:(dRes.data?.items??[]);
+        // SENIOR: Strict Data Parity - Only use validated (HR/CSV) developers in filters
+        devs = rawDevs.filter(d => d.is_validated === true && d.is_bot === false);
         setDevelopers(devs);
         setGroups(Array.isArray(gRes.data)?gRes.data:(gRes.data?.items??[]));
       } catch (e) {
@@ -796,8 +839,8 @@ export default function MergePage() {
       // [SENIOR FIX] Dictionnaire pour résolution rapide des sites des acteurs
       const nameToSite = {};
       devs.forEach(d => {
-        if (d.name) nameToSite[d.name.toLowerCase()] = d.site;
-        if (d.gitlab_username) nameToSite[d.gitlab_username.toLowerCase()] = d.site;
+        if (d.name) nameToSite[d.name.toLowerCase()] = d.primary_site_id;
+        if (d.gitlab_username) nameToSite[d.gitlab_username.toLowerCase()] = d.primary_site_id;
       });
       
       // 2. Fetch Data (Optimized Strategy)
@@ -811,26 +854,55 @@ export default function MergePage() {
 
       if (targetProjectId !== undefined) {
         const params = { exclude_draft: false };
-        if (filters.period !== "all") params.period_id = parseInt(filters.period);
-        if (filters.lot !== "all") params.lot_id = parseInt(filters.lot);
+        // ── PRIORITÉ : lot_id prend le dessus sur period_id (drill-down depuis ExtractionLotsPage)
+        if (filters.lot !== "all") {
+          params.lot_id = parseInt(filters.lot);
+          // Quand lot_id est fourni, on ramène TOUTES les MRs du lot (auteur + reviewer)
+          // Le filtre developer_id est appliqué côté frontend via le filtre "Développeur + Rôle"
+          // Cela garantit la cohérence avec le compteur "21 MRs" affiché dans le popup ExtractionLots
+        } else {
+          if (filters.period !== "all") params.period_id = parseInt(filters.period);
+          // Hors contexte lot : filtre backend par auteur possible
+          if (filters.developerId !== "all") params.developer_id = parseInt(filters.developerId);
+        }
 
         const response = await api.get(`/projects/${targetProjectId}/merge-requests`, { params });
         const items = Array.isArray(response.data) ? response.data : (response.data?.items ?? []);
         
         data = items.map(mr => {
-          const revName = (mr.reviewer?.name || mr.reviewer?.gitlab_username || "").toLowerCase();
-          const assName = (mr.assignee?.name || mr.assignee?.gitlab_username || "").toLowerCase();
+          const devInfo = devs.find(d => d.id === mr.developer_id);
+          
+          const rawRev = mr.reviewer || mr.reviewer_name;
+          const revName = typeof rawRev === 'object' && rawRev !== null 
+            ? (rawRev.name || rawRev.gitlab_username || "") 
+            : String(rawRev || "");
+            
+          const rawAssig = mr.assignee || mr.assignee_name;
+          const assName = typeof rawAssig === 'object' && rawAssig !== null 
+            ? (rawAssig.name || rawAssig.gitlab_username || "") 
+            : String(rawAssig || "");
+
+          const rawProject = mr.project_name || projects.find(p => String(p.id) === String(mr.project_id))?.name || "Project";
+          const project = typeof rawProject === "object" && rawProject !== null ? (rawProject.name || "Project") : String(rawProject);
+
+          const rawAuthor = mr.developer || mr.author || mr.author_name;
+          const authorStr = typeof rawAuthor === 'object' && rawAuthor !== null
+            ? (rawAuthor.name || rawAuthor.gitlab_username || "Unknown")
+            : String(rawAuthor || "Unknown");
 
           return {
             ...mr,
-            project: mr.project_name || projects.find(p => p.id === mr.project_id)?.name || "Project",
-            author: mr.developer?.name || mr.developer?.gitlab_username || mr.author_name || "Unknown",
-            site: mr.developer?.site || null,
-            reviewer_site: nameToSite[revName] || null,
-            assignee_site: nameToSite[assName] || null,
+            project: project,
+            author: authorStr,
+            // [SENIOR ENRICHMENT] On injecte les métadonnées de site/groupe pour le filtrage
+            developer: devInfo || mr.developer,
+            site_id: devInfo?.primary_site_id || mr.developer?.primary_site_id || mr.site_id,
+            group_ids: devInfo?.group_ids || mr.developer?.group_ids || [],
+            reviewer_site: nameToSite[revName.toLowerCase()] || null,
+            assignee_site: nameToSite[assName.toLowerCase()] || null,
             updated_at_gitlab: mr.updated_at_gitlab,
-            reviewer: mr.reviewer?.name || mr.reviewer?.gitlab_username || null,
-            assignee: mr.assignee?.name || mr.assignee?.gitlab_username || null
+            reviewer: revName || null,
+            assignee: assName || null
           };
         });
       }
@@ -843,18 +915,12 @@ export default function MergePage() {
     } finally {
       setLoading(false); setSpinning(false);
     }
-  }, [filters.project, filters.lot, filters.period, projects]);
+  }, [filters.project, filters.lot, filters.period, filters.developerId, projects]);
 
 
   useEffect(()=>{ load(); },[load]);
 
-  const projectList = useMemo(() => {
-    const fromMrs   = allMrs.map(m => m.project).filter(Boolean);
-    const fromConfig = projects.map(p => p.name).filter(Boolean);
-    return [...new Set([...fromConfig, ...fromMrs])].sort();
-  }, [allMrs, projects]);
-
-  // ✅ SENIOR INTENT-BASED FILTERING
+  //  SENIOR INTENT-BASED FILTERING
   // Identification des développeurs ciblés par l'extraction (Intention)
   const trackedDevIds = useMemo(() => {
     if (!lots || lots.length === 0) return [];
@@ -865,107 +931,156 @@ export default function MergePage() {
     return [...new Set(lots.map(l => l.developer_id).filter(Boolean))];
   }, [lots, filters.lot]);
 
-  const groupList = useMemo(() => {
-    if (!groups || groups.length === 0) return [];
-    if (trackedDevIds.length === 0) return groups;
-
-    const activeGroupIds = new Set();
-    trackedDevIds.forEach(id => {
-      const dev = developers.find(d => d.id === id);
-      if (dev?.group_ids) dev.group_ids.forEach(gid => activeGroupIds.add(Number(gid)));
-    });
-
-    return groups.filter(g => activeGroupIds.has(g.id) || filters.group === String(g.id)).sort((a,b) => a.name.localeCompare(b.name));
-  }, [trackedDevIds, groups, developers, filters.group]);
+  // SENIOR: STATIC CONTEXTUAL FILTERING (Based on RH Assignment)
+  // We first determine which developers belong to the selected project.
+  const assignedDevs = useMemo(() => {
+    if (!developers || developers.length === 0) return [];
+    if (filters.project === "all") return developers;
+    
+    return developers.filter(d => 
+      d.projects && d.projects.some(p => String(p.project_id) === filters.project)
+    );
+  }, [developers, filters.project]);
 
   const authorList = useMemo(() => {
-    if (!developers || developers.length === 0) return [];
-    
-    // Seuls les développeurs CIBLÉS par les lots d'extraction apparaissent
-    let filteredDevs = developers.filter(d => trackedDevIds.includes(d.id));
-    
-    if (filters.group !== "all") {
-      const groupId = parseInt(filters.group);
-      filteredDevs = filteredDevs.filter(d => (d.group_ids || []).map(Number).includes(groupId));
-    }
-    
-    return filteredDevs.map(d => d.name || d.gitlab_username).filter(Boolean).sort();
-  }, [trackedDevIds, developers, filters.group]);
+    return assignedDevs
+      .filter(d => d.id)
+      .map(d => ({ 
+        id: String(d.id), 
+        name: String(d.name || d.gitlab_username || "Unknown") 
+      }))
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }, [assignedDevs]);
 
-  // ✅ SENIOR "INTENT-BASED" FILTERING : 
-  // On ne montre que les sites présents parmi les développeurs effectivement trackés.
+  // Derive assigned teams based on assigned devs
+  const assignedGroupIds = useMemo(() => {
+    const ids = new Set();
+    assignedDevs.forEach(d => {
+      if (d.group_ids && Array.isArray(d.group_ids)) {
+        d.group_ids.forEach(gId => ids.add(String(gId)));
+      }
+    });
+    return ids;
+  }, [assignedDevs]);
+
+  const groupList = useMemo(() => {
+    if (!groups || groups.length === 0) return [];
+    return groups
+      .filter(g => filters.project === "all" || assignedGroupIds.has(String(g.id)))
+      .map(g => ({ 
+        id: String(g.id), 
+        name: String(g.name || "Unnamed Group") 
+      }))
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }, [groups, assignedGroupIds, filters.project]);
+
+  const projectList = useMemo(() => {
+    if (!projects || projects.length === 0) return [];
+    return projects.map(p => {
+      // Robustesse : p peut être un objet {id, name} ou une simple string
+      const id = p.id ?? p;
+      const name = p.name ?? p;
+      return {
+        id: String(id),
+        name: String(name)
+      };
+    }).sort((a,b) => a.name.localeCompare(b.name));
+  }, [projects]);
+
+  // Derive assigned sites based on assigned devs
+  const assignedSiteIds = useMemo(() => {
+    const ids = new Set();
+    assignedDevs.forEach(d => {
+      if (d.sites && Array.isArray(d.sites)) {
+        d.sites.forEach(s => ids.add(String(s.site_id)));
+      } else if (d.primary_site_id) {
+        ids.add(String(d.primary_site_id));
+      }
+    });
+    return ids;
+  }, [assignedDevs]);
+
   const siteList = useMemo(() => {
-    if (!developers || developers.length === 0) return [];
+    if (!allSites || allSites.length === 0) return [];
+    return allSites
+      .filter(s => filters.project === "all" || assignedSiteIds.has(String(s.id)))
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }, [allSites, assignedSiteIds, filters.project]);
 
-    // 1. Identification des sites actifs dans le contexte actuel (intention d'extraction)
-    const activeSitesNames = new Set(
-      developers
-        .filter(d => trackedDevIds.includes(d.id))
-        .map(d => d.site)
-        .filter(Boolean)
-    );
-
-    // 2. Croisement avec la liste exhaustive pour l'affichage
-    if (activeSitesNames.size > 0) {
-      return allSites
-        .filter(s => activeSitesNames.has(s.name))
-        .map(s => s.name)
-        .sort();
-    }
-    
-    // Fallback minimaliste si l'API /sites est vide ou rien de tracké
-    return allSites.map(s => s.name).sort();
-  }, [allSites, developers, trackedDevIds]);
-
-  // ✅ SENIOR AUTO-RESET : Si le site sélectionné n'est plus dans le périmètre actif, 
-  // on reset à "all" pour éviter un écran vide incompréhensible.
-  useEffect(() => {
-    if (filters.site !== "all" && siteList.length > 0 && !siteList.includes(filters.site)) {
-      handleFilterChange("site", "all");
-    }
-  }, [siteList, filters.site]);
+  //  SENIOR AUTO-RESET : Désactivé pour permettre la navigation multi-contexte
 
   const activeFilterCount=useMemo(()=>Object.entries(filters).filter(([,v])=>v!==""&&v!=="all").length,[filters]);
 
-  const filtered=useMemo(()=>{
+  const siteLookup = useMemo(() => {
+    const map = {};
+    if (allSites) {
+      allSites.forEach(s => { map[String(s.id)] = s.name.toLowerCase(); });
+    }
+    return map;
+  }, [allSites]);
+
+  const filtered = useMemo(() => {
     return allMrs.filter(mr=>{
       if(filters.state!=="all"&&mr.state!==filters.state)return false;
       if(filters.project!=="all"){const isNum=/^\d+$/.test(String(filters.project));const okById=isNum&&String(mr.project_id)===String(filters.project);const okByName=mr.project===filters.project;if(!okById&&!okByName)return false;}
 
-      if (filters.site !== "all") {
-        const isAuthorSite = mr.site === filters.site;
-        const isReviewerSite = mr.reviewer_site === filters.site;
-        const isAssigneeSite = mr.assignee_site === filters.site;
-        if (!isAuthorSite && !isReviewerSite && !isAssigneeSite) return false;
-      }
-      
-      const aut = (mr.author || "").toLowerCase();
-      const rev = (mr.reviewer || "").toLowerCase();
-      const ass = (mr.assignee || "").toLowerCase();
+      //  FILTRE PAR SITE (Simple et robuste grâce à l'enrichissement - Vue 360)
+      if (filters.siteId !== "all") {
+        const sId = String(filters.siteId);
+        let siteMatch = false;
 
-      // ✅ FILTRE PAR ÉQUIPE / GROUPE — Vue 360° du groupe
-      if (filters.group !== "all") {
-        const groupId = parseInt(filters.group);
-        // ✅ FIX M2M : group_ids est un tableau (plus de scalaire group_id)
-        const groupDevs = developers.filter(d => (d.group_ids || []).map(Number).includes(groupId));
-        const groupNames = groupDevs.flatMap(d => [(d.name || "").toLowerCase(), (d.gitlab_username || "").toLowerCase()]).filter(Boolean);
-        
-        // La MR doit impliquer au moins un membre de l'équipe
-        const match = groupNames.some(name => aut.includes(name) || rev.includes(name) || ass.includes(name));
-        if (!match) return false;
+        // 1. Check Auteur
+        const mrSiteId = String(mr.site_id || "");
+        if (mrSiteId === sId) siteMatch = true;
+
+        // 2. Check Reviewer
+        if (!siteMatch && mr.reviewer_site && String(mr.reviewer_site) === sId) siteMatch = true;
+
+        // 3. Check Assignee
+        if (!siteMatch && mr.assignee_site && String(mr.assignee_site) === sId) siteMatch = true;
+
+        if (!siteMatch) {
+            // Fallback pour Unassigned
+            if (!(sId === "unassigned" && (mrSiteId === "" || mrSiteId === "undefined" || mrSiteId === "null"))) {
+               return false;
+            }
+        }
+      }
+
+      //  FILTRE PAR ÉQUIPE / GROUPE
+      if (filters.groupId !== "all") {
+        const gId = String(filters.groupId);
+        const mrGroupIds = (mr.group_ids || []).map(String);
+        if (!mrGroupIds.includes(gId)) return false;
       }
       
-      // ✅ FILTRE PAR DÉVELOPPEUR + RÔLE — Vue 360° de la contribution
-      if (filters.author !== "all") {
-        const target = filters.author.toLowerCase().trim();
-        const aut = (mr.author   || "").toLowerCase();
-        const rev = (mr.reviewer || "").toLowerCase();
-        const ass = (mr.assignee || "").toLowerCase();
+      //  FILTRE PAR DÉVELOPPEUR + RÔLE — Vue 360° de la contribution
+      if (filters.developerId !== "all") {
+        const targetId = parseInt(filters.developerId);
+        const isAuthor = mr.developer_id === targetId;
         
-        if      (filters.role === "authored") { if (!aut.includes(target))                                                           return false; }
-        else if (filters.role === "reviewed") { if (!rev.includes(target))                                                           return false; }
-        else if (filters.role === "assigned") { if (!ass.includes(target))                                                           return false; }
-        else /* "all" roles — vue inclusive */ { if (!aut.includes(target) && !rev.includes(target) && !ass.includes(target)) return false; }
+        if (filters.role === "authored") { if (!isAuthor) return false; }
+        else if (filters.role === "reviewed") { 
+          // Reviewer/Assignee matching fallback to names if ID not available in MR object
+          const dev = developers.find(d => d.id === targetId);
+          const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
+          const rev = (mr.reviewer || "").toLowerCase();
+          if (!rev.includes(targetName)) return false; 
+        }
+        else if (filters.role === "assigned") {
+          const dev = developers.find(d => d.id === targetId);
+          const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
+          const ass = (mr.assignee || "").toLowerCase();
+          if (!ass.includes(targetName)) return false;
+        }
+        else {
+          // "all" roles — vue inclusive
+          const dev = developers.find(d => d.id === targetId);
+          const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
+          const rev = (mr.reviewer || "").toLowerCase();
+          const ass = (mr.assignee || "").toLowerCase();
+          if (!isAuthor && !rev.includes(targetName) && !ass.includes(targetName)) return false;
+        }
       }
 
       if(filters.approved==="yes"&&!(mr.approved===true||mr.approved===1))return false;
@@ -1023,6 +1138,33 @@ export default function MergePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Bandeau de contexte Lot (visible uniquement depuis ExtractionLotsPage) */}
+      {filters.lot !== "all" && (() => {
+        const activeLot = lots.find(l => String(l.id) === String(filters.lot));
+        const activeDev = developers.find(d => String(d.id) === String(filters.developerId));
+        return (
+          <div className="row mb-3">
+            <div className="col-12">
+              <div className="alert alert-info border-0 d-flex align-items-center gap-3 py-2 px-4" 
+                style={{ borderRadius: 10, background: "linear-gradient(90deg, #eff6ff, #f0fdf4)", borderLeft: "4px solid #3b82f6 !important" }}>
+                <i className="ri-stack-line fs-18 text-primary"></i>
+                <div className="flex-grow-1">
+                  <span className="fw-bold text-primary me-2">Extraction Lot #{String(filters.lot || "")}</span>
+                  {activeDev && <span className="text-dark me-2">- {String(activeDev.name || activeDev.gitlab_username || "")}</span>}
+                  {activeLot && <span className="text-muted fs-12">| Capturé le {new Date(activeLot.created_at || activeLot.started_at).toLocaleDateString("fr-FR")}</span>}
+                  <span className="badge bg-primary-subtle text-primary ms-2 fs-11">
+                    {filtered.length} MR{filtered.length !== 1 ? "s" : ""} dans ce lot
+                  </span>
+                </div>
+                <a href="/extraction-lots" className="btn btn-sm btn-soft-primary d-flex align-items-center gap-1" style={{ whiteSpace: "nowrap" }}>
+                  <i className="ri-arrow-left-line"></i> Retour aux lots
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <FilterBar filters={filters} onChange={setFilter} projects={projectList} sites={siteList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots} availablePeriods={periods} groups={groupList}/>
 

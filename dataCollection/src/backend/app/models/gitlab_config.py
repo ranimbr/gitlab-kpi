@@ -1,18 +1,7 @@
 """
 models/gitlab_config.py
 
-Configuration d'une instance GitLab.
 
-Permet le support multi-tenant (plusieurs domaines GitLab).
-Le token est stocké chiffré en base (chiffrement applicatif AES via security.py).
-
-CORRECTION :
-    D'après le diagramme de classes de l'encadrant, GitLabConfig est
-    "hébergée" par un Site (relation localise/héberge).
-    Le champ site_id était ABSENT du modèle original — ajout corrigé.
-
-    Cas d'usage : un Site peut avoir une instance GitLab dédiée
-    (ex : site Tunis → gitlab.tunis.company.com, site France → gitlab.fr.company.com)
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Index
@@ -34,7 +23,7 @@ class GitLabConfig(Base):
     is_active   = Column(Boolean, default=True, nullable=False)
     description = Column(String(500), nullable=True)
 
-    # ✅ AJOUT : FK vers Site — manquant dans la version originale
+    #  AJOUT : FK vers Site — manquant dans la version originale
     # Optionnel (nullable=True) : une config GitLab peut être globale (non rattachée à un site)
     site_id = Column(
         Integer,

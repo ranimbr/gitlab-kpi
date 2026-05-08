@@ -1,10 +1,4 @@
-"""
-api/routers/analytics.py
-
-AJOUTS :
-    - GET /analytics/developer/{developer_id}/heatmap
-      Activité jour par jour (GitHub-style) — amélioration Heatmap.
-"""
+"""Analytics router endpoints for KPI history, snapshots and team insights."""
 import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -30,25 +24,31 @@ router      = APIRouter(prefix="/analytics", tags=["Analytics"])
 commit_repo = CommitRepository()
 
 
+def _http_error(status_code: int, code: str, message: str) -> HTTPException:
+    """Return a standardized API error payload."""
+    return HTTPException(status_code=status_code, detail=f"{code}: {message}")
+
+
 # ── Latest KPIs ───────────────────────────────────────────────────────────────
 
 @router.get("/{project_id}/latest", response_model=KpiSnapshotResponse)
 def get_latest_kpis(
-    project_id:   int,
+    project_id:   str,
     site_id:      Optional[int] = Query(default=None),
     group_id:     Optional[int] = Query(default=None),
     developer_id: Optional[int] = Query(default=None),
+    lot_id:       Optional[int] = Query(default=None, description="Filtrer par session d'extraction"),
+    period_id:    Optional[int] = Query(default=None, description="Filtrer par période spécifique"),
     db:           Session       = Depends(get_db),
     current_user: AppUser       = Depends(get_current_user),
 ):
     service = AnalyticsService(db)
-    result  = service.get_latest_kpis(project_id, site_id, group_id, developer_id)
+    # Support 'all'
+    p_id = None if project_id == "all" else int(project_id)
+    result  = service.get_latest_kpis(p_id, site_id, group_id, developer_id, lot_id=lot_id, period_id=period_id)
 
     if not result:
-        raise HTTPException(
-            status_code=404,
-            detail="No KPI snapshot found for this project",
-        )
+        raise _http_error(404, "ANALYTICS_SNAPSHOT_NOT_FOUND", "No KPI snapshot found for this project/lot")
     return result
 
 
@@ -56,7 +56,7 @@ def get_latest_kpis(
 
 @router.get("/{project_id}/history", response_model=KpiHistoryResponse)
 def get_kpi_history(
-    project_id:   int,
+    project_id:   str,
     site_id:      Optional[int]  = Query(default=None),
     group_id:     Optional[int]  = Query(default=None),
     developer_id: Optional[int]  = Query(default=None),
@@ -66,11 +66,12 @@ def get_kpi_history(
     current_user: AppUser        = Depends(get_current_user),
 ):
     if start_date and end_date and start_date > end_date:
-        raise HTTPException(status_code=400, detail="start_date cannot be after end_date")
+        raise _http_error(400, "ANALYTICS_DATE_RANGE_INVALID", "start_date cannot be after end_date")
 
     service   = AnalyticsService(db)
+    p_id = None if project_id == "all" else int(project_id)
     snapshots = service.get_kpi_history(
-        project_id, site_id, group_id, developer_id, start_date, end_date
+        p_id, site_id, group_id, developer_id, start_date, end_date
     )
 
     return KpiHistoryResponse.from_snapshots(
@@ -115,7 +116,7 @@ def generate_snapshot(
     snapshots  = aggregator.generate_monthly_snapshots(project_id, year, month)
 
     if not snapshots:
-        raise HTTPException(status_code=404, detail="No snapshots generated")
+        raise _http_error(404, "ANALYTICS_SNAPSHOT_NOT_GENERATED", "No snapshots generated")
 
     target = next(
         (s for s in snapshots if s.site_id == site_id),
@@ -143,30 +144,7 @@ def get_developer_heatmap(
     db:           Session = Depends(get_db),
     _:            AppUser = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """
-    Activité jour par jour d'un développeur — heatmap GitHub-style.
-
-    Retourne uniquement les jours avec activité :
-      { "date": "2025-03-15", "count": 4 }
-
-    Le frontend remplit les jours sans activité avec count=0
-    pour construire la grille calendrier complète.
-
-    Paramètres :
-      developer_id : ID du développeur
-      months       : fenêtre temporelle (défaut 12 mois)
-
-    Réponse :
-      {
-        "developer_id"     : 42,
-        "start_date"       : "2024-04-01",
-        "end_date"         : "2025-03-30",
-        "total_days_active": 87,
-        "total_commits"    : 312,
-        "max_day_count"    : 15,
-        "activity"         : [ { "date": "...", "count": N }, ... ]
-      }
-    """
+   
     end_date   = datetime.now()
     start_date = end_date - timedelta(days=months * 30)
 
@@ -196,19 +174,15 @@ def get_developer_heatmap(
 @router.get("/developer/{developer_id}/insights")
 def get_developer_insights(
     developer_id: int,
-    project_id:   int           = Query(...),
+    project_id:   str           = Query(...),
     period_id:    Optional[int] = Query(default=None),
     db:           Session       = Depends(get_db),
     current_user: AppUser       = Depends(get_current_user),
 ):
-    """
-    Analyse comparative du développeur par rapport aux moyennes de son site.
-    Réservé aux Managers / Admins dans la logique métier.
-    """
-    # Note : La vérification de rôle Manager/Admin peut être faite ici 
-    # ou gérée nativement via current_user.role
+    
     service = AnalyticsService(db)
-    return service.get_developer_insights(developer_id, project_id, period_id)
+    p_id = None if project_id in ("all", "0") else int(project_id)
+    return service.get_developer_insights(developer_id, p_id, period_id)
 
 
 # ── Team Velocity (Manager Only) ──────────────────────────────────────────────
@@ -222,30 +196,7 @@ def get_team_velocity(
     db:         Session       = Depends(get_db),
     _:          AppUser       = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """
-    [SENIOR] Vélocité hebdomadaire de l'équipe — pour les rétrospectives de sprint.
-
-    Retourne, pour chaque semaine, le nombre de :
-      - commits réalisés
-      - MRs ouvertes
-      - MRs mergées (= livrables réels)
-
-    Permet au manager de détecter :
-      - Les semaines de creux (vacances, blocages techniques)
-      - La tendance globale (équipe qui accélère ou ralentit)
-      - Les sprints surchargés (MRs ouvertes >> MRs mergées)
-
-    Réponse :
-      {
-        "project_id": 1,
-        "weeks": 12,
-        "data": [
-          { "week_start": "2025-01-06", "commits": 42, "mrs_opened": 8, "mrs_merged": 6 },
-          ...
-        ],
-        "summary": { "avg_commits_week": 38.5, "avg_mrs_merged_week": 5.2 }
-      }
-    """
+    """Return weekly team velocity metrics for retrospectives and trend tracking."""
     from sqlalchemy import func, case
     from app.models.commit import Commit
     from app.models.merge_request import MergeRequest
@@ -344,10 +295,7 @@ def get_comparative_trends(
     db:           Session        = Depends(get_db),
     current_user: AppUser        = Depends(get_current_user),
 ):
-    """
-    [SENIOR] Endpoint pour la comparaison multi-séries (Sites ou Équipes).
-    Utilisé par la page 'Pilotage' pour l'analyse multidimensionnelle.
-    """
+    
     service = AnalyticsService(db)
     return service.get_comparative_trends(
         project_id=project_id,

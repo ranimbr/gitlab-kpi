@@ -1,27 +1,7 @@
 """
 repositories/base.py
 
-Repository générique CRUD.
 
-RÈGLES ARCHITECTURE :
-    - Commit / rollback = couche SERVICE (jamais ici)
-    - db.flush() après add/delete pour récupérer l'id généré
-    - La couche service appelle db.commit() après validation métier
-
-CORRECTION — update() avec sentinel UNSET :
-    Problème original : `if value is None: continue`
-    → Impossible de mettre un champ à NULL intentionnellement.
-      Ex : developer.site_id = None (désassigner d'un site)
-           threshold.dashboard_id = None
-
-    FIX : pattern sentinel UNSET.
-    - update(db, obj, {"site_id": None})   → met site_id à NULL ✅
-    - update(db, obj, {})                  → ne change rien ✅
-    - update(db, obj, {"site_id": UNSET})  → ne change pas site_id ✅
-
-    Usage côté service :
-        data = schema.model_dump(exclude_unset=True)  # Pydantic v2
-        repo.update(db, obj, data)
 """
 
 from typing import Generic, TypeVar, Type, List, Optional

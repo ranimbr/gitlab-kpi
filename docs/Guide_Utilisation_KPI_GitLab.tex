@@ -1,0 +1,81 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{geometry}
+\usepackage{tcolorbox}
+
+\geometry{margin=2.5cm}
+
+\title{Guide de Validation et de Test d'Extraction\\ \large - GitLab KPI Dashboard}
+\author{}
+\date{} % Supprime la date automatique
+
+\begin{document}
+
+\maketitle
+
+\begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black,title=Objectif du Document]
+Ce guide détaille les étapes séquentielles pour réaliser une extraction complète des données GitLab. Le respect de l'ordre des étapes est important pour garantir l'intégrité des indicateurs de performance.
+\end{tcolorbox}
+
+\section{Phase 1 : Initialisation du Système}
+
+\subsection{Étape 1 : Configuration de la Connexion GitLab}
+Avant toute opération, assurez-vous que le pont entre l'application et GitLab est actif :
+\begin{itemize}[label=\textbullet]
+    \item Menu : \textbf{Configuration GitLab}.
+    \item Action : Vérifiez que l'URL de base et le Token d'accès sont valides.
+\end{itemize}
+
+\subsection{Étape 2 : Définition des Périodes d'Analyse}
+\begin{itemize}[label=\textbullet]
+    \item Menu : \textbf{Gestion des Périodes} (dans la section administration sous configuration).
+    \item Action : Créez ou sélectionnez la période (Mois/Année) de test.
+\end{itemize}
+
+\section{Phase 2 : Importation et Cartographie}
+
+\subsection{Étape 3 : Importation Massive des Développeurs}
+\begin{enumerate}
+    \item Menu : \textbf{Import Développeurs}.
+    \item Fichier : Sélectionnez \texttt{real\_senior\_devs.csv}.
+    \item \textbf{Configuration Critique :}
+    \begin{itemize}[label=\textbf{!}]
+        \item Désactivez l'option \textbf{"Dry Run"}.
+        \item Cochez impérativement les trois options : \textit{Assign to Sites}, \textit{Assign to Groups}, \textit{Assign to Projects}.
+    \end{itemize}
+    \item Validation : Cliquez sur \textbf{Lancer l'import}.
+\end{enumerate}
+
+\subsection{Étape 4 : Vérification des Business Units}
+\begin{itemize}[label=\textbullet]
+    \item Menu : \textbf{Business Units}. Vérifiez la répartition des effectifs par site.
+\end{itemize}
+
+\section{Phase 3 : Cycle d'Extraction et Visualisation}
+
+\subsection{Étape 5 : Lancement du Moteur d'Extraction}
+\begin{itemize}[label=\textbullet]
+    \item Menu : \textbf{Moteur d'Extraction}. Lancez la collecte sur les projets cibles.
+\end{itemize}
+
+\subsection{Étape 6 : Monitoring et Visualisation}
+\begin{itemize}[label=\textbullet]
+    \item Menu : \textbf{Lots d'Extraction} pour le statut.
+    \item Menus : \textbf{Commit Hub} et \textbf{Merge Request Hub} pour visualiser les données brutes collectées.
+\end{itemize}
+
+\vspace{1cm}
+
+\begin{tcolorbox}[colback=orange!10!white,colframe=orange!75!black,title=⚠️ TRAVAIL EN COURS : MOTEUR KPI]
+\textbf{Note importante :} La partie concernant les indicateurs de performance avancés (Calculs des taux MR/Commits par dev, graphiques analytiques... selon fichier spec) est actuellement en cours de développement. Ces fonctionnalités seront activées et intégrées dans la version de livraison prochaine.
+\end{tcolorbox}
+
+\end{document}

@@ -1,19 +1,6 @@
 """
 repositories/merge_request_repository.py
 
-CORRECTIONS MAJEURES (modèles mis à jour) :
-─────────────────────────────────────────────
-1. Tous les filtres site via Developer.site_id remplacés par DeveloperSite (M2M).
-
-2. AJOUT filtre reviewer_id dans les requêtes pertinentes.
-
-3. AJOUT get_unmatched() : MRs sans developer_id (à matcher par l'admin).
-
-4. AJOUT get_by_reviewer() : MRs assignées à un relecteur.
-
-5. AJOUT count_by_developer_period() : KPI individuel par développeur.
-
-6. AJOUT sum_review_time_by_developer() : KPI #7 individuel par développeur.
 """
 from typing import List, Optional
 
@@ -37,28 +24,32 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         self,
         db:         Session,
         project_id: int,
+        lot_id:     Optional[int] = None,
         limit:      int = 50,
         offset:     int = 0,
-        lot_id:     Optional[int] = None,
     ) -> List[MergeRequest]:
         """
-        ✅ SENIOR : Récupération avec filtrage strict 'Human-Only'.
-        Exclut les bots, les développeurs inactifs et non-validés.
+        ✅ CORRECTION SENIOR : Récupération paginée avec support des participants (Auteur/Reviewer/Assigné).
         """
         query = (
             db.query(MergeRequest)
-            .options(joinedload(MergeRequest.developer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
+            .outerjoin(Developer, MergeRequest.developer_id == Developer.id)
+            .options(
+                joinedload(MergeRequest.developer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
                 joinedload(MergeRequest.reviewer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
                 joinedload(MergeRequest.assignee).joinedload(Developer.site_associations).joinedload(DeveloperSite.site)
-)
-            .join(Developer, MergeRequest.developer_id == Developer.id)
+            )
             .filter(
                 MergeRequest.project_id == project_id,
-                Developer.is_active == True,
-                Developer.is_validated == True,
-                Developer.is_bot == False
+                # Logique Senior : Inclure si l'auteur est externe OU s'il est humain-validé
+                (Developer.id == None) | (
+                    (Developer.is_active == True) &
+                    (Developer.is_validated == True) &
+                    (Developer.is_bot == False)
+                )
             )
         )
+
         if lot_id is not None:
             query = query.filter(MergeRequest.extraction_lot_id == lot_id)
 
@@ -79,24 +70,46 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         offset:     int = 0,
     ) -> List[MergeRequest]:
         """
-        ✅ SENIOR : Récupération fédérée par période avec filtrage 'Human-Only'.
+        ✅ CORRECTION SENIOR : Récupération par période avec support inclusif des participants.
         """
+        from app.models.developer import Developer
         from app.models.extraction_lot import ExtractionLot
+        from sqlalchemy.orm import aliased
+        from sqlalchemy import or_
+
+        Rev = aliased(Developer)
+        Ass = aliased(Developer)
+
+        def is_valid_human(dev_alias):
+            return (
+                (dev_alias.id.isnot(None)) &
+                (dev_alias.is_active.is_(True)) &
+                (dev_alias.is_validated.is_(True)) &
+                (dev_alias.is_bot.is_(False))
+            )
+
         query = (
             db.query(MergeRequest)
-            .options(joinedload(MergeRequest.developer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
-                joinedload(MergeRequest.reviewer).joinedload(Developer.site_associations).joinedload(DeveloperSite.site),
-                joinedload(MergeRequest.assignee).joinedload(Developer.site_associations).joinedload(DeveloperSite.site)
-)
-            .join(Developer, MergeRequest.developer_id == Developer.id)
+            .outerjoin(Developer, MergeRequest.developer_id == Developer.id)
+            .outerjoin(Rev,       MergeRequest.reviewer_id  == Rev.id)
+            .outerjoin(Ass,       MergeRequest.assignee_id  == Ass.id)
             .join(ExtractionLot, MergeRequest.extraction_lot_id == ExtractionLot.id)
+            .options(
+                joinedload(MergeRequest.developer),
+                joinedload(MergeRequest.reviewer),
+                joinedload(MergeRequest.assignee)
+            )
             .filter(
                 ExtractionLot.period_id == period_id,
-                Developer.is_active == True,
-                Developer.is_validated == True,
-                Developer.is_bot == False
+                or_(
+                    Developer.id.is_(None), # Auteur externe
+                    is_valid_human(Developer),
+                    is_valid_human(Rev),
+                    is_valid_human(Ass)
+                )
             )
         )
+
         
         if project_id is not None:
             query = query.filter(MergeRequest.project_id == project_id)
@@ -188,21 +201,32 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
 
     def _apply_site_filter(self, q, site_id: int):
         """
-        ✅ HELPER INTERNE : filtre via DeveloperSite (M2M).
-        Remplace le filtre Developer.site_id == site_id (FK directe supprimée).
+        ✅ CORRECTION SENIOR : Filtre inclusif (Auteur OU Reviewer OU Assigné).
+        L'activité est comptabilisée si l'UN des acteurs appartient au site.
         """
-        return (
-            q.join(Developer, MergeRequest.developer_id == Developer.id)
-            .join(
-                DeveloperSite,
-                (DeveloperSite.developer_id == Developer.id) &
-                (DeveloperSite.site_id      == site_id),
+        from sqlalchemy import or_, exists
+        from app.models.developer_site import DeveloperSite
+        
+        # Sous-requête pour vérifier l'appartenance d'un dev au site et sa validité
+        def dev_in_site_and_valid(dev_id_col):
+            return exists().where(
+                (Developer.id == dev_id_col) &
+                (Developer.is_validated.is_(True)) &
+                (Developer.is_bot.is_(False)) &
+                exists().where(
+                    (DeveloperSite.developer_id == Developer.id) &
+                    (DeveloperSite.site_id      == site_id)
+                )
             )
-            .filter(
-                Developer.is_validated.is_(True),
-                Developer.is_bot.is_(False),
+
+        return q.filter(
+            or_(
+                dev_in_site_and_valid(MergeRequest.developer_id),
+                dev_in_site_and_valid(MergeRequest.reviewer_id),
+                dev_in_site_and_valid(MergeRequest.assignee_id)
             )
         )
+
 
     def count_by_project_period(
         self,
@@ -237,12 +261,17 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         only_non_draft: bool = True,
     ) -> int:
         """
-        ✅ AJOUT : KPI individuel — MRs créées par un développeur sur une période.
+        ✅ CORRECTION SENIOR : KPI individuel — MRs où le dev est Auteur OU Reviewer.
+        Auparavant, on oubliait l'activité de relecture !
         """
+        from sqlalchemy import or_
         q = (
             db.query(func.count(MergeRequest.id))
             .filter(
-                MergeRequest.developer_id      == developer_id,
+                or_(
+                    MergeRequest.developer_id == developer_id,
+                    MergeRequest.reviewer_id  == developer_id
+                ),
                 MergeRequest.created_at_gitlab >= start_date,
                 MergeRequest.created_at_gitlab <  end_date,
             )
@@ -335,12 +364,13 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         end_date      = None,
     ) -> float:
         """
-        ✅ AJOUT : KPI #7 individuel — temps de review d'un développeur.
+        ✅ CORRECTION SENIOR : KPI #7 individuel — Temps passé par CE dev à relire les autres.
+        Auparavant, on calculait le temps que les autres passaient à le relire (developer_id).
         """
         q = (
             db.query(func.sum(MergeRequest.review_time_hours))
             .filter(
-                MergeRequest.developer_id         == developer_id,
+                MergeRequest.reviewer_id          == developer_id,  # C'est l'effort du reviewer qu'on mesure
                 MergeRequest.approved.is_(True),
                 MergeRequest.is_draft.is_(False),
                 MergeRequest.review_time_hours.isnot(None),

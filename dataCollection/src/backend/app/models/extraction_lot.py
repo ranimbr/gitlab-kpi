@@ -1,47 +1,14 @@
 """
 models/extraction_lot.py
 
-Lot d'extraction des données GitLab.
 
-Représente une session d'extraction pour un projet sur une période.
-Chaque extraction crée des Commit et MergeRequest associés à ce lot.
-
-CORRECTIONS :
-
-    1. RENOMMAGE CRITIQUE : `type` → `extraction_type`
-       Raison : `type` est un attribut réservé en Python (builtin) et utilisé
-       en interne par SQLAlchemy pour le polymorphisme (mapper inheritance).
-       Utiliser `type` comme nom de colonne crée des comportements silencieusement
-       incorrects dans certaines versions de SQLAlchemy (ex: le mapper écrase
-       la valeur, ou les queries de type polymorphique se comportent mal).
-       FIX : renommer en `extraction_type` — sans ambiguïté, plus explicite.
-
-       ⚠️  MIGRATION REQUISE :
-           ALTER TABLE extraction_lot RENAME COLUMN type TO extraction_type;
-           -- Mettre à jour l'enum si nécessaire selon le SGBD
-
-    2. AJOUT : Index sur completed_at
-       Pour les requêtes de monitoring : "lots terminés entre X et Y"
-       et pour le cleanup_service qui purge les vieux lots.
-
-    3. AJOUT : CheckConstraint — completed_at non NULL seulement si status=completed/failed
-       Règle métier : un lot pending ou running ne peut pas avoir de completed_at.
-
-Types d'extraction :
-    REALTIME  → extraction à la demande, période open autorisée
-    MONTHLY   → extraction de clôture mensuelle, génère le snapshot définitif
-
-Statuts :
-    pending   → en attente de traitement par le scheduler
-    running   → extraction en cours
-    completed → terminée avec succès, generated_file disponible
-    failed    → erreur, voir error_message
 """
 
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, Enum,
-    Index, DateTime, Text, CheckConstraint,
+    Index, DateTime, Text, CheckConstraint, text
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import enum
 
@@ -89,6 +56,13 @@ class ExtractionLot(Base):
     # ── [PHASE 2] Observabilité Granulaire ────────────────────────────────────
     step_progress  = Column(Integer,     default=0,  nullable=False)
     current_action = Column(String(255), nullable=True)
+    
+    # ── [PHASE 3] Métriques de Performance & Audit ─────────────────────────────
+    duration_ms      = Column(Integer,     default=0,    nullable=False)
+    items_count      = Column(Integer,     default=0,    nullable=False, comment="Somme Commits + MRs")
+    api_calls_count  = Column(Integer,     default=0,    nullable=False)
+    retry_count      = Column(Integer,     default=0,    nullable=False)
+    metadata_summary = Column(JSONB,       nullable=True, comment="JSON des détails techniques")
 
     period_id = Column(
         Integer,
@@ -180,3 +154,57 @@ class ExtractionLot(Base):
             name="chk_lot_failed_has_message",
         ),
     )
+
+
+# ── [ENTERPRISE READY] Automatic Items Count Sync ───────────────────────────
+from sqlalchemy import event, Text
+
+def refresh_lot_items_count(connection, lot_id):
+    """
+    Recalcule le items_count (Commits + MRs) de manière atomique en SQL.
+    Solution robuste évitant les race conditions et les décalages applicatifs.
+    """
+    if not lot_id:
+        return
+        
+    # On utilise du SQL pur pour une performance maximale et éviter de charger les objets
+    query = """
+        UPDATE extraction_lot 
+        SET items_count = (
+            SELECT 
+                (SELECT COUNT(*) FROM git_commit WHERE extraction_lot_id = :lot_id) +
+                (SELECT COUNT(*) FROM merge_request WHERE extraction_lot_id = :lot_id)
+        )
+        WHERE id = :lot_id
+    """
+    connection.execute(text(query), {"lot_id": lot_id})
+
+# On importe les modèles ici pour éviter les imports circulaires au démarrage
+from app.models.commit import Commit
+from app.models.merge_request import MergeRequest
+
+@event.listens_for(Commit, "after_insert")
+@event.listens_for(Commit, "after_update")
+@event.listens_for(Commit, "after_delete")
+@event.listens_for(MergeRequest, "after_insert")
+@event.listens_for(MergeRequest, "after_update")
+@event.listens_for(MergeRequest, "after_delete")
+def on_item_change(mapper, connection, target):
+    """Déclenché après chaque changement d'item rattaché à un lot."""
+    from sqlalchemy import inspect
+    
+    # 1. Rafraîchir le lot actuel
+    if target.extraction_lot_id:
+        refresh_lot_items_count(connection, target.extraction_lot_id)
+    
+    # 2. [SENIOR FIX] Gérer le changement de lot (cas du 'Reclaiming')
+    # Si c'est un update, on vérifie si l'ID du lot a changé pour rafraîchir l'ancien lot.
+    try:
+        hist = inspect(target).attrs.extraction_lot_id.history
+        if hist.has_changes() and hist.deleted:
+            old_lot_id = hist.deleted[0]
+            if old_lot_id:
+                refresh_lot_items_count(connection, old_lot_id)
+    except Exception:
+        # En cas d'insert ou delete simple, l'historique peut ne pas être accessible ainsi
+        pass

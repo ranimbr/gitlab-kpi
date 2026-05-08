@@ -1,20 +1,5 @@
 """
 models/base.py
- 
-Classe de base abstraite pour tous les modèles SQLAlchemy.
- 
-⚠️  POSTGRESQL ONLY : ce projet cible PostgreSQL exclusivement.
-    - ARRAY(Integer) dans AppUser
-    - DateTime(timezone=True) → TIMESTAMPTZ
-    - Index COALESCE dans KpiSnapshot
-    SQLite non supporté.
- 
-⚠️  LIMITATION onupdate :
-    SQLAlchemy `onupdate` ne se déclenche QUE via l'ORM (session.commit()).
-    Un UPDATE SQL direct (session.execute(text("UPDATE ..."))) ne met PAS
-    à jour `updated_at` automatiquement.
-    Solution recommandée en production : trigger PostgreSQL
-    → voir migrations/V001__add_updated_at_trigger.sql
 """
  
 import re

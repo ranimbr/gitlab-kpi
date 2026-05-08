@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+.env.docker
+.env*
+*.env*
 
 # ── Databases ──
 *.db
@@ -21,7 +24,9 @@ dist/
 dist-ssr/
 *.local
 
-# ── Project Specific ──
+# ── Maintenance & Temporary ──
+src/backend/dev_tools/
+scratch/
 src/backend/logs/
 src/backend/dumps/
 src/backend/alembic_error.txt
@@ -32,7 +37,6 @@ check_*.py
 scratch_*.py
 debug_*.py
 audit_*.py
-test_api_*.py
 verify_*.py
 nuke_*.py
 query_db_*.py
@@ -53,5 +57,3 @@ search_projects.py
 fetch_contributors_*.py
 reset_db_total.py
 update_project_path.py
-src/backend/=
-src/frontend/nul

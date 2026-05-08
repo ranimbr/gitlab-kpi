@@ -1,16 +1,8 @@
 """
 api/routers/export.py
-
-Export PDF et Excel des rapports KPI.
-
-Endpoints :
-    GET /export/kpis/excel  → fichier .xlsx téléchargeable
-    GET /export/kpis/pdf    → fichier .pdf téléchargeable
-
-Dépendances à installer :
-    pip install openpyxl reportlab
 """
 import io
+import json
 import logging
 from typing import Optional
 
@@ -22,6 +14,7 @@ from app.api.dependencies import get_current_user
 from app.database.session import get_db
 from app.models.app_user import AppUser
 from app.models.kpi_snapshot import KpiSnapshot
+from app.models.period import Period
 from app.repositories.kpi_snapshot_repository import KpiSnapshotRepository
 from app.repositories.period_repository import PeriodRepository
 from app.repositories.site_repository import SiteRepository
@@ -510,5 +503,84 @@ def export_kpis_pdf(
     return StreamingResponse(
         buf,
         media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ── JSON Export (Master Dump) ─────────────────────────────────────────────────
+
+@router.get(
+    "/kpis/json",
+    summary="Export JSON — Master Dump KPI par période",
+    response_description="Fichier .json téléchargeable",
+)
+def export_kpis_json(
+    period_id:  Optional[int] = Query(default=None, description="ID de la période (défaut: dernière)"),
+    db:         Session       = Depends(get_db),
+    _:          AppUser       = Depends(get_current_user),
+):
+    """
+    Génère un fichier JSON avec le Master Dump des KPIs.
+    """
+    if period_id is None:
+        period = db.query(Period).order_by(Period.created_at.desc()).first()
+        if not period:
+            raise HTTPException(status_code=404, detail="Aucune période trouvée.")
+        period_id = period.id
+    else:
+        period = period_repo.get_by_id(db, period_id)
+        if not period:
+            raise HTTPException(status_code=404, detail="Période introuvable.")
+            
+    # Récupérer TOUS les snapshots de niveau développeur pour cette période
+    snapshots = (
+        db.query(KpiSnapshot)
+        .filter(KpiSnapshot.period_id == period_id)
+        .filter(KpiSnapshot.developer_id.isnot(None))
+        .all()
+    )
+    
+    data = []
+    for snap in snapshots:
+        site_name = _get_site_name(db, snap.site_id)
+        dev = snap.developer
+        proj = snap.project
+        
+        data.append({
+            "developer": {
+                "id": dev.id if dev else None,
+                "name": dev.name if dev else "Inconnu",
+                "gitlab_username": dev.gitlab_username if dev else None,
+            },
+            "project": {
+                "id": proj.id if proj else None,
+                "name": proj.name if proj else "Inconnu",
+            },
+            "site": site_name,
+            "kpis": {
+                "total_commits": snap.nb_commits_per_project,
+                "total_merge_requests": snap.total_mrs_created,
+                "mr_rate_per_site": snap.mr_rate_per_site,
+                "approved_mr_rate": snap.approved_mr_rate,
+                "merged_mr_rate": snap.merged_mr_rate,
+                "commit_rate_per_site": snap.commit_rate_per_site,
+                "avg_review_time_hours": snap.avg_review_time_hours,
+                "developer_score": snap.developer_score
+            }
+        })
+        
+    result = {
+        "period": f"{MOIS_FR.get(period.month, '')} {period.year}",
+        "total_snapshots": len(data),
+        "data": data
+    }
+    
+    json_str = json.dumps(result, indent=2, ensure_ascii=False)
+    buf = io.BytesIO(json_str.encode("utf-8"))
+    
+    filename = f"master_dump_kpis_{period.year}_{period.month:02d}.json"
+    return StreamingResponse(
+        buf,
+        media_type="application/json",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

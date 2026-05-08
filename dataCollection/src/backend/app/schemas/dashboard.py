@@ -1,14 +1,12 @@
 """
 schemas/dashboard.py — CORRIGÉ
-- PeriodFilterTypeEnum importé depuis enums.py (source unique, fini la duplication)
-- PeriodFilterCreate/Response importés depuis period_filter.py (pas redéfinis ici)
-- DashboardCreate : validation period_filter custom
+
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
-# ✅ Import depuis period_filter.py — plus de duplication
+
 from app.schemas.period_filter import PeriodFilterCreate, PeriodFilterResponse
 
 

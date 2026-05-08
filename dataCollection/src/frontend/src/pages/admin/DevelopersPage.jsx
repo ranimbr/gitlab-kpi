@@ -25,6 +25,7 @@ import { Link } from "react-router-dom";
 import developerService from "../../services/developerService";
 import siteService      from "../../services/siteService";
 import projectService   from "../../services/projectService";
+import periodService    from "../../services/periodService";
 import LoadingSpinner   from "../../components/common/LoadingSpinner";
 import EmptyState       from "../../components/common/EmptyState";
 import Pagination       from "../../components/common/Pagination";
@@ -144,7 +145,6 @@ function Avatar({ dev, size = 40 }) {
 function ValidateModal({ dev, action, onClose, onConfirm }) {
   const isReject = action === "reject";
   const [loading, setLoading] = useState(false);
-  useEscapeKey(onClose, !loading);
   if (!dev) return null;
 
   const handleConfirm = async () => {
@@ -154,56 +154,42 @@ function ValidateModal({ dev, action, onClose, onConfirm }) {
   };
 
   return (
-    <div className="modal fade show d-block"
-      style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
-      onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
-          <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            <div className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${isReject ? "bg-danger-subtle" : "bg-success-subtle"}`}
-              style={{ width: 48, height: 48 }}>
-              <i className={`${isReject ? "ri-close-circle-line text-danger" : "ri-checkbox-circle-line text-success"} fs-22`}></i>
-            </div>
-            <div className="flex-grow-1">
-              <h5 className="fw-semibold mb-0 fs-15">{isReject ? "Rejeter ce développeur" : "Valider ce développeur"}</h5>
-              <p className="text-muted fs-12 mb-0">{devHandle(dev)}{dev.email ? ` · ${dev.email}` : ""}</p>
-            </div>
-            <button className="btn-close" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
-          </div>
-          <div className="px-4 py-4">
-            {isReject ? (
-              <div className="alert alert-danger d-flex gap-2 py-2 fs-13 mb-0">
-                <i className="ri-alert-line flex-shrink-0 mt-1"></i>
-                Ce développeur sera <strong>exclu</strong> des calculs KPI et des extractions.
-              </div>
-            ) : (
-              <div className="alert alert-success d-flex gap-2 py-2 fs-13 mb-0">
-                <i className="ri-checkbox-circle-line flex-shrink-0 mt-1 text-success"></i>
-                Ce développeur sera <strong>inclus</strong> dans les métriques KPI de l'équipe.
-              </div>
-            )}
-          </div>
-          <div className="d-flex justify-content-end gap-2 px-4 py-3"
-            style={{ borderTop: "1px solid #f0f2f5", background: "#fafbfc", borderRadius: "0 0 20px 20px" }}>
-            <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className={`btn btn-sm px-4 ${isReject ? "btn-danger" : "btn-success"}`}
-              onClick={handleConfirm} disabled={loading}>
-              {loading
-                ? <><span className="spinner-border spinner-border-sm me-2"></span>En cours…</>
-                : <><i className={`${isReject ? "ri-close-line" : "ri-check-line"} me-1`}></i>{isReject ? "Rejeter" : "Valider"}</>}
-            </button>
-          </div>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title={isReject ? "Rejeter ce développeur" : "Valider ce développeur"}
+      subtitle={`${devDisplayName(dev)} · ${devHandle(dev)}`}
+      icon={isReject ? "ri-close-circle-line" : "ri-checkbox-circle-line"}
+      iconBg={isReject ? "bg-danger-subtle" : "bg-success-subtle"}
+      iconColor={isReject ? "text-danger" : "text-success"}
+      loading={loading}
+      maxWidth={460}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className={`btn btn-sm px-4 fw-bold ${isReject ? "btn-danger" : "btn-success"}`} onClick={handleConfirm} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>En cours…</> : <><i className={`${isReject ? "ri-close-line" : "ri-check-line"} me-1`}></i>{isReject ? "Rejeter" : "Valider"}</>}
+          </button>
+        </>
+      }
+    >
+      <div className={`alert ${isReject ? "alert-danger" : "alert-success"} d-flex gap-2 py-3 fs-13 mb-0 border-0`}>
+        <i className={`${isReject ? "ri-alert-line" : "ri-information-line"} flex-shrink-0 mt-1`}></i>
+        <div>
+          {isReject ? (
+            <>Ce développeur sera <strong>exclu</strong> des calculs KPI et des extractions de données.</>
+          ) : (
+            <>Ce développeur sera <strong>inclus</strong> dans les métriques KPI et les rapports d'équipe.</>
+          )}
         </div>
       </div>
-    </div>
+    </AdminModal>
   );
 }
 
 // ── ValidateAllModal ──────────────────────────────────────────────────────────
 function ValidateAllModal({ count, onClose, onConfirm }) {
   const [loading, setLoading] = useState(false);
-  useEscapeKey(onClose, !loading);
-
   const handleConfirm = async () => {
     setLoading(true);
     try { await onConfirm(); }
@@ -211,54 +197,38 @@ function ValidateAllModal({ count, onClose, onConfirm }) {
   };
 
   return (
-    <div className="modal fade show d-block"
-      style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
-      onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
-          <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 bg-warning-subtle"
-              style={{ width: 48, height: 48 }}>
-              <i className="ri-check-double-fill fs-22 text-warning"></i>
-            </div>
-            <div className="flex-grow-1">
-              <h5 className="fw-semibold mb-0 fs-15">Valider tous les développeurs ?</h5>
-              <p className="text-muted fs-12 mb-0">Validation en masse</p>
-            </div>
-            <button className="btn-close" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
-          </div>
-          <div className="px-4 py-4">
-            <div className="alert alert-warning d-flex gap-2 py-3 fs-13 mb-0" style={{ border: "1px solid #fcd34d", borderRadius: 12 }}>
-              <i className="ri-information-line flex-shrink-0 mt-1 fs-5"></i>
-              <div>
-                Vous êtes sur le point de valider <strong>{count} développeur{count > 1 ? "s" : ""}</strong> en attente.
-                <br />
-                <span className="text-muted d-block mt-2">
-                  Ces développeurs seront automatiquement inclus dans toutes les statistiques de l'organisation. Les robots (bots) détectés seront ignorés.
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="d-flex justify-content-end gap-2 px-4 py-3"
-            style={{ borderTop: "1px solid #f0f2f5", background: "#fafbfc", borderRadius: "0 0 20px 20px" }}>
-            <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-sm btn-warning px-4 fw-medium"
-              onClick={handleConfirm} disabled={loading}>
-              {loading
-                ? <><span className="spinner-border spinner-border-sm me-2"></span>Validation en cours…</>
-                : <><i className="ri-check-double-line me-1"></i>Tout Valider ({count})</>}
-            </button>
-          </div>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Validation en masse"
+      subtitle={`Valider ${count} développeur${count > 1 ? "s" : ""} en attente`}
+      icon="ri-check-double-fill"
+      iconBg="bg-warning-subtle"
+      iconColor="text-warning"
+      loading={loading}
+      maxWidth={460}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className="btn btn-sm btn-warning px-4 fw-bold shadow-sm" onClick={handleConfirm} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Validation...</> : <><i className="ri-check-double-line me-1"></i>Tout Valider</>}
+          </button>
+        </>
+      }
+    >
+      <div className="alert alert-warning border-0 d-flex gap-3 p-3 mb-0 bg-warning-subtle">
+        <i className="ri-information-line fs-18 text-warning flex-shrink-0"></i>
+        <div className="fs-13 text-warning-emphasis">
+          Vous allez valider <strong>{count} profils</strong>. Ils seront inclus dans les statistiques globales. Les bots détectés seront automatiquement filtrés.
         </div>
       </div>
-    </div>
+    </AdminModal>
   );
 }
 
 // ── MergeModal ────────────────────────────────────────────────────────────────
 function MergeModal({ dev, canonicalDev, onClose, onConfirm }) {
   const [loading, setLoading] = useState(false);
-  useEscapeKey(onClose, !loading);
   if (!dev) return null;
 
   const handleConfirm = async () => {
@@ -268,49 +238,42 @@ function MergeModal({ dev, canonicalDev, onClose, onConfirm }) {
   };
 
   return (
-    <div className="modal fade show d-block"
-      style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
-      onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
-          <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            <div className="d-flex align-items-center justify-content-center rounded-circle bg-warning-subtle flex-shrink-0"
-              style={{ width: 48, height: 48 }}>
-              <i className="ri-file-copy-line text-warning fs-22"></i>
-            </div>
-            <div className="flex-grow-1">
-              <h5 className="fw-semibold mb-0 fs-15">Fusionner les développeurs</h5>
-              <p className="text-muted fs-12 mb-0">Transfert de l'historique et suppression du doublon</p>
-            </div>
-            <button className="btn-close" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
-          </div>
-          <div className="px-4 py-4">
-            <div className="alert alert-warning d-flex gap-2 py-3 fs-13 mb-3">
-              <i className="ri-alert-line flex-shrink-0 mt-1"></i>
-              <div>
-                <strong>{devDisplayName(dev)}</strong> ({devHandle(dev)}) sera
-                fusionné vers le profil :
-                <br />
-                <strong className="text-success">{devDisplayName(canonicalDev)} ({devHandle(canonicalDev)})</strong>
-              </div>
-            </div>
-            <p className="text-muted fs-12 mb-0">
-              <i className="ri-information-line me-1"></i>
-              Tous les commits, KPIs et Merge Requests seront transférés automatiquement avant la suppression du doublon.
-            </p>
-          </div>
-          <div className="d-flex justify-content-end gap-2 px-4 py-3"
-            style={{ borderTop: "1px solid #f0f2f5", background: "#fafbfc", borderRadius: "0 0 20px 20px" }}>
-            <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-sm px-4 text-white" style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none" }} onClick={handleConfirm} disabled={loading}>
-              {loading
-                ? <><span className="spinner-border spinner-border-sm me-2"></span>Fusion en cours…</>
-                : <><i className="ri-merge-cells-horizontal-line me-1"></i>Fusionner les historiques</>}
-            </button>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Fusionner les historiques"
+      subtitle="Transfert des données et suppression du doublon"
+      icon="ri-merge-cells-horizontal-line"
+      iconBg="bg-warning-subtle"
+      iconColor="text-warning"
+      loading={loading}
+      maxWidth={500}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className="btn btn-sm px-4 fw-bold text-white" style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none" }} onClick={handleConfirm} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Fusion...</> : <><i className="ri-merge-cells-horizontal-line me-1"></i>Confirmer la Fusion</>}
+          </button>
+        </>
+      }
+    >
+      <div className="alert alert-warning border-0 mb-3 bg-warning-subtle p-3">
+        <div className="d-flex align-items-center gap-2 mb-2">
+          <i className="ri-alert-fill text-warning fs-18"></i>
+          <span className="fw-bold fs-13 text-warning-emphasis">Action irréversible</span>
+        </div>
+        <div className="fs-12 text-warning-emphasis">
+          Le profil <strong>{devDisplayName(dev)}</strong> sera supprimé. Tous ses commits et KPIs seront rattachés au profil principal :
+          <div className="mt-2 p-2 rounded bg-white border border-warning-subtle fw-bold text-dark">
+            <i className="ri-user-star-line me-2 text-success"></i>{devDisplayName(canonicalDev)}
           </div>
         </div>
       </div>
-    </div>
+      <p className="text-muted fs-11 mb-0 px-1">
+        <i className="ri-information-line me-1 text-primary"></i>
+        Cette opération garantit l'intégrité de vos rapports annuels en évitant le comptage multiple d'un même individu.
+      </p>
+    </AdminModal>
   );
 }
 
@@ -327,7 +290,6 @@ function DevEditModal({ dev, sites, groups, onClose, onSave }) {
   });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
-  useEscapeKey(onClose, !loading);
 
   const handle = (e) => {
     const { name, value, type, checked } = e.target;
@@ -352,125 +314,90 @@ function DevEditModal({ dev, sites, groups, onClose, onSave }) {
       } else {
         payload.sites = [];
       }
-      if (dev?.id) {
-        await developerService.update(dev.id, payload);
-      } else {
-        await developerService.create(payload);
-      }
+      if (dev?.id) await developerService.update(dev.id, payload);
+      else         await developerService.create(payload);
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Erreur lors de la mise à jour.");
+      setError(err.response?.data?.detail || err.message || "Erreur lors de l'enregistrement.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="modal fade show d-block"
-      style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
-      onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
-          <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            {dev?.id ? (
-              <Avatar dev={dev} size={44} />
-            ) : (
-              <div className="d-flex align-items-center justify-content-center rounded-circle bg-primary-subtle flex-shrink-0" style={{ width: 44, height: 44 }}>
-                <i className="ri-user-add-line text-primary fs-20"></i>
-              </div>
-            )}
-            <div className="flex-grow-1">
-              <h5 className="fw-semibold mb-0 fs-15">{dev?.id ? "Modifier le développeur" : "Nouveau développeur"}</h5>
-              <p className="text-muted fs-12 mb-0">{dev?.id ? devHandle(dev) : "Création manuelle"}</p>
-            </div>
-            <button className="btn-close" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title={dev?.id ? "Modifier le développeur" : "Nouveau développeur"}
+      subtitle={dev?.id ? devHandle(dev) : "Création manuelle d'un profil"}
+      icon={dev?.id ? "ri-user-settings-line" : "ri-user-add-line"}
+      loading={loading}
+      maxWidth={540}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className="btn btn-sm btn-primary px-4 fw-bold shadow-sm" onClick={submit} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Enregistrement...</> : <><i className="ri-save-line me-1"></i>Enregistrer</>}
+          </button>
+        </>
+      }
+    >
+      {error && <div className="alert alert-danger py-2 fs-13 mb-3"><i className="ri-error-warning-line me-1"></i>{error}</div>}
+      
+      <div className="row g-3">
+        <div className="col-md-6">
+          <label className="form-label fw-medium fs-13">Nom complet <span className="text-danger">*</span></label>
+          <input type="text" name="name" className="form-control bg-light-subtle" value={form.name} onChange={handle} placeholder="Prénom Nom" autoFocus />
+        </div>
+        <div className="col-md-6">
+          <label className="form-label fw-medium fs-13">Username GitLab</label>
+          <div className="input-group">
+            <span className="input-group-text bg-light text-muted fs-13">@</span>
+            <input type="text" name="gitlab_username" className="form-control" value={form.gitlab_username} onChange={handle} placeholder="handle.gitlab" />
           </div>
-          <div className="px-4 py-4">
-            {error && (
-              <div className="alert alert-danger d-flex gap-2 py-2 fs-13 mb-3">
-                <i className="ri-error-warning-line flex-shrink-0"></i>{error}
+        </div>
+        <div className="col-md-12">
+          <label className="form-label fw-medium fs-13">Adresse Email</label>
+          <input type="email" name="email" className="form-control" value={form.email} onChange={handle} placeholder="dev@organisation.com" />
+        </div>
+        <div className="col-md-6">
+          <label className="form-label fw-medium fs-13">Site géographique</label>
+          <select name="primary_site_id" className="form-select" value={form.primary_site_id} onChange={handle}>
+            <option value="">— Aucun site —</option>
+            {sites.map(s => <option key={s.id} value={s.id}>{s.name}{s.country ? ` (${s.country})` : ""}</option>)}
+          </select>
+        </div>
+        <div className="col-md-6">
+          <label className="form-label fw-medium fs-13">Équipe / Groupe</label>
+          <select name="group_id" className="form-select" value={form.group_id} onChange={handle}>
+            <option value="">— Aucun groupe —</option>
+            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </div>
+        <div className="col-12 mt-4">
+          <div className={`p-3 rounded-3 border ${form.is_bot ? 'bg-warning-subtle border-warning' : 'bg-light'}`}>
+            <div className="d-flex align-items-center justify-content-between mb-2">
+              <div className="d-flex align-items-center gap-2">
+                <i className={`${form.is_bot ? 'ri-robot-line text-warning' : 'ri-user-heart-line text-primary'} fs-18`}></i>
+                <span className="fw-bold fs-13">{form.is_bot ? "COMPTE AUTOMATISÉ (BOT)" : "DÉVELOPPEUR PHYSIQUE"}</span>
               </div>
-            )}
-            <div className="row g-3">
-              <div className="col-md-6">
-                <label className="form-label fw-medium fs-13">Nom complet <span className="text-danger">*</span></label>
-                <input type="text" name="name" className="form-control" value={form.name}
-                  onChange={handle} placeholder="Prénom Nom" autoFocus />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-medium fs-13">GitLab username</label>
-                <div className="input-group">
-                  <span className="input-group-text text-muted fs-13">@</span>
-                  <input type="text" name="gitlab_username" className="form-control" value={form.gitlab_username}
-                    onChange={handle} placeholder="handle.gitlab" />
-                </div>
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-medium fs-13">Email</label>
-                <input type="email" name="email" className="form-control" value={form.email}
-                  onChange={handle} placeholder="dev@example.com" />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-medium fs-13">Site principal</label>
-                <select name="primary_site_id" className="form-select" value={form.primary_site_id} onChange={handle}>
-                  <option value="">— Aucun site —</option>
-                  {sites.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}{s.country ? ` (${s.country})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-12">
-                <label className="form-label fw-medium fs-13">Groupe / Équipe</label>
-                <select name="group_id" className="form-select" value={form.group_id} onChange={handle}>
-                  <option value="">— Aucun groupe —</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-12">
-                <div className="d-flex align-items-center justify-content-between rounded-3 p-3"
-                  style={{ background: form.is_bot ? "#fffbeb" : "#f8fafc", border: `1px solid ${form.is_bot ? "#fcd34d" : "#e9ecef"}` }}>
-                  <div>
-                    <div className={`fw-medium fs-13 ${form.is_bot ? "text-warning" : ""}`}>
-                      <i className={`${form.is_bot ? "ri-robot-line text-warning" : "ri-user-line text-muted"} me-1`}></i>
-                      {form.is_bot ? "Compte bot / CI" : "Compte développeur humain"}
-                    </div>
-                    <div className="text-muted fs-12">
-                      {form.is_bot ? "Exclu des calculs KPI" : "Inclus dans les métriques d'équipe"}
-                    </div>
-                  </div>
-                  <div className="form-check form-switch mb-0">
-                    <input type="checkbox" className="form-check-input" role="switch"
-                      name="is_bot" checked={form.is_bot} onChange={handle}
-                      style={{ width: "2.5em", height: "1.4em", cursor: "pointer" }} />
-                  </div>
-                </div>
-              </div>
-              <div className="col-12">
-                <div className="form-check">
-                  <input type="checkbox" className="form-check-input" id="is_external"
-                    name="is_external" checked={form.is_external} onChange={handle} />
-                  <label className="form-check-label fs-13" htmlFor="is_external">
-                    Prestataire externe{" "}
-                    <span className="text-muted fw-normal">(exclu de certains KPIs internes)</span>
-                  </label>
-                </div>
+              <div className="form-check form-switch mb-0">
+                <input type="checkbox" className="form-check-input" role="switch" name="is_bot" checked={form.is_bot} onChange={handle} style={{cursor:"pointer"}} />
               </div>
             </div>
+            <p className="mb-0 fs-11 text-muted">
+              {form.is_bot ? "Ce compte sera exclu des KPIs de performance et de vélocité de l'équipe." : "Ce compte sera pleinement intégré dans les calculs de productivité."}
+            </p>
           </div>
-          <div className="d-flex justify-content-end gap-2 px-4 py-3"
-            style={{ borderTop: "1px solid #f0f2f5", background: "#fafbfc", borderRadius: "0 0 20px 20px" }}>
-            <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-sm btn-primary px-4" onClick={submit} disabled={loading}>
-              {loading
-                ? <><span className="spinner-border spinner-border-sm me-2"></span>Enregistrement…</>
-                : <><i className="ri-save-line me-1"></i>Enregistrer</>}
-            </button>
+        </div>
+        <div className="col-12">
+          <div className="form-check form-check-inline ms-1">
+            <input type="checkbox" className="form-check-input" id="is_external" name="is_external" checked={form.is_external} onChange={handle} />
+            <label className="form-check-label fs-13 text-muted" htmlFor="is_external">Marquer comme prestataire externe (Freelance / Partner)</label>
           </div>
         </div>
       </div>
-    </div>
+    </AdminModal>
   );
 }
 
@@ -484,7 +411,6 @@ function GroupModal({ group, sites, onClose, onSave }) {
   });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
-  useEscapeKey(onClose, !loading);
 
   const submit = async () => {
     setError("");
@@ -507,127 +433,86 @@ function GroupModal({ group, sites, onClose, onSave }) {
   };
 
   return (
-    <div className="modal fade show d-block"
-      style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
-      onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-content border-0" style={{ borderRadius: 20, boxShadow: "0 32px 80px rgba(0,0,0,.22)" }}>
-          <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            <div className="d-flex align-items-center justify-content-center rounded-circle text-white flex-shrink-0"
-              style={{ width: 44, height: 44, background: "linear-gradient(135deg, #405189, #3577f1)" }}>
-              <i className={isEdit ? "ri-edit-line" : "ri-group-line"}></i>
-            </div>
-            <div>
-              <h5 className="fw-semibold mb-0 fs-15">{isEdit ? "Modifier le groupe" : "Nouveau groupe"}</h5>
-              <p className="text-muted fs-12 mb-0">Équipe rattachée à un site</p>
-            </div>
-            <button className="btn-close ms-auto" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
-          </div>
-          <div className="px-4 py-4">
-            {error && <div className="alert alert-danger py-2 fs-13 mb-3">{error}</div>}
-            <div className="row g-3">
-              <div className="col-12">
-                <label className="form-label fw-medium fs-13">Nom du groupe <span className="text-danger">*</span></label>
-                <input type="text" className="form-control" value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="ex: Backend Tunis, Frontend Lyon…" autoFocus />
-              </div>
-              <div className="col-12">
-                <label className="form-label fw-medium fs-13 mb-2">Sites associés</label>
-                <div className="d-flex flex-wrap gap-2">
-                  <div 
-                    onClick={() => setForm(f => ({ ...f, site_ids: [] }))}
-                    className={`badge border p-2 pe-3 cursor-pointer ${form.site_ids.length === 0 ? "bg-primary text-white border-primary" : "bg-light text-dark border-light"} d-flex align-items-center gap-1`}
-                    style={{ cursor: "pointer", fontSize: "12px", borderRadius: "8px", transition: "all 0.2s" }}
-                  >
-                    <i className={form.site_ids.length === 0 ? "ri-check-line" : "ri-global-line"}></i> Tous les sites (Transverse)
-                  </div>
-                  {sites.map(s => {
-                    const isSelected = form.site_ids.includes(s.id);
-                    return (
-                      <div
-                        key={s.id}
-                        onClick={() => {
-                          setForm(f => {
-                            const newIds = isSelected 
-                              ? f.site_ids.filter(id => id !== s.id) 
-                              : [...f.site_ids, s.id];
-                            return { ...f, site_ids: newIds };
-                          });
-                        }}
-                        className={`badge border p-2 pe-3 cursor-pointer ${isSelected ? "bg-primary border-primary text-white" : "bg-white text-dark"} d-flex align-items-center gap-1`}
-                        style={{ cursor: "pointer", fontSize: "12px", borderRadius: "8px", transition: "all 0.2s" }}
-                      >
-                        <i className={isSelected ? "ri-check-line" : "ri-map-pin-line"}></i> {s.name}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="form-text mt-2" style={{ fontSize: "11px" }}>
-                  Sélectionnez un ou plusieurs sites. Laissez sur "Tous les sites" pour une équipe transverse.
-                </div>
-              </div>
-              <div className="col-12">
-                <label className="form-label fw-medium fs-13">
-                  Description <span className="text-muted fw-normal">(optionnel)</span>
-                </label>
-                <input type="text" className="form-control" value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="ex: Équipe backend du site Tunis" />
-              </div>
-            </div>
-          </div>
-          <div className="d-flex justify-content-end gap-2 px-4 py-3"
-            style={{ borderTop: "1px solid #f0f2f5", background: "#fafbfc", borderRadius: "0 0 20px 20px" }}>
-            <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-sm btn-primary px-4" onClick={submit} disabled={loading}>
-              {loading ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
-              <i className="ri-save-line me-1"></i>{isEdit ? "Mettre à jour" : "Créer"}
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title={isEdit ? "Modifier le groupe" : "Nouveau groupe"}
+      subtitle="Gestion des équipes et rattachement géographique"
+      icon={isEdit ? "ri-edit-line" : "ri-group-line"}
+      loading={loading}
+      maxWidth={460}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className="btn btn-sm btn-primary px-4 fw-bold shadow-sm" onClick={submit} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Sauvegarde...</> : <><i className="ri-save-line me-1"></i>Enregistrer</>}
+          </button>
+        </>
+      }
+    >
+      {error && <div className="alert alert-danger py-2 fs-13 mb-3">{error}</div>}
+      <div className="row g-3">
+        <div className="col-12">
+          <label className="form-label fw-medium fs-13">Nom de l'équipe <span className="text-danger">*</span></label>
+          <input type="text" className="form-control bg-light-subtle" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="ex: Backend Tunis, Frontend Lyon…" autoFocus />
+        </div>
+        <div className="col-12 mt-3">
+          <label className="form-label fw-medium fs-13 mb-2">Sites de rattachement</label>
+          <div className="d-flex flex-wrap gap-2 p-2 rounded border bg-light-subtle">
+            <button type="button" onClick={() => setForm(f => ({ ...f, site_ids: [] }))} className={`btn btn-sm border-0 d-flex align-items-center gap-1 ${form.site_ids.length === 0 ? "bg-primary text-white" : "bg-white text-muted"}`} style={{borderRadius:"8px", fontSize:"11px"}}>
+              <i className={form.site_ids.length === 0 ? "ri-check-line" : "ri-global-line"}></i> Transverse
             </button>
+            {sites.map(s => {
+              const isSelected = form.site_ids.includes(s.id);
+              return (
+                <button key={s.id} type="button" onClick={() => {
+                  setForm(f => {
+                    const newIds = isSelected ? f.site_ids.filter(id => id !== s.id) : [...f.site_ids, s.id];
+                    return { ...f, site_ids: newIds };
+                  });
+                }} className={`btn btn-sm border-0 d-flex align-items-center gap-1 ${isSelected ? "bg-primary text-white" : "bg-white text-muted"}`} style={{borderRadius:"8px", fontSize:"11px"}}>
+                  <i className={isSelected ? "ri-check-line" : "ri-map-pin-line"}></i> {s.name}
+                </button>
+              );
+            })}
           </div>
         </div>
+        <div className="col-12">
+          <label className="form-label fw-medium fs-13">Description</label>
+          <textarea className="form-control" rows="2" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Missions ou périmètre de l'équipe..."></textarea>
+        </div>
       </div>
-    </div>
+    </AdminModal>
   );
 }
 
 // ── DeleteGroupModal ──────────────────────────────────────────────────────────
 function DeleteGroupModal({ group, loading, onClose, onConfirm }) {
-  useEscapeKey(onClose, !loading);
   return (
-    <div className="modal fade show d-block"
-      style={{ backgroundColor: "rgba(15,20,35,0.65)", backdropFilter: "blur(4px)", zIndex: 1055 }}
-      onClick={e => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-content border-0" style={{ borderRadius: 20 }}>
-          <div className="d-flex align-items-center gap-3 px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f0f2f5" }}>
-            <div className="d-flex align-items-center justify-content-center rounded-circle bg-danger-subtle flex-shrink-0"
-              style={{ width: 48, height: 48 }}>
-              <i className="ri-delete-bin-line text-danger fs-22"></i>
-            </div>
-            <div>
-              <h5 className="fw-semibold mb-0 fs-15">Supprimer ce groupe ?</h5>
-              <p className="text-muted fs-12 mb-0">{group.name}</p>
-            </div>
-            <button className="btn-close ms-auto" onClick={onClose} disabled={loading} style={{ opacity: .4 }}></button>
-          </div>
-          <div className="px-4 py-4">
-            <p className="text-muted fs-13 mb-0">
-              La suppression est <strong>irréversible</strong>. Les développeurs du groupe ne seront pas supprimés.
-            </p>
-          </div>
-          <div className="d-flex justify-content-end gap-2 px-4 py-3"
-            style={{ borderTop: "1px solid #f0f2f5", background: "#fafbfc", borderRadius: "0 0 20px 20px" }}>
-            <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-sm btn-danger px-4" onClick={onConfirm} disabled={loading}>
-              {loading
-                ? <><span className="spinner-border spinner-border-sm me-2"></span>Suppression…</>
-                : <><i className="ri-delete-bin-line me-1"></i>Supprimer</>}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Supprimer l'équipe"
+      subtitle={group.name}
+      icon="ri-delete-bin-line"
+      iconBg="bg-danger-subtle"
+      iconColor="text-danger"
+      loading={loading}
+      maxWidth={400}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className="btn btn-sm btn-danger px-4 fw-bold shadow-sm" onClick={onConfirm} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Suppression...</> : <><i className="ri-delete-bin-line me-1"></i>Confirmer la suppression</>}
+          </button>
+        </>
+      }
+    >
+      <p className="text-muted fs-13 mb-0 text-center py-2">
+        Êtes-vous sûr de vouloir supprimer l'équipe <strong>{group.name}</strong> ?<br/>
+        <span className="text-danger small mt-2 d-block fw-medium">Cette action est irréversible.</span>
+      </p>
+    </AdminModal>
   );
 }
 
@@ -826,6 +711,8 @@ export default function DevelopersPage() {
   const [siteFilter,     setSiteFilter]     = useState("all");
   // ── [NEW-PROJ-FILTER] Filtre projet ────────────────────────────────────────
   const [projectFilter,  setProjectFilter]  = useState("all");
+  const [periods,        setPeriods]        = useState([]);
+  const [periodFilter,   setPeriodFilter]   = useState("all");
   const [page,           setPage]           = useState(1);
   const perPage = 15;
 
@@ -848,22 +735,24 @@ export default function DevelopersPage() {
   const duplicateIds = useMemo(() => detectDuplicates(allDevelopers), [allDevelopers]);
 
   // ── Chargement ─────────────────────────────────────────────────────────────
-  const load = useCallback(async (projId) => {
+  const load = useCallback(async (projId, perId) => {
     setLoading(true);
     try {
       // [NEW-PROJ-FILTER] Si un projet est sélectionné → filtrer côté backend
       const selectedProjectId = projId !== undefined ? projId : (projectFilter !== "all" ? parseInt(projectFilter) : undefined);
+      const selectedPeriodId  = perId  !== undefined ? perId  : (periodFilter  !== "all" ? parseInt(periodFilter)  : undefined);
 
-      const [devsData, allDevsData, summaryData, groupsData, sitesData, projsData] = await Promise.all([
-        // Liste filtrée par projet (pour l'affichage)
-        developerService.getByTab("all", selectedProjectId),
-        // Liste GLOBALE pour la détection des doublons (toujours sans filtre projet)
+      const [devsData, allDevsData, summaryData, groupsData, sitesData, projsData, periodsData] = await Promise.all([
+        // Liste filtrée par projet/période (pour l'affichage)
+        developerService.getByTab("all", selectedProjectId, false, selectedPeriodId),
+        // Liste GLOBALE pour la détection des doublons (toujours sans filtre projet/période)
         developerService.getByTab("all"),
-        // Summary filtré par projet
-        developerService.getSummary(selectedProjectId),
+        // Summary filtré par projet/période
+        developerService.getSummary(selectedProjectId, null, false, selectedPeriodId),
         developerService.getGroups(),
         siteService.getAll(),
         projectService.getAll(),
+        periodService.getAll(),
       ]);
 
       setDevelopers  (Array.isArray(devsData)    ? devsData    : []);
@@ -872,22 +761,59 @@ export default function DevelopersPage() {
       setGroups      (Array.isArray(groupsData)   ? groupsData  : []);
       setSites       (Array.isArray(sitesData)    ? sitesData   : []);
       setProjects    (Array.isArray(projsData)    ? projsData   : []);
+      
+      const sortedPeriods = Array.isArray(periodsData) ? [...periodsData].sort((a,b) => b.id - a.id) : [];
+      setPeriods(sortedPeriods);
+
+      // Auto-sélection de la période si non encore faite
+      if (periodFilter === "all" && perId === undefined && sortedPeriods.length > 0) {
+        const current = sortedPeriods.find(p => p.status === "open") || sortedPeriods[0];
+        if (current) {
+          setPeriodFilter(String(current.id));
+        }
+      }
     } catch {
       showToast("Erreur lors du chargement des développeurs.", "danger");
     } finally {
       setLoading(false);
     }
-  }, [showToast, projectFilter]);
+  }, [showToast, projectFilter, periodFilter]);
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setPage(1); }, [search, siteFilter, activeTab, projectFilter]);
+  useEffect(() => {
+    // Premier chargement : on essaie de trouver la période par défaut d'abord
+    const init = async () => {
+      try {
+        const ps = await periodService.getAll();
+        const sorted = ps.sort((a,b) => b.id - a.id);
+        const current = sorted.find(p => p.status === "open") || sorted[0];
+        if (current) {
+          setPeriodFilter(String(current.id));
+          load(undefined, current.id);
+        } else {
+          load();
+        }
+      } catch {
+        load();
+      }
+    };
+    init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setPage(1); }, [search, siteFilter, activeTab, projectFilter, periodFilter]);
 
   // ── [NEW-PROJ-FILTER] Rechargement quand le projet change ─────────────────
   const handleProjectChange = useCallback((newProjectId) => {
     setProjectFilter(newProjectId);
     setPage(1);
     const pid = newProjectId !== "all" ? parseInt(newProjectId) : undefined;
-    load(pid);
+    load(pid, undefined);
+  }, [load]);
+
+  const handlePeriodChange = useCallback((newPeriodId) => {
+    setPeriodFilter(newPeriodId);
+    setPage(1);
+    const perId = newPeriodId !== "all" ? parseInt(newPeriodId) : undefined;
+    load(undefined, perId);
   }, [load]);
 
   // ── Filtrage local (search + site + tab) ──────────────────────────────────
@@ -1048,52 +974,26 @@ export default function DevelopersPage() {
       <div className="container-fluid">
         <Toast toast={toast} />
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className="row mb-4">
+        {/* Header */}
+        <div className="row mt-3">
           <div className="col-12">
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
-              <div>
-                <h4 className="mb-1 fw-semibold">
-                  <i className="ri-team-line me-2 text-primary"></i>Gestion Développeurs
-                </h4>
-                <p className="text-muted fs-13 mb-0">
-                  {/* [NEW-PROJ-FILTER] Afficher le projet filtré dans le sous-titre */}
-                  {selectedProject ? (
-                    <span>
-                      <span className="badge me-2" style={{ background: "#eff6ff", color: "#3577f1", border: "1px solid #bfdbfe" }}>
-                        <i className="ri-folder-2-line me-1"></i>{selectedProject.name}
-                      </span>
-                      {summary.total} développeur{summary.total !== 1 ? "s" : ""}
-                    </span>
-                  ) : (
-                    <span>{summary.total} développeurs</span>
-                  )}
-                  {" · "}
-                  {summary.pending > 0
-                    ? <span className="text-warning fw-medium">{summary.pending} en attente</span>
-                    : <span className="text-success">Tous validés</span>}
-                  {duplicateIds.size > 0 && (
-                    <> · <span className="text-danger fw-medium">{duplicateIds.size} doublon{duplicateIds.size > 1 ? "s" : ""}</span></>
-                  )}
-                </p>
-              </div>
-              <div className="d-flex gap-2 align-items-center">
-                <ol className="breadcrumb m-0 me-3">
-                  <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
-                  <li className="breadcrumb-item">Administration</li>
-                  <li className="breadcrumb-item active">Développeurs</li>
-                </ol>
-                <button className="btn btn-sm btn-primary" onClick={() => setEditDev({})}>
-                  <i className="ri-user-add-line me-1"></i>Nouveau développeur
+              <h4 className="mb-sm-0">
+                <i className="ri-team-line me-2 text-primary"></i>Gestion des Développeurs
+              </h4>
+              <div className="d-flex gap-2">
+                <button className="btn btn-white border shadow-sm fs-13 fw-bold px-4" onClick={() => navigate("/admin/developers/import")}>
+                  <i className="ri-upload-cloud-2-line me-1"></i> Importer
                 </button>
-                <Link to="/admin/developers/import" className="btn btn-sm btn-soft-info">
-                  <i className="ri-upload-2-line me-1"></i>Importation CSV
-                </Link>
-                <button className="btn btn-sm btn-outline-primary" onClick={() => setEditGroup({})}>
-                  <i className="ri-group-line me-1"></i>Nouveau groupe
+                <button className="btn btn-primary shadow-sm fs-13 fw-bold px-4" onClick={() => setModalDev({})}>
+                  <i className="ri-add-line me-1"></i> Nouveau Développeur
                 </button>
               </div>
             </div>
+            <ol className="breadcrumb m-0 mb-4">
+              <li className="breadcrumb-item fs-11 fw-bold text-uppercase ls-1 text-muted">Administration</li>
+              <li className="breadcrumb-item active fs-11 fw-bold text-uppercase ls-1" aria-current="page">Développeurs</li>
+            </ol>
           </div>
         </div>
 
@@ -1244,6 +1144,26 @@ export default function DevelopersPage() {
                     ))}
                   </select>
 
+                  {/* [SENIOR v5] Filtre Période (Mission Scoping) */}
+                  <select
+                    className="form-select form-select-sm"
+                    style={{
+                      width: "auto", minWidth: 160,
+                      borderColor: periodFilter !== "all" ? "#0ab39c" : undefined,
+                      boxShadow:   periodFilter !== "all" ? "0 0 0 2px rgba(10,179,156,.15)" : undefined,
+                      fontWeight:  "bold"
+                    }}
+                    value={periodFilter}
+                    onChange={e => handlePeriodChange(e.target.value)}
+                  >
+                    <option value="all">Historique Global</option>
+                    {periods.map(p => (
+                      <option key={p.id} value={String(p.id)}>
+                        {p.label || `${p.year} / ${String(p.month).padStart(2, '0')}`} {p.status === "open" ? " (Ouverte)" : " (Clôturée)"}
+                      </option>
+                    ))}
+                  </select>
+
                   {/* Filtre site */}
                   <select className="form-select form-select-sm" style={{ width: "auto", minWidth: 140 }}
                     value={siteFilter} onChange={e => setSiteFilter(e.target.value)}>
@@ -1378,7 +1298,7 @@ export default function DevelopersPage() {
                   <ul className="list-group list-group-flush">
                     {groups.map(group => {
                       const site        = sites.find(s => s.id === group.site_id);
-                      const memberCount = allDevelopers.filter(d => (d.group_ids || []).includes(group.id)).length;
+                      const memberCount = developers.filter(d => (d.group_ids || []).includes(group.id)).length;
                       return (
                         <li key={group.id} className="list-group-item px-3 py-3">
                           <div className="d-flex align-items-start gap-2">

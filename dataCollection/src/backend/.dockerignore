@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 logs/
 dumps/
+dev_tools/
+scratch/
+venv/
+*.db
+*.log

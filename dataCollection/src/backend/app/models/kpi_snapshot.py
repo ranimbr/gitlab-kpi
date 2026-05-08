@@ -1,22 +1,6 @@
 """
 models/kpi_snapshot.py
 
-CORRECTIONS APPLIQUÉES :
-──────────────────────────────────────────────────────────────────
-1. delta_nb_commits : type changé de Float → Integer.
-   nb_commits_per_project est Integer → son delta doit l'être aussi.
-   Incohérence détectée entre le modèle (Float) et le calcul dans
-   kpi_aggregator.py (opération entière sans float()).
-
-2. Aucune autre modification — modèle était déjà correct.
-   developer_score, score_rank_in_site, mr_rate_per_ticket conservés.
-   CheckConstraints et DDL UNIQUE COALESCE conservés.
-
-NIVEAUX D'AGRÉGATION (via les FKs nullables) :
-    site_id=X, group_id=NULL, developer_id=NULL → snapshot par site
-    site_id=X, group_id=Y,    developer_id=NULL → snapshot par groupe
-    site_id=X, group_id=Y,    developer_id=Z    → snapshot individuel (dev)
-    site_id=NULL, ...                           → snapshot projet global
 """
 
 from sqlalchemy import (

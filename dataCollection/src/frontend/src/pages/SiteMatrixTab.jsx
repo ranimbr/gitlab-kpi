@@ -7,31 +7,50 @@ export default function SiteMatrixTab({ projects, activeProject, setActiveProjec
   const [loading, setLoading] = useState(true);
   const [multiPeriodData, setMultiPeriodData] = useState([]);
   const [compareData, setCompareData] = useState([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
   const [error, setError] = useState(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forcedPeriodId = null) => {
     // Si aucun projet n'est sélectionné, on prend le premier
-    const pId = activeProject?.id || (projects.length > 0 ? projects[0].id : null);
-    if (!pId) {
-      setLoading(false);
-      return;
-    }
-
+    const pId = activeProject?.id || (projects.length > 0 ? projects[0].id : 0);
+    
     setLoading(true);
     setError(null);
     try {
-      const [tableData, compare] = await Promise.all([
-        analyticsService.getMultiPeriod(pId, { months: 4 }).catch(() => []),
-        analyticsService.compareSites(pId).catch(() => [])
-      ]);
+      // 1. D'abord on récupère la liste des périodes disponibles
+      const tableData = await analyticsService.getMultiPeriod(pId, { months: 6 }).catch(() => []);
       setMultiPeriodData(Array.isArray(tableData) ? tableData : []);
-      setCompareData(Array.isArray(compare) ? compare : []);
-    } catch (e) {
+      
+      // 2. On détermine quelle période afficher
+      // On utilise dans l'ordre : la période forcée, la période déjà sélectionnée, ou la dernière période (index 0)
+      const periodIdToUse = forcedPeriodId || selectedPeriodId || (tableData.length > 0 ? tableData[0].period_id : null);
+      
+      if (periodIdToUse) {
+        if (!selectedPeriodId) setSelectedPeriodId(periodIdToUse);
+        const compare = await analyticsService.compareSites(pId, periodIdToUse, 'total_commits').catch(() => []);
+        setCompareData(Array.isArray(compare) ? compare : []);
+      }
+    } catch {
       setError("Impossible de charger les analyses inter-sites.");
     } finally {
       setLoading(false);
     }
-  }, [activeProject, projects]);
+  }, [activeProject, projects, selectedPeriodId]);
+
+  // Si on change manuellement la période
+  const handlePeriodChange = async (periodId) => {
+    const pId = activeProject?.id || 0;
+    setSelectedPeriodId(periodId);
+    setLoading(true);
+    try {
+      const compare = await analyticsService.compareSites(pId, periodId, 'total_commits');
+      setCompareData(Array.isArray(compare) ? compare : []);
+    } catch {
+      setError("Erreur lors du changement de période.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -64,7 +83,7 @@ export default function SiteMatrixTab({ projects, activeProject, setActiveProjec
   // Options pour le Chart Bar (Commits vs MRs par Site)
   const barChartOptions = useMemo(() => {
     const sites = compareData.map(s => s.site_name || "Inconnu");
-    const commits = compareData.map(s => s.nb_commits_per_project || 0);
+    const commits = compareData.map(s => s.total_commits || 0);
 
     return {
       series: [{ name: "Total Commits (Mois sélectionné)", data: commits.length ? commits : [0] }],
@@ -102,7 +121,6 @@ export default function SiteMatrixTab({ projects, activeProject, setActiveProjec
   }
 
   // Dernière période pour la matrice d'écart
-  const latestPeriod = multiPeriodData[0];
   const previousPeriod = multiPeriodData[1];
 
   return (
@@ -124,6 +142,24 @@ export default function SiteMatrixTab({ projects, activeProject, setActiveProjec
             <option value="">Vision Globale (Tous les projets)</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+
+          {/* ── Filtre de Période (Mois) ── */}
+          <div className="d-flex align-items-center gap-2 ms-2">
+            <div className="avatar-xs bg-info bg-opacity-10 text-info rounded-3 d-flex align-items-center justify-content-center">
+              <i className="ri-calendar-event-line fs-14"></i>
+            </div>
+            <span className="fw-semibold text-muted text-uppercase fs-12" style={{ letterSpacing: "0.5px" }}>Période</span>
+          </div>
+          <select 
+            className="form-select border-light bg-light w-auto custom-shadow-sm"
+            value={selectedPeriodId || ""}
+            onChange={e => handlePeriodChange(parseInt(e.target.value))}
+          >
+            {multiPeriodData.map(p => (
+              <option key={p.period_id} value={p.period_id}>{p.period_label}</option>
+            ))}
+          </select>
+
           <span className="ms-auto fs-12 text-muted fw-semibold">
             {compareData.length} sites opérationnels analysés
           </span>
@@ -200,11 +236,10 @@ export default function SiteMatrixTab({ projects, activeProject, setActiveProjec
                 </thead>
                 <tbody>
                   {compareData.map((site) => {
-                    const sLatest = latestPeriod?.snapshots?.find(s => s.site_id === site.site_id) || site;
                     const sPrev = previousPeriod?.snapshots?.find(s => s.site_id === site.site_id);
                     
-                    const score = Math.round((site.approved_mr_rate || 0) * 80 + (site.nb_commits_per_project > 0 ? 20 : 0));
-                    const prevScore = Math.round((sPrev?.approved_mr_rate || 0) * 80 + (sPrev?.nb_commits_per_project > 0 ? 20 : 0));
+                    const score = Math.round((site.approved_mr_rate || 0) * 80 + (site.total_commits > 0 ? 20 : 0));
+                    const prevScore = Math.round((sPrev?.approved_mr_rate || 0) * 80 + (sPrev?.total_commits > 0 ? 20 : 0));
                     const scoreDelta = sPrev ? score - prevScore : 0;
 
                     return (
@@ -239,7 +274,7 @@ export default function SiteMatrixTab({ projects, activeProject, setActiveProjec
                           {site.avg_review_time_hours != null ? site.avg_review_time_hours.toFixed(1) : "—"} h
                         </td>
                         <td className="text-center fw-bold text-info fs-13">
-                          {site.nb_commits_per_project || 0}
+                          {site.total_commits || 0}
                         </td>
                         {multiPeriodData.slice(0, 3).map((m, i) => {
                            const snap = m.snapshots?.find(s => s.site_id === site.site_id);

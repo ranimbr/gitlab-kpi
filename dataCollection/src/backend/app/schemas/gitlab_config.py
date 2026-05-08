@@ -1,8 +1,6 @@
 """
-schemas/gitlab_config.py — CORRIGÉ
-- Ajout site_id dans Create/Update/Response (FK ajouté au modèle)
-- Validation domain : HTTPS obligatoire
-- Token JAMAIS retourné dans la Response (sécurité)
+schemas/gitlab_config.py
+
 """
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
@@ -39,7 +37,7 @@ class GitLabConfigUpdate(BaseModel):
     token:       Optional[str]  = Field(default=None, min_length=10)
     is_active:   Optional[bool] = None
     description: Optional[str]  = Field(default=None, max_length=500)
-    site_id:     Optional[int]  = None  # ✅ AJOUT
+    site_id:     Optional[int]  = None  #  AJOUT
 
     @field_validator("domain")
     @classmethod
@@ -58,9 +56,9 @@ class GitLabConfigResponse(BaseModel):
     domain:         str
     is_active:      bool
     description:    Optional[str] = None
-    site_id:        Optional[int] = None   # ✅ AJOUT
+    site_id:        Optional[int] = None   #  AJOUT
     created_at:     datetime
     projects_count: int = 0
-    # ⚠️ SÉCURITÉ : token intentionnellement ABSENT de la réponse
+    #  SÉCURITÉ : token intentionnellement ABSENT de la réponse
 
     model_config = {"from_attributes": True}

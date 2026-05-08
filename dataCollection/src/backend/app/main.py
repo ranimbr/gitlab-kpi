@@ -1,23 +1,4 @@
-"""
-main.py — Point d'entrée FastAPI
-
-CORRECTIONS :
-
-    1. FIX — setup_logging() appelé sans debug= → toujours INFO même si DEBUG=True
-       ✅ FIX : setup_logging(debug=settings.DEBUG, log_file=settings.LOG_FILE)
-
-    2. FIX — import SessionLocal dupliqué dans lifespan :
-       importé 2 fois dans deux blocs try séparés → import redondant.
-       ✅ FIX : import unique en dehors des blocs try, réutilisé partout.
-
-    3. FIX — seed admin : getattr(settings, "ADMIN_EMAIL") → AttributeError silencieux.
-       ✅ FIX : ADMIN_EMAIL et ADMIN_PASSWORD déclarés dans Settings avec default=None
-       → accès direct settings.ADMIN_EMAIL (pas de getattr nécessaire).
-
-    4. FIX — seed_kpi_definitions() : la version originale avait une double boucle
-       qui ne créait jamais rien (voir seed_data.py pour les détails).
-       ✅ FIX appliqué dans seed_data.py — rien à changer ici.
-"""
+"""FastAPI application entrypoint."""
 import logging
 from contextlib import asynccontextmanager
 
@@ -32,7 +13,6 @@ from app.schemas.kpi import SimpleMessageResponse
 
 settings = get_settings()
 
-# ✅ FIX : debug= et log_file= passés correctement
 setup_logging(debug=settings.DEBUG, log_file=settings.LOG_FILE)
 logger = logging.getLogger(__name__)
 
@@ -58,13 +38,10 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database tables initialized")
 
-    # ✅ FIX : import unique de SessionLocal — réutilisé dans les 2 seeds
     from app.database.session import SessionLocal
     from app.core.seed_data import seed_kpi_definitions, seed_admin_user
 
-    # 2. Seed des KpiDefinitions — CRITIQUE
-    #    kpi_definition_id est NOT NULL dans KpiThreshold.
-    #    Sans ce seed, create_threshold() plante à la première utilisation.
+    # 2. Seed KPI definitions required by threshold configuration.
     try:
         with SessionLocal() as db:
             nb_created = seed_kpi_definitions(db)
@@ -72,10 +49,9 @@ async def lifespan(app: FastAPI):
                 logger.info(f"KpiDefinitions seeded — {nb_created} created")
     except Exception as e:
         logger.error(f"KpiDefinitions seed failed: {e}", exc_info=True)
-        # Non bloquant — l'app démarre, mais KpiThreshold creation plantera
+        # Non-blocking: app can start without seed data.
 
-    # 3. Seed admin optionnel (ADMIN_EMAIL + ADMIN_PASSWORD dans .env)
-    # ✅ FIX : accès direct settings.ADMIN_EMAIL (déclaré dans Settings)
+    # 3. Optional admin seed (ADMIN_EMAIL + ADMIN_PASSWORD in env).
     if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD:
         try:
             with SessionLocal() as db:
@@ -83,7 +59,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Admin user seed failed: {e}", exc_info=True)
 
-    # 4. Démarrer le scheduler mensuel
+    # 4. Start monthly scheduler when enabled.
     if settings.SCHEDULER_ENABLED:
         try:
             from app.services.scheduler.scheduler import create_scheduler
@@ -95,7 +71,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"Scheduler failed to start: {e}", exc_info=True)
 
     logger.info(
-        f"✅ Application ready — "
+        f"Application ready — "
         f"debug={settings.DEBUG} "
         f"scheduler={settings.SCHEDULER_ENABLED}"
     )
@@ -130,14 +106,14 @@ app = FastAPI(
     strict_slashes = False,
 )
 
-# ── CORS (SECURE ORIGIN-BASED POLICY) ─────────────────────────────────────────
+# ── CORS (TOLERANT POLICY FOR PFE DEFENSE) ─────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    # Senior Resilience : autorise localhost/127.0.0.1 sur n'importe quel port de dev
-    allow_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?", 
+    allow_origin_regex = ".*",    # Autorise TOUT (même via IP) sans crasher avec credentials
     allow_credentials  = True,
     allow_methods      = ["*"],
     allow_headers      = ["*"],
+    expose_headers     = ["*"],
 )
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -153,25 +129,9 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    """
-    [SENIOR] Health check profond — utilisé par Docker / Kubernetes / monitoring.
-
-    Vérifie :
-      ✅ Application démarrée
-      ✅ Connectivité base de données (SELECT 1)
-      ✅ Version de l'application
-
-    Répond toujours 200 si l'app est fonctionnelle.
-    Répond 503 si la base de données est inaccessible.
-
-    Utilisé par :
-      - Docker HEALTHCHECK (CMD curl -f http://localhost:8000/health)
-      - Kubernetes liveness probe
-      - Monitoring (Uptime Robot, Grafana, ...)
-    """
+    """Health check used by orchestrators and monitoring systems."""
     import time
     from datetime import datetime
-    from fastapi import Response
     from sqlalchemy import text
 
     t_start = time.monotonic()

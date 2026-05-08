@@ -9,6 +9,7 @@ export default function DeveloperImportModal({ onClose, onSuccess }) {
     createMissingSites: false,
     createMissingProjects: false,
     createMissingGroups: true,
+    fullSync: true, // [SENIOR] Default to true for Strict Mission logic
   });
   
   const fileInputRef = useRef(null);
@@ -169,6 +170,25 @@ export default function DeveloperImportModal({ onClose, onSuccess }) {
             <label className="form-check-label fs-13 fw-medium" htmlFor="createMissingProjects">
               Créer les Projets Inconnus
             </label>
+          </div>
+
+          <div className="alert alert-info mt-4 mb-0 border-0 shadow-none" style={{ background: 'rgba(67,97,238,0.08)' }}>
+             <div className="form-check form-switch form-switch-md" dir="ltr">
+                <input 
+                  type="checkbox" 
+                  className="form-check-input" 
+                  id="fullSync" 
+                  checked={options.fullSync}
+                  onChange={(e) => setOptions({...options, fullSync: e.target.checked})}
+                />
+                <label className="form-check-label fs-13 fw-bold text-primary" htmlFor="fullSync">
+                  Mode "Full Sync" (Réconciliation RH)
+                </label>
+             </div>
+             <p className="mb-0 fs-11 text-muted mt-2">
+                <i className="ri-information-line me-1"></i>
+                <strong>Important :</strong> Si activé, tous les développeurs absents de ce fichier seront automatiquement marqués comme <strong>PARTIS</strong> (Inactifs).
+             </p>
           </div>
         </div>
 

@@ -1,14 +1,9 @@
 """
 repositories/audit_log_repository.py
 
-CORRECTION : nom de fichier corrigé (audit_log_repositories.py → audit_log_repository.py).
-L'ancien nom cassait l'import dans __init__.py silencieusement.
-
-Le journal d'audit est en lecture seule côté API publique.
-Les entrées sont créées exclusivement par audit_service.py.
 """
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 from datetime import datetime
 
@@ -81,6 +76,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         """Dernières entrées d'audit — page AuditLogPage admin."""
         return (
             db.query(AuditLog)
+            .options(joinedload(AuditLog.user))
             .order_by(AuditLog.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -100,7 +96,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         offset:         int = 0,
     ) -> List[AuditLog]:
         """Recherche multi-critères avec pagination — pour GET /audit-logs/."""
-        q = db.query(AuditLog)
+        q = db.query(AuditLog).options(joinedload(AuditLog.user))
 
         if user_id is not None:
             q = q.filter(AuditLog.user_id == user_id)
@@ -153,6 +149,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         entity_id:   Optional[int] = None,
         old_value:   Optional[dict] = None,
         new_value:   Optional[dict] = None,
+        entity_name: Optional[str]  = None,
         ip_address:  Optional[str]  = None,
     ) -> AuditLog:
         """
@@ -167,6 +164,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             entity_id   = entity_id,
             old_value   = old_value,
             new_value   = new_value,
+            entity_name = entity_name,
             ip_address  = ip_address,
         )
         db.add(entry)

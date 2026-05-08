@@ -1,4 +1,4 @@
-"""schemas/period.py — inchangé fonctionnellement."""
+"""schemas/period.py """
 from pydantic import BaseModel, model_validator, computed_field
 from typing import Optional
 from datetime import datetime

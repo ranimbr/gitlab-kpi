@@ -1,18 +1,7 @@
 """
 schemas/kpi_threshold.py
 
-CORRECTIONS (remarques encadrant + modèles mis à jour) :
-──────────────────────────────────────────────────────────
-1. AJOUT de site_id dans KpiThresholdCreate/Update/Response :
-   Un seuil peut être configuré par site (nouveau champ dans le modèle).
-   NULL = seuil global applicable à tous les sites.
-   Exemple : site Tunis → avg_review_time warning=48h
-             site Paris → avg_review_time warning=36h
 
-2. FIX conservés :
-   - threshold_type au lieu de type (réservé Python/SQLAlchemy)
-   - kpi_definition_id obligatoire (NOT NULL en DB)
-   - Validation warning/critical selon le sens du KPI
 """
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Literal

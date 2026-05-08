@@ -1,19 +1,6 @@
 """
 schemas/period_filter.py
 
-CORRECTIONS :
-
-    1. FIX — PeriodFilterCreate : validation trop stricte sur les types dynamiques.
-       AVANT : raise ValueError si date_from/date_to fournis pour un type non-custom
-               → bloque des cas légitimes (frontend qui envoie null explicitement,
-                  ou dates résiduelles lors d'un changement de type)
-       ✅ FIX : pour les types dynamiques, les dates sont simplement ignorées
-               (set à None) plutôt que de déclencher une erreur.
-               L'erreur reste pour le cas custom sans dates.
-
-    2. PeriodFilterTypeEnum importé depuis enums.py (source unique).
-
-    3. is_dynamic auto-calculé si non fourni (inchangé, logique correcte).
 """
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional

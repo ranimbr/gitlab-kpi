@@ -1,11 +1,6 @@
 """
 repositories/kpi_definition_repository.py
 
-CORRECTION : nom de fichier corrigé (kpi_defintion → kpi_definition).
-L'ancien nom cassait l'import dans __init__.py silencieusement.
-
-KpiDefinition est le catalogue des KPIs — généralement en lecture seule
-après le seed initial. Les admins peuvent en ajouter/modifier via l'API admin.
 """
 
 from sqlalchemy.orm import Session

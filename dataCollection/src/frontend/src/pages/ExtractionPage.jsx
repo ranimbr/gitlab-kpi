@@ -266,7 +266,8 @@ export default function ExtractionPage() {
   const [selectedDeveloperIds, setSelectedDeveloperIds] = useState([]); // ← CHANGÉ : Multi-sélection
   const [selectedPeriod,    setSelectedPeriod]    = useState("");
   const [extractionType,  setExtractionType]   = useState("REALTIME");
-  const [isBackfill,      setIsBackfill]       = useState(false);   // ← NOUVEAU
+  const [isBackfill,      setIsBackfill]       = useState(false);
+  const [isSmartSync,     setIsSmartSync]      = useState(false);   // ✅ AJOUT SENIOR
 
   const [loading,         setLoading]          = useState(false);
   const [loadingDevs,     setLoadingDevs]       = useState(false);
@@ -294,15 +295,12 @@ export default function ExtractionPage() {
   useEffect(()=>{
     const fetchInitial = async () => {
       try {
-        const [configsRes, periodsRes, projRes] = await Promise.all([
+        const [configsRes, periodsRes] = await Promise.all([
           api.get("/gitlab-configs"),
           api.get("/periods"),
-          api.get("/projects")
         ]);
         setGitlabConfigs(Array.isArray(configsRes.data) ? configsRes.data : []);
-        const allP = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
-        setAllProjects(allP);
-
+        
         const all  = Array.isArray(periodsRes.data) ? periodsRes.data : [];
         const open = all.filter(p => p.status === "open");
         setPeriods(open);
@@ -313,6 +311,27 @@ export default function ExtractionPage() {
     };
     fetchInitial();
   },[]);
+
+  // ✅ SENIOR FIX : Re-charger les projets quand la période change pour mettre à jour les badges (dev_count)
+  useEffect(() => {
+    const fetchProjectsWithPeriod = async () => {
+      setLoadingProjects(true);
+      try {
+        const res = await api.get("/projects", { 
+          params: { 
+            period_id: selectedPeriod || undefined 
+          } 
+        });
+        const data = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
+        setAllProjects(data);
+      } catch (err) {
+        console.error("Failed to fetch projects with period filter", err);
+      } finally {
+        setLoadingProjects(false);
+      }
+    };
+    fetchProjectsWithPeriod();
+  }, [selectedPeriod]);
 
   // Pré-sélection depuis URL
   useEffect(()=>{
@@ -336,18 +355,28 @@ export default function ExtractionPage() {
     const fetch = async () => {
       setLoadingDevs(true);
       try {
-        const res = await api.get("/developers", {params:{project_id:selectedProject}});
+        const res = await api.get("/developers", {params:{
+          project_id:selectedProject,
+          period_id: selectedPeriod || undefined // ✅ AJOUT SENIOR : Cohort Awareness
+        }});
         setDevelopers(Array.isArray(res.data) ? res.data : (res.data?.items ?? []));
       } catch { setDevelopers([]); }
       finally  { setLoadingDevs(false); }
     };
     fetch();
-  },[selectedProject]);
+  },[selectedProject, selectedPeriod]);
 
   // Reset période quand le mode backfill change
   useEffect(()=>{
     setSelectedPeriod("");
   },[isBackfill]);
+
+  // Smart-Sync reset
+  useEffect(() => {
+    if (isSmartSync) {
+      setSelectedDeveloperIds([]);
+    }
+  }, [isSmartSync]);
 
   // Chrono
   useEffect(()=>{
@@ -410,6 +439,7 @@ export default function ExtractionPage() {
         extraction_type: extractionType,
         ...(selectedPeriod && { period_id: Number(selectedPeriod) }),
         is_backfill:     isBackfill,
+        auto_target_by_period: isSmartSync,
       };
 
       if (isBackfill) {
@@ -494,7 +524,13 @@ export default function ExtractionPage() {
       </div>
 
       {activeTab === "team" ? (
-          <ExtractionByTeamTab gitlabConfigs={gitlabConfigs} periods={allPeriods} projects={allProjects} />
+          <ExtractionByTeamTab 
+            gitlabConfigs={gitlabConfigs} 
+            periods={allPeriods} 
+            projects={allProjects} 
+            selectedPeriod={selectedPeriod} 
+            isSmartSync={isSmartSync}
+          />
       ) : (
       <>
       {/* Stats rapides */}
@@ -543,6 +579,11 @@ export default function ExtractionPage() {
                 <span className={`badge ${extractionType==="MONTHLY"?"bg-warning-subtle text-warning":"bg-primary-subtle text-primary"} fs-12`}>
                   <i className={`${extractionType==="MONTHLY"?"ri-calendar-2-line":"ri-play-circle-line"} me-1`}></i>{extractionType}
                 </span>
+                {isSmartSync && (
+                  <span className="badge bg-success-subtle text-success fs-12 d-flex align-items-center gap-1">
+                    <i className="ri-shield-check-line"></i>SMART-SYNC ACTIVE
+                  </span>
+                )}
                 {(selectedConfig||result||error) && !loading && (
                   <button className="btn btn-soft-secondary btn-sm" onClick={resetForm}>
                     <i className="ri-refresh-line me-1"></i>Reset
@@ -590,14 +631,38 @@ export default function ExtractionPage() {
                 {/* 2bis. Développeurs technique (Multi-sélection) */}
                 <div className="col-12 mt-3">
                   <label className="form-label fw-medium d-flex justify-content-between align-items-center">
-                    <span><i className="ri-user-star-line me-1 text-muted"></i>Effectif Ciblé (Membres des Business Units)</span>
-                    <div className="d-flex gap-2">
-                       <button className="btn btn-link py-0 fs-11" onClick={() => setSelectedDeveloperIds(developers.map(d => String(d.id)))}>Tout cocher</button>
-                       <button className="btn btn-link py-0 fs-11 text-danger" onClick={() => setSelectedDeveloperIds([])}>Vider</button>
+                    <span className={isSmartSync ? "text-success fw-bold" : ""}>
+                      <i className={`ri-user-star-line me-1 ${isSmartSync ? "text-success" : "text-muted"}`}></i>
+                      Effectif Ciblé {isSmartSync ? "(Ciblage RH Intelligent)" : "(Membres des Business Units)"}
+                    </span>
+                    
+                    <div className="d-flex align-items-center gap-3">
+                       {/* ✅ AJOUT SENIOR : Toggle Smart-Sync */}
+                       <div className="form-check form-switch mb-0 bg-success-subtle px-2 py-1 rounded-2 d-flex align-items-center gap-2 border border-success border-opacity-10">
+                         <label className="form-check-label fs-11 text-success fw-semibold mb-0" htmlFor="smart-sync-toggle" style={{cursor:"pointer"}}>
+                            Mode Smart-Sync
+                         </label>
+                         <input
+                           className="form-check-input ms-0"
+                           type="checkbox"
+                           id="smart-sync-toggle"
+                           checked={isSmartSync}
+                           onChange={e => setIsSmartSync(e.target.checked)}
+                           style={{cursor:"pointer"}}
+                         />
+                       </div>
+
+                       {!isSmartSync && (
+                         <div className="d-flex gap-2 border-start ps-3">
+                            <button className="btn btn-link py-0 fs-11 p-0" onClick={() => setSelectedDeveloperIds(developers.filter(d => d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED").map(d => String(d.id)))}>Tout cocher</button>
+                            <button className="btn btn-link py-0 fs-11 p-0 text-danger" onClick={() => setSelectedDeveloperIds([])}>Vider</button>
+                         </div>
+                       )}
                     </div>
                   </label>
                   
-                  <div className="border rounded-3 p-3 bg-light-subtle" style={{maxHeight: "200px", overflowY: "auto"}}>
+                  <div className={`border rounded-3 p-3 transition-all ${isSmartSync ? "bg-success-subtle bg-opacity-10 border-success border-opacity-25" : "bg-light-subtle"}`} 
+                       style={{maxHeight: "200px", overflowY: "auto", opacity: isSmartSync ? 0.8 : 1, filter: isSmartSync ? "grayscale(0.5)" : "none"}}>
                     {loadingDevs ? (
                       <div className="text-center py-2 text-muted fs-12"><span className="spinner-border spinner-border-sm me-2"></span>Chargement des membres...</div>
                     ) : developers.length === 0 ? (
@@ -612,6 +677,7 @@ export default function ExtractionPage() {
                                 type="checkbox" 
                                 id={`dev-${dev.id}`}
                                 checked={selectedDeveloperIds.includes(String(dev.id))}
+                                disabled={isSmartSync || dev.rh_status === "FUTURE_JOINER" || dev.rh_status === "OFFBOARDED"}
                                 onChange={e => {
                                   const id = String(dev.id);
                                   setSelectedDeveloperIds(prev => 
@@ -619,15 +685,35 @@ export default function ExtractionPage() {
                                   );
                                 }}
                               />
-                              <label className={`form-check-label p-2 rounded-2 border h-100 d-flex align-items-center gap-2 ${selectedDeveloperIds.includes(String(dev.id)) ? "border-primary bg-primary-subtle bg-opacity-10" : "bg-white"}`} htmlFor={`dev-${dev.id}`} style={{cursor: "pointer"}}>
+                              <label className={`form-check-label p-2 rounded-2 border h-100 d-flex align-items-center gap-2 ${selectedDeveloperIds.includes(String(dev.id)) ? "border-primary bg-primary-subtle bg-opacity-10" : "bg-white"} ${(dev.rh_status === "FUTURE_JOINER" || dev.rh_status === "OFFBOARDED") ? "opacity-50 grayscale" : ""}`} 
+                                     htmlFor={`dev-${dev.id}`} 
+                                     style={{cursor: (dev.rh_status === "FUTURE_JOINER" || dev.rh_status === "OFFBOARDED" || isSmartSync) ? "not-allowed" : "pointer"}}>
                                 <div className={`avatar-xs rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 ${selectedDeveloperIds.includes(String(dev.id)) ? "bg-primary text-white" : "bg-light text-muted"}`} style={{width: 24, height: 24, fontSize: 10}}>
                                   {getInitials(dev.name || dev.gitlab_username)}
                                 </div>
-                                <div className="text-truncate">
-                                  <div className={`fs-12 fw-medium ${selectedDeveloperIds.includes(String(dev.id)) ? "text-primary" : "text-dark"}`}>{dev.name || dev.gitlab_username}</div>
-                                  <div className="text-muted fs-10">@{dev.gitlab_username}</div>
+                                <div className="text-truncate flex-grow-1">
+                                  <div className="d-flex align-items-center justify-content-between gap-1">
+                                    <div className={`fs-12 fw-medium text-truncate ${selectedDeveloperIds.includes(String(dev.id)) ? "text-primary" : "text-dark"}`}>{dev.name || dev.gitlab_username}</div>
+                                    
+                                    {/* ✅ BADGES RH SENIOR */}
+                                    {dev.rh_status === "ACTIVE" && <i className="ri-checkbox-circle-line text-success fs-12" title="Effectif Actif"></i>}
+                                    {dev.rh_status === "ONBOARDING" && <i className="ri-seedling-line text-info fs-12" title="Nouveau (Onboarding)"></i>}
+                                    {dev.rh_status === "FUTURE_JOINER" && <i className="ri-time-line text-muted fs-12" title="Futur arrivant"></i>}
+                                    {dev.rh_status === "OFFBOARDED" && <i className="ri-door-open-line text-danger fs-12" title="Départ / Inactif"></i>}
+                                  </div>
+                                  <div className="d-flex align-items-center justify-content-between">
+                                    <div className="text-muted fs-10 text-truncate">@{dev.gitlab_username}</div>
+                                    <span className={`badge fs-8 p-1 ${
+                                      dev.rh_status === "ACTIVE" ? "bg-success-subtle text-success" :
+                                      dev.rh_status === "ONBOARDING" ? "bg-info-subtle text-info" :
+                                      dev.rh_status === "FUTURE_JOINER" ? "bg-light text-muted" : "bg-danger-subtle text-danger"
+                                    }`}>
+                                      {dev.rh_status === "ACTIVE" ? "ACTIVE" :
+                                       dev.rh_status === "FUTURE_JOINER" ? "FUTUR" :
+                                       dev.rh_status === "OFFBOARDED" ? "INACTIF" : "NEW"}
+                                    </span>
+                                  </div>
                                 </div>
-
                               </label>
                             </div>
                           </div>
@@ -635,11 +721,13 @@ export default function ExtractionPage() {
                       </div>
                     )}
                   </div>
-                  <div className="text-muted fs-11 mt-2">
-                    <i className="ri-information-line me-1"></i>
-                    {selectedDeveloperIds.length > 0 
-                      ? `Extraction limitée à ${selectedDeveloperIds.length} développeur(s).` 
-                      : "Si aucun n'est sélectionné, l'extraction portera sur TOUS les membres du projet."}
+                  <div className={`fs-11 mt-2 ${isSmartSync ? "text-success fw-medium" : "text-muted"}`}>
+                    <i className={`ri-information-line me-1 ${isSmartSync ? "text-success" : ""}`}></i>
+                    {isSmartSync 
+                      ? "Le système calculera automatiquement la liste des développeurs actifs pour la période choisie (onboarding/offboarding)." 
+                      : (selectedDeveloperIds.length > 0 
+                        ? `Extraction limitée à ${selectedDeveloperIds.length} développeur(s).` 
+                        : "Si aucun n'est sélectionné, l'extraction portera sur TOUS les membres du projet.")}
                   </div>
                 </div>
 
@@ -752,6 +840,8 @@ export default function ExtractionPage() {
                 >
                   {loading ? (
                     <><span className="spinner-border spinner-border-sm me-2"></span>{formatTime(elapsed)}</>
+                  ) : isSmartSync ? (
+                    <><i className="ri-shield-check-line me-2"></i>Run Smart Extraction</>
                   ) : isBackfill ? (
                     <><i className="ri-history-line me-2"></i>Run Backfill</>
                   ) : (

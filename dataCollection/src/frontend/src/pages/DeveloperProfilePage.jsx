@@ -24,6 +24,20 @@ const MOIS_FR = { 0:"Jan",1:"Fév",2:"Mar",3:"Avr",4:"Mai",5:"Jun",6:"Jul",7:"Ao
 const COLORS  = ["primary", "success", "info", "warning", "danger", "secondary"];
 
 function getInitials(name = "") { return (name || "?").split(/[\s._-]/).map(w => w[0]).join("").toUpperCase().slice(0, 2); }
+function getBadges(summary) {
+  if (!summary) return [];
+  const badges = [];
+  if (summary.total_comments > 100) badges.push({ label: "Menteur", icon: "ri-chat-smile-2-line", color: "primary" });
+  else if (summary.total_comments > 20) badges.push({ label: "Collaborateur", icon: "ri-chat-4-line", color: "info" });
+  
+  if (summary.total_reviews > 50) badges.push({ label: "Lead Reviewer", icon: "ri-eye-line", color: "success" });
+  else if (summary.total_reviews > 10) badges.push({ label: "Code Reviewer", icon: "ri-search-line", color: "info" });
+  
+  if (summary.total_mrs_created > 50) badges.push({ label: "Producteur MR", icon: "ri-git-pull-request-line", color: "warning" });
+  
+  if ((summary.developer_score || 0) > 0.8) badges.push({ label: "Top Performer", icon: "ri-medal-fill", color: "danger" });
+  return badges;
+}
 
 function deltaInfo(curr, prev) {
   if (curr == null || prev == null || prev === 0) return null;
@@ -166,95 +180,160 @@ function KpiCard({ title, value, unit, icon, color, delta }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function DeveloperProfilePage() {
-  const { id }                    = useParams();
-  const [searchParams]            = useSearchParams();
-  const projectId                 = searchParams.get("project_id");
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectId = searchParams.get("project_id");
+  const lotIdParam = searchParams.get("lot_id");
 
   const [developer,  setDeveloper]  = useState(null);
   const [snapshot,   setSnapshot]   = useState(null);
   const [summary,    setSummary]    = useState(null);
   const [prevSnap,   setPrevSnap]   = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [heatmap,    setHeatmap]    = useState([]);
   const [heatmapMeta, setHeatmapMeta] = useState(null);
+  const [timeline,   setTimeline]   = useState([]);
   const [alerts,     setAlerts]     = useState([]);
   const [projects,   setProjects]   = useState([]);
-  const [selectedPid, setSelectedPid] = useState(projectId || "");
-  const [selectedPeriodId, setSelectedPeriodId] = useState("");
+  const [selectedPid, setSelectedPid] = useState(projectId || localStorage.getItem("last_project_id") || "");
+  const [selectedPeriodId, setSelectedPeriodId] = useState(searchParams.get("period_id") || "");
+  const [selectedLotId, setSelectedLotId] = useState(lotIdParam || "");
   const [periods, setPeriods] = useState([]);
 
   const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState(null);
   const [loadingHeatmap, setLoadingHeatmap] = useState(false);
   const [exportingPdf,   setExportingPdf]   = useState(false);
   const [heatmapMonths,  setHeatmapMonths]  = useState(12);
 
+  // [SENIOR] Sync all filters to URL & LocalStorage
+  useEffect(() => {
+    const params = {};
+    if (selectedPid) {
+      params.project_id = selectedPid;
+      localStorage.setItem("last_project_id", selectedPid);
+    }
+    if (selectedPeriodId) {
+      params.period_id = selectedPeriodId;
+    }
+    if (selectedLotId) {
+      params.lot_id = selectedLotId;
+    }
+    const currentParams = Object.fromEntries(searchParams.entries());
+    if (JSON.stringify(currentParams) !== JSON.stringify(params)) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [selectedPid, selectedPeriodId, selectedLotId, setSearchParams]);
+
   useEffect(() => {
     projectService.getAll().then(data => {
-      setProjects(Array.isArray(data) ? data : []);
-      if (!selectedPid && data?.length) setSelectedPid(String(data[0].id));
+      const list = Array.isArray(data) ? data : [];
+      setProjects(list);
+      // Ne pas forcer selectedPid ici, laisser le useEffect de sync s'en charger ou garder la valeur initiale
     });
-  }, [selectedPid]);
+  }, []);
+
+  // [SENIOR] Scroll to hash on load
+  useEffect(() => {
+    if (window.location.hash === "#timeline" && !loading) {
+      setTimeout(() => {
+        const el = document.getElementById("timeline-section");
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 500);
+    }
+  }, [loading]);
 
   const loadData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setError(null);
     try {
-      const [devData, alertData, heatData] = await Promise.all([
-        developerService.getById(id),
-        developerService.getDeveloperAlerts(id),
-        developerService.getHeatmap(id, heatmapMonths)
-      ]);
+      // 1. Fetch Core Developer Data
+      const devData = await developerService.getById(id);
+      if (!devData) throw new Error("Développeur introuvable");
       setDeveloper(devData);
+
+      // 2. Fetch Secondary Data (Non-blocking)
+      const [alertData, heatData, timelineData] = await Promise.all([
+        developerService.getDeveloperAlerts(id).catch(() => []),
+        developerService.getHeatmap(id, heatmapMonths).catch(() => null),
+        developerService.getTimeline(id).catch(() => [])
+      ]);
+      
       setAlerts(Array.isArray(alertData) ? alertData : []);
       setHeatmap(heatData?.activity || []);
       setHeatmapMeta(heatData || null);
+      setTimeline(timelineData || []);
 
-      if (selectedPid && selectedPid !== "all") {
-        // Charger l'historique pour avoir la liste des périodes
-        const hist = await analyticsService.getHistory(parseInt(selectedPid), { developerId: parseInt(id) }).catch(() => null);
+      // 3. Project-specific or Global KPIs
+      const p_id = (selectedPid === "all" || !selectedPid) ? null : parseInt(selectedPid);
+
+      if (p_id) {
+        // Mode Projet Spécifique
+        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id) }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
         
-        // Extraire les périodes uniques de l'historique
         const availablePeriods = snaps.map(s => ({
           id: s.period_id,
           label: new Date(s.snapshot_date).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
         })).reverse();
         setPeriods(availablePeriods);
 
-        // Si aucune période n'est sélectionnée, prendre la dernière
         const targetPeriodId = selectedPeriodId || (availablePeriods.length > 0 ? availablePeriods[0].id : null);
         if (targetPeriodId && !selectedPeriodId) setSelectedPeriodId(targetPeriodId);
 
-        // Charger le snapshot spécifique ou le dernier
         let snap = null;
-        if (targetPeriodId) {
+        if (targetPeriodId && !selectedLotId) {
           snap = snaps.find(s => s.period_id === parseInt(targetPeriodId));
         } else {
-          snap = await analyticsService.getLatest(parseInt(selectedPid), { developerId: parseInt(id) }).catch(() => null);
+          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId }).catch(() => null);
         }
         setSnapshot(snap);
 
-        // Résumé global (All-time)
-        const summ = await analyticsService.getDeveloperSummary(parseInt(selectedPid), parseInt(id)).catch(() => null);
+        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId }).catch(() => null);
         setSummary(summ);
         
-        // Calcul du snapshot précédent pour les deltas
         const currentIndex = snaps.findIndex(s => s.period_id === parseInt(targetPeriodId));
         setPrevSnap(currentIndex > 0 ? snaps[currentIndex - 1] : null);
-      } else if (selectedPid === "all") {
-        // ✅ [SENIOR FIX] Properly aggregate summary across ALL projects
-        const summ = await analyticsService.getDeveloperSummary(null, parseInt(id)).catch(() => null);
+      } else {
+        // Mode Global (All Projects)
+        const summ = await analyticsService.getDeveloperSummary(selectedPid, parseInt(id), { lotId: selectedLotId }).catch(() => null);
         setSummary(summ);
         
-        // Take latest snapshot across all projects
-        const snap = await analyticsService.getLatest("all", { developerId: parseInt(id) }).catch(() => null);
+        const snap = await analyticsService.getLatest("all", { 
+          developerId: parseInt(id), 
+          lotId: selectedLotId,
+          periodId: selectedPeriodId ? parseInt(selectedPeriodId) : null
+        }).catch(() => null);
         setSnapshot(snap);
         
         setPeriods([]);
         setPrevSnap(null);
       }
-    } catch { /* err */ } 
-    finally { setLoading(false); }
-  }, [id, selectedPid, selectedPeriodId, heatmapMonths]);
+    } catch (err) {
+      console.error("Profile Load Error:", err);
+      setError(err.message || "Erreur lors du chargement du profil");
+    } finally {
+      setLoading(false);
+      // 4. Load History Trend (Independent)
+      setLoadingHistory(true);
+      try {
+        const trendProjId = selectedPid === 'all' ? 'all' : selectedPid;
+        const histData = await analyticsService.getTrend(trendProjId, { 
+          developerId: parseInt(id), 
+          kpiField: 'developer_score', 
+          months: 12 
+        });
+        setHistory(histData.datasets?.[0]?.data || []);
+      } catch (e) {
+        console.error("History Load Error:", e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    }
+  }, [id, selectedPid, selectedPeriodId, heatmapMonths, selectedLotId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -284,18 +363,43 @@ export default function DeveloperProfilePage() {
       delta: snapshot ? { value: `${snapshot.total_mrs_created ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
     },
     { 
+      title: "Total Commits", 
+      value: summary?.total_commits ?? 0, 
+      icon: "ri-code-line", 
+      color: "warning", 
+      delta: snapshot ? { value: `${snapshot.total_commits ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
+    },
+    { 
       title: "Score Global",   
       value: summary ? fmt((summary.developer_score || 0) * 100, 0) : "—", 
       unit: summary ? " pts" : "", 
       icon: "ri-medal-line", 
-      color: "warning", 
-      delta: deltaInfo(snapshot?.developer_score, prevSnap?.developer_score)
+      color: "danger",
+      delta: snapshot ? deltaInfo(snapshot.developer_score, prevSnap?.developer_score) : null
     }
   ];
+
+  if (loading || !developer) return <LoadingSpinner message="Chargement du profil..." />;
 
   return (
     <div className="page-content">
       <div className="container-fluid">
+        {/* ── Bandeau de contexte Lot */}
+        {selectedLotId && (
+          <div className="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-center gap-3 py-2 px-4" 
+            style={{ borderRadius: 12, background: "linear-gradient(90deg, #eff6ff, #f0fdf4)", borderLeft: "4px solid #3b82f6 !important" }}>
+            <i className="ri-stack-line fs-20 text-primary"></i>
+            <div className="flex-grow-1">
+              <span className="fw-bold text-primary me-2">Mode Exploration : Session #{selectedLotId}</span>
+              <span className="text-muted fs-12">| Profil restreint au périmètre de cette session d'extraction.</span>
+              <span className="badge bg-primary-subtle text-primary ms-2 fs-11">Isolation Totale</span>
+            </div>
+            <Link to="/extraction-lots" className="btn btn-sm btn-soft-primary d-flex align-items-center gap-1">
+              <i className="ri-arrow-left-line"></i> Retour aux lots
+            </Link>
+          </div>
+        )}
+
         {/* Header pattern */}
         <div className="row">
           <div className="col-12">
@@ -328,9 +432,12 @@ export default function DeveloperProfilePage() {
                     <div className="d-flex align-items-center gap-3 mb-2">
                        <h3 className="fw-bold mb-0 text-dark">{developer.name || developer.gitlab_username}</h3>
                        {developer.is_validated ? <span className="badge bg-success-subtle text-success fs-11">VALIDÉ</span> : <span className="badge bg-warning-subtle text-warning fs-11">EN ATTENTE</span>}
-                       {snapshot && (snapshot.total_comments >= 5 || snapshot.total_reviews >= 2) && (
-                         <span className="badge bg-info text-white fs-11 shadow-sm"><i className="ri-medal-fill me-1"></i>SENIOR EXPERT</span>
-                       )}
+                       {getBadges(summary).map((b, i) => (
+                         <span key={i} className={`badge bg-${b.color}-subtle text-${b.color} fs-11 shadow-sm d-flex align-items-center gap-1`}>
+                           <i className={b.icon}></i>{b.label}
+                         </span>
+                       ))}
+                       {!developer.is_active && <span className="badge bg-danger-subtle text-danger fs-11">DÉPART LE {fmtDate(developer.offboarding_date)}</span>}
                     </div>
                     <div className="d-flex flex-wrap gap-4 text-muted fs-13">
                        <span><i className="ri-at-line me-1 text-primary"></i>@{developer.gitlab_username}</span>
@@ -348,11 +455,11 @@ export default function DeveloperProfilePage() {
                   </div>
                   <div className="col-xl-auto">
                     <div className="d-flex flex-wrap justify-content-xl-end gap-2 mb-3">
-                       <Link to={`/commits?developer_id=${id}&project_id=${selectedPid || 'all'}`} 
+                       <Link to={`/commits?developer_id=${id}&project_id=${selectedPid || 'all'}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
                           className="btn btn-soft-primary d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
                           <i className="ri-history-line"></i> Commits
                        </Link>
-                       <Link to={`/merge?developer_id=${id}&project_id=${selectedPid || 'all'}`} 
+                       <Link to={`/merge?developer_id=${id}&project_id=${selectedPid || 'all'}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
                           className="btn btn-soft-info d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
                           <i className="ri-git-merge-line"></i> MRs
                        </Link>
@@ -390,25 +497,46 @@ export default function DeveloperProfilePage() {
           {kpis.map((k, i) => <KpiCard key={i} {...k} />)}
         </div>
 
-        {!summary && (
-          <div className="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center">
-            <i className="ri-information-line fs-20 me-2"></i>
-            <div>
-              <strong>Données partielles :</strong> Aucune statistique agrégée n'est disponible pour ce projet/période. 
-              <Link to="/extraction" className="alert-link ms-2">Lancer une extraction</Link>
+        {/* Phase 5: Monthly Evolution Chart (SENIOR Strategic View) */}
+        <div className="row mb-4">
+          <div className="col-12">
+            <div className="card border-0 shadow-sm overflow-hidden">
+              <div className="card-header bg-light-subtle border-bottom py-3 d-flex align-items-center">
+                <h4 className="card-title mb-0 flex-grow-1">
+                  <i className="ri-pulse-line me-2 text-primary"></i>Évolution de la Performance Mensuelle
+                </h4>
+                <div className="badge bg-soft-primary text-primary">Vue Historique</div>
+              </div>
+              <div className="card-body p-0">
+                 <div style={{ height: 320, padding: '20px 20px 0 20px' }}>
+                    <ReactApexChart 
+                       options={{
+                          chart: { type: 'area', toolbar: { show: false }, sparkline: { enabled: false } },
+                          stroke: { curve: 'smooth', width: 3 },
+                          fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.05 } },
+                          xaxis: { 
+                            categories: periods.map(p => p.label).reverse(),
+                            labels: { style: { colors: '#94a3b8', fontSize: '11px', fontWeight: 600 } },
+                            axisBorder: { show: false }, axisTicks: { show: false }
+                          },
+                          yaxis: { labels: { style: { colors: '#94a3b8', fontSize: '11px' } }, min: 0, max: 100 },
+                          grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
+                          colors: ['#4361ee'],
+                          dataLabels: { enabled: false },
+                          tooltip: { theme: 'light', x: { show: true }, marker: { show: true } }
+                       }}
+                       series={[{
+                          name: 'Score de Performance',
+                          data: history.length > 0 ? history : [Math.round((summary?.developer_score || 0) * 100)]
+                       }]}
+                       type="area"
+                       height={300}
+                    />
+                 </div>
+              </div>
             </div>
           </div>
-        )}
-
-        {/* Phase 5: Monthly Evolution Chart */}
-        {periods.length > 1 && (() => {
-          const hist = periods.map((p, i) => {
-            // Find snapshot for this period
-            return { label: p.label, periodId: p.id };
-          });
-          // We use the snapshots from history for chart data
-          return null; // Placeholder - evolution chart added below 
-        })()}
+        </div>
 
 
         <div className="row g-4">
@@ -451,7 +579,7 @@ export default function DeveloperProfilePage() {
               </div>
               <div className="card-body d-flex flex-column justify-content-center pt-0">
                 {summary ? (
-                  <ScoreRadarChart snapshot={summary} height={300} />
+                  <ScoreRadarChart snapshot={snapshot || summary.latest_snapshot || summary} height={300} />
                 ) : (
                   <div className="text-center py-5 text-muted opacity-50">
                     <i className="ri-radar-line fs-1 d-block mb-2"></i>
@@ -499,6 +627,75 @@ export default function DeveloperProfilePage() {
           </div>
         )}
 
+        {/* Phase 6: Lifecycle Timeline (SCD Type 2) */}
+        <div className="row mt-4 mb-5" id="timeline-section">
+          <div className="col-12">
+            <div className="card border-0 shadow-sm overflow-hidden">
+              <div className="card-header bg-light-subtle border-bottom py-3 d-flex align-items-center">
+                <h4 className="card-title mb-0 flex-grow-1"><i className="ri-history-line me-2 text-primary"></i>Timeline d'Activité & Présence Professionnelle</h4>
+                <span className="badge bg-soft-info text-info fs-11">Source : RH + GitLab</span>
+              </div>
+              <div className="card-body pt-4">
+                <div className="position-relative ms-3 ps-4" style={{ borderLeft: "2px solid #eff2f7" }}>
+                  {timeline.map((ev, i) => (
+                    <div key={i} className="mb-4 position-relative">
+                      <div className={`position-absolute bg-${ev.color}-subtle text-${ev.color} rounded-circle d-flex align-items-center justify-content-center shadow-sm`} 
+                           style={{ width: 32, height: 32, left: -49, top: -2, border: "3px solid #fff", zIndex: 2 }}>
+                        <i className={`${ev.icon} fs-14`}></i>
+                      </div>
+                      <div className="d-flex justify-content-between align-items-start mb-1 ms-2">
+                        <div className="flex-grow-1">
+                           <div className="d-flex align-items-center justify-content-between mb-1">
+                             <div className="d-flex align-items-center gap-2">
+                               <h6 className="mb-0 fw-bold text-dark">{ev.title}</h6>
+                               {ev.is_mission && (
+                                 <span className="badge bg-soft-success text-success fs-10 border border-success border-opacity-25">
+                                   <i className="ri-verified-badge-line me-1"></i>AFFECTATION RH
+                                 </span>
+                               )}
+                             </div>
+                             <span className="text-muted fs-11 fw-semibold"><i className="ri-calendar-event-line me-1"></i>{fmtDate(ev.date)}</span>
+                           </div>
+                           
+                           {ev.is_mission ? (
+                             <div className="mt-2 p-3 bg-primary bg-opacity-10 rounded-3 border-start border-4 border-primary shadow-sm" style={{ borderColor: '#4361ee !important' }}>
+                                <div className="d-flex align-items-center gap-3">
+                                   <div style={{ width: 40, height: 40, background: '#fff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4361ee', boxShadow: '0 2px 6px rgba(67,97,238,0.1)' }}>
+                                      <i className="ri-rocket-2-fill fs-20"></i>
+                                   </div>
+                                   <div>
+                                      <p className="text-dark fs-13 mb-0 fw-bold">{ev.description}</p>
+                                      <p className="text-muted fs-11 mb-0">Mission certifiée par le système de pilotage</p>
+                                   </div>
+                                </div>
+                             </div>
+                           ) : (
+                             <div className="mt-2 p-3 bg-light bg-opacity-50 rounded-3 border-start border-4 border-primary shadow-sm" style={{ borderColor: `var(--vz-${ev.color}) !important` }}>
+                                <p className="text-dark fs-13 mb-0" style={{ lineHeight: '1.5', fontWeight: 500 }}>{ev.description}</p>
+                                {ev.details && Object.keys(ev.details).length > 0 && (
+                                  <div className="mt-2 pt-2 border-top border-dashed border-muted fs-10 text-muted">
+                                     <i className="ri-terminal-box-line me-1"></i>
+                                     Données d'audit : {typeof ev.details === 'string' ? ev.details : JSON.stringify(ev.details).slice(0, 80)}...
+                                  </div>
+                                )}
+                             </div>
+                           )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {timeline.length === 0 && (
+                    <div className="text-center py-4">
+                      <i className="ri-calendar-line fs-40 text-light d-block mb-2"></i>
+                      <div className="text-muted fs-13">Aucun historique d'activité disponible pour ce profil.</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Phase 3: Export PDF Button */}
         <div className="row mt-4 mb-4 d-print-none">
           <div className="col-12 d-flex gap-2 justify-content-end flex-wrap">
@@ -506,7 +703,7 @@ export default function DeveloperProfilePage() {
             <button
               className="btn d-flex align-items-center gap-2 fw-semibold"
               style={{background:"linear-gradient(135deg,#f7b84b,#f06548)",color:"#fff",border:"none",boxShadow:"0 4px 12px rgba(240,101,72,0.35)",transition:"all .2s"}}
-              onClick={() => window.location.href = `/developers/${id}/performance${selectedPid ? `?project_id=${selectedPid}` : ""}`}
+              onClick={() => navigate(`/developers/${id}/performance?project_id=${selectedPid}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ""}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`)}
             >
               <i className="ri-bar-chart-2-line"></i>Analyse Performance 360°
             </button>
@@ -521,7 +718,7 @@ export default function DeveloperProfilePage() {
             >
               <i className="ri-file-pdf-line"></i>Export PDF du bilan
             </button>
-            <button className="btn btn-soft-primary d-flex align-items-center gap-2" onClick={() => window.location.href = `/developers`}>
+            <button className="btn btn-soft-primary d-flex align-items-center gap-2" onClick={() => navigate(`/developers`)}>
               <i className="ri-arrow-left-line"></i>Retour au Hub
             </button>
           </div>

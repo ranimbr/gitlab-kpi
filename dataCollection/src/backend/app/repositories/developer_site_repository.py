@@ -1,18 +1,6 @@
 """
 repositories/developer_site_repository.py
 
-Gestion de la table de jonction Many-to-Many : Developer ↔ Site.
-
-RAISON D'EXISTENCE :
-    Remplace les filtres sur Developer.site_id (FK directe supprimée).
-    Un développeur peut être affecté à plusieurs sites → table DeveloperSite.
-
-Méthodes importantes :
-    get_primary_site()   → site principal d'un développeur (is_primary=True)
-    get_developer_ids_for_site() → tous les devs d'un site (pour KPI #1, #5)
-    count_active_for_site() → nb_developers (dénominateur KPIs #1 et #5)
-    set_primary()        → changer le site primaire d'un développeur
-    sync()               → remplacer entièrement la liste des sites d'un développeur
 """
 from datetime import datetime, timezone
 from typing import List, Optional

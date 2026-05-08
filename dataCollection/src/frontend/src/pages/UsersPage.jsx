@@ -540,15 +540,15 @@ export default function UsersPage() {
         <Toast toast={toast} />
 
         {/* Header */}
-        <div className="row">
+        <div className="row mt-3">
           <div className="col-12">
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
               <h4 className="mb-sm-0">
-                <i className="ri-team-line me-2 text-primary"></i>Gestion des utilisateurs
+                <i className="ri-team-line me-2 text-primary"></i>Gestion des Utilisateurs
               </h4>
-              <ol className="breadcrumb m-0">
-                <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
-                <li className="breadcrumb-item active">Utilisateurs</li>
+              <ol className="breadcrumb m-0 mb-4">
+                <li className="breadcrumb-item fs-11 fw-bold text-uppercase ls-1 text-muted">Administration</li>
+                <li className="breadcrumb-item active fs-11 fw-bold text-uppercase ls-1" aria-current="page">Utilisateurs</li>
               </ol>
             </div>
           </div>

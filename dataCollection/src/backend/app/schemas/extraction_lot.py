@@ -1,20 +1,6 @@
 """
 schemas/extraction_lot.py
 
-CORRECTIONS :
-
-    1. FIX CRITIQUE — ExtractionLotResponse : champ `type` → `extraction_type`
-
-    2. FIX — ExtractionRunResponse : idem, type → extraction_type.
-
-    3. FIX — ExtractionLotCreate : champ extraction_type cohérent avec le router.
-
-    4. AJOUT — is_backfill: bool = False dans ExtractionLotCreate
-       Permet au frontend d'envoyer { "is_backfill": true } pour le mode Backfill.
-       Sans ce champ, le router reçoit toujours False via getattr() — comportement
-       correct mais non documenté dans le schéma OpenAPI.
-
-    5. AJOUT — ExtractionLotResponse inclut completed_at et error_message.
 """
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
@@ -44,6 +30,23 @@ class UserSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+
+class PeriodSummary(BaseModel):
+    """Résumé minimal d'une période pour les lots d'extraction."""
+    id:    int
+    year:  int
+    month: int
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectSummary(BaseModel):
+    """Résumé minimal d'un projet pour les lots d'extraction."""
+    id:   int
+    name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
 class ExtractionLotCreate(BaseModel):
     """
     Body POST /extraction/run.
@@ -62,6 +65,11 @@ class ExtractionLotCreate(BaseModel):
         default=None,
         description="Obligatoire si extraction_type=MONTHLY",
     )
+    # ✅ AJOUT : auto_target_by_period pour le mode "Smart-Sync" (Senior)
+    auto_target_by_period: bool = Field(
+        default=False,
+        description="Si True : sélectionne automatiquement les développeurs actifs durant la période (Sync RH)."
+    )
     # ✅ AJOUT : is_backfill pour le mode Backfill historique
     is_backfill: bool = Field(
         default=False,
@@ -73,14 +81,10 @@ class ExtractionLotCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_extraction_targets(self) -> "ExtractionLotCreate":
-        # 1. Au moins un axe d'extraction
-        if not self.project_id and not self.developer_id:
-            raise ValueError("Vous devez spécifier au moins un 'project_id' ou un 'developer_id'.")
-        
-        # 2. GitLab Config ID requis si pas de projet
-        if not self.project_id and not self.gitlab_config_id:
-            raise ValueError("Le 'gitlab_config_id' est obligatoire si aucun 'project_id' n'est fourni.")
-            
+        # ✅ RÉVISION SENIOR : On n'exige plus project_id si on fait une extraction par IDs
+        # OU si on utilise auto_target_by_period.
+        if not self.project_id and not self.developer_ids and not self.auto_target_by_period:
+            raise ValueError("Vous devez spécifier au moins un 'project_id', des 'developer_ids' ou activer 'auto_target_by_period'.")
         return self
 
     @model_validator(mode="after")
@@ -88,6 +92,7 @@ class ExtractionLotCreate(BaseModel):
         if self.extraction_type == ExtractionTypeEnum.MONTHLY and not self.period_id:
             raise ValueError("period_id est obligatoire pour une extraction MONTHLY.")
         return self
+
 
 
 class ExtractionLotResponse(BaseModel):
@@ -110,9 +115,20 @@ class ExtractionLotResponse(BaseModel):
     commit_count:    int = 0
     mr_count:        int = 0
 
+    # ── [SENIOR] Observabilité & Monitoring ──
+    step_progress:     int            = 0
+    current_action:    Optional[str]  = None
+    duration_ms:       int            = 0
+    items_count:       int            = 0
+    api_calls_count:   int            = 0
+    retry_count:       int            = 0
+    metadata_summary:  Optional[str]  = None
+
     # ✅ AJOUT : objets imbriqués — évite d'afficher "User #1" et "Dev #42"
     developer:          Optional[DeveloperSummary] = None
     triggered_by_user:  Optional[UserSummary]      = None
+    period:             Optional[PeriodSummary]    = None
+    project:            Optional[ProjectSummary]   = None
 
     model_config = {
         "from_attributes": True,

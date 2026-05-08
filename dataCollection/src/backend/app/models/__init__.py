@@ -52,6 +52,7 @@ from app.models.audit_log       import AuditLog
 from app.models.developer_group     import DeveloperGroup
 from app.models.developer           import Developer
 from app.models.developer_import_log import DeveloperImportLog
+from app.models.developer_status_history import DeveloperStatusHistory, DeveloperStatusEnum
 
 # ── Tables de jonction Many-to-Many ───────────────────────────────────────
 from app.models.project_site        import ProjectSite
@@ -86,7 +87,7 @@ __all__ = [
     # Utilisateurs
     "AppUser", "AuditLog",
     # Organisation
-    "DeveloperGroup", "Developer", "DeveloperImportLog",
+    "DeveloperGroup", "Developer", "DeveloperImportLog", "DeveloperStatusHistory", "DeveloperStatusEnum",
     # Many-to-Many
     "ProjectSite", "DeveloperProject", "DeveloperSite",
     # Périodes

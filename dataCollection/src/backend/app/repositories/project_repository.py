@@ -1,27 +1,6 @@
 """
 repositories/project_repository.py
 
-MODIFICATIONS v2 — Enterprise-grade import :
-──────────────────────────────────────────────────────────────────
-AJOUT get_by_name_ilike(db, name) :
-    Lookup case-insensitive — évite les doublons si un même projet
-    est référencé plusieurs fois dans le CSV avec des casses différentes
-    (ex: "Backend-API" vs "backend-api" vs "BACKEND-API").
-    Utilisé par create_from_import() pour la race-condition check.
-
-AJOUT create_from_import(db, name) :
-    Crée un projet minimal depuis l'import CSV.
-    Règles métier :
-        name              → conservé tel quel (casse du CSV)
-        description       → "Créé depuis l'import CSV développeurs"
-        gitlab_project_id → None (à renseigner dans Admin → Projets)
-        is_active         → True
-    Ne fait pas db.commit() — laissé à l'appelant (import_from_file).
-
-CORRECTIONS précédentes conservées (encadrant) :
-    1. get_by_site_id() : filtre via ProjectSite (M2M) — Project.site_id supprimé.
-    2. get_all()        : filtre archived ajouté.
-    3. _apply_enrichment() : last_commit_date N'EST PLUS injecté ici (vrai champ DB).
 """
 import logging
 from typing import List, Optional
@@ -41,23 +20,28 @@ logger = logging.getLogger(__name__)
 #  HELPERS ENRICHISSEMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_enrichment_maps(db: Session, project_ids: List[int]) -> dict:
-    """Calcule commit_count et contributor_count en une requête GROUP BY."""
+def _build_enrichment_maps(db: Session, project_ids: List[int], period_id: Optional[int] = None) -> dict:
+    """
+    Calcule commit_count et contributor_count en une requête GROUP BY.
+    ✅ SENIOR FIX : Support du filtrage par période pour la précision RH/KPI.
+    """
     if not project_ids:
         return {}
-    rows = (
-        db.query(
-            Commit.project_id,
-            func.count(Commit.id).label("commit_count"),
-            func.count(func.distinct(Commit.developer_id)).label("contributor_count"),
-        )
-        .filter(
-            Commit.project_id.in_(project_ids),
-            Commit.developer_id.isnot(None),
-        )
-        .group_by(Commit.project_id)
-        .all()
+    
+    query = db.query(
+        Commit.project_id,
+        func.count(Commit.id).label("commit_count"),
+        func.count(func.distinct(Commit.developer_id)).label("contributor_count"),
+    ).filter(
+        Commit.project_id.in_(project_ids),
+        Commit.developer_id.isnot(None),
     )
+
+    if period_id is not None:
+        query = query.filter(Commit.period_id == period_id)
+
+    rows = query.group_by(Commit.project_id).all()
+    
     return {
         r.project_id: {
             "commit_count":      r.commit_count,
@@ -96,10 +80,12 @@ class ProjectRepository(BaseRepository[Project]):
         db:          Session,
         active_only: bool           = True,
         archived:    Optional[bool] = None,
+        period_id:   Optional[int]  = None,
     ) -> List[Project]:
         """
         Liste les projets avec enrichissement commit/contributor.
         archived=None → pas de filtre | True → archivés | False → non archivés
+        ✅ period_id : filtre les compteurs sur une période précise.
         """
         q = db.query(Project)
 
@@ -114,13 +100,13 @@ class ProjectRepository(BaseRepository[Project]):
         projects = q.all()
         if not projects:
             return []
-        enrichment_map = _build_enrichment_maps(db, [p.id for p in projects])
+        enrichment_map = _build_enrichment_maps(db, [p.id for p in projects], period_id=period_id)
         return [_apply_enrichment(p, enrichment_map) for p in projects]
 
-    def get_by_id(self, db: Session, project_id: int) -> Optional[Project]:
+    def get_by_id(self, db: Session, project_id: int, period_id: Optional[int] = None) -> Optional[Project]:
         project = db.query(Project).filter(Project.id == project_id).first()
         if project:
-            _apply_enrichment(project, _build_enrichment_maps(db, [project.id]))
+            _apply_enrichment(project, _build_enrichment_maps(db, [project.id], period_id=period_id))
         return project
 
     def get_by_name(self, db: Session, name: str) -> Optional[Project]:
@@ -141,17 +127,17 @@ class ProjectRepository(BaseRepository[Project]):
             .one_or_none()
         )
 
-    def get_by_gitlab_id(self, db: Session, gitlab_project_id: int) -> Optional[Project]:
+    def get_by_gitlab_id(self, db: Session, gitlab_project_id: int, period_id: Optional[int] = None) -> Optional[Project]:
         project = (
             db.query(Project)
             .filter(Project.gitlab_project_id == gitlab_project_id)
             .first()
         )
         if project:
-            _apply_enrichment(project, _build_enrichment_maps(db, [project.id]))
+            _apply_enrichment(project, _build_enrichment_maps(db, [project.id], period_id=period_id))
         return project
 
-    def get_by_gitlab_config(self, db: Session, gitlab_config_id: int) -> List[Project]:
+    def get_by_gitlab_config(self, db: Session, gitlab_config_id: int, period_id: Optional[int] = None) -> List[Project]:
         projects = (
             db.query(Project)
             .filter(Project.gitlab_config_id == gitlab_config_id)
@@ -159,10 +145,10 @@ class ProjectRepository(BaseRepository[Project]):
         )
         if not projects:
             return []
-        enrichment_map = _build_enrichment_maps(db, [p.id for p in projects])
+        enrichment_map = _build_enrichment_maps(db, [p.id for p in projects], period_id=period_id)
         return [_apply_enrichment(p, enrichment_map) for p in projects]
 
-    def get_by_site_id(self, db: Session, site_id: int) -> List[Project]:
+    def get_by_site_id(self, db: Session, site_id: int, period_id: Optional[int] = None) -> List[Project]:
         """
         ✅ FIX : filtre via ProjectSite (M2M) au lieu de Project.site_id.
         Un projet peut appartenir à plusieurs sites.
@@ -178,7 +164,7 @@ class ProjectRepository(BaseRepository[Project]):
         )
         if not projects:
             return []
-        enrichment_map = _build_enrichment_maps(db, [p.id for p in projects])
+        enrichment_map = _build_enrichment_maps(db, [p.id for p in projects], period_id=period_id)
         return [_apply_enrichment(p, enrichment_map) for p in projects]
 
     def get_site_ids(self, db: Session, project_id: int) -> List[int]:

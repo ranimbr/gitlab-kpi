@@ -1,20 +1,4 @@
-"""
-api/routers/kpis.py
-
-CORRECTIONS APPLIQUÉES :
-──────────────────────────────────────────────────────────────────
-1. Tous les imports lazy (dans le corps des fonctions) déplacés en haut du fichier.
-2. Toutes les fonctionnalités précédentes conservées :
-   - GET /kpis/dashboard
-   - GET /kpis/developer/{developer_id}
-   - GET /kpis/leaderboard
-   - GET /kpis/multi-period
-   - GET /kpis/trend
-   - GET /kpis/sites
-   - GET /kpis/developers
-   - GET /kpis/compare
-   - GET /kpis/top-developers
-"""
+"""KPI router endpoints for dashboard analytics and rankings."""
 import logging
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
@@ -26,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.database.session import get_db
 from app.models.app_user import AppUser
+from app.models.developer import Developer
 from app.models.kpi_snapshot import KpiSnapshot
 from app.models.period import Period
 from app.models.site import Site
@@ -75,8 +60,15 @@ ALLOWED_KPI_FIELDS = {
     "merged_mr_rate",
     "commit_rate_per_site",
     "nb_commits_per_project",
+    "total_commits",
     "avg_review_time_hours",
+    "developer_score",
 }
+
+
+def _http_error(status_code: int, code: str, message: str) -> HTTPException:
+    """Return a standardized API error payload."""
+    return HTTPException(status_code=status_code, detail=f"{code}: {message}")
 
 
 # ── Dashboard Principal ───────────────────────────────────────────────────────
@@ -94,8 +86,7 @@ def get_dashboard_kpis(
 ):
     service = AnalyticsService(db)
     
-    # Mapping Senior : support pour "all" ou ID numérique
-    # ✅ [SENIOR] Gestion du mode GLOBAL (project_id="all" ou 0)
+    # Support global mode (project_id = "all" or 0).
     p_id = None if (project_id == "all" or project_id == "0") else int(project_id)
     
     result = service.get_dashboard_summary(
@@ -117,27 +108,28 @@ def get_dashboard_kpis(
 @router.get("/developer/{developer_id}", response_model=DeveloperKpiSnapshotResponse)
 def get_developer_kpi_view(
     developer_id: int,
-    project_id:   int     = Query(...),
-    db:           Session = Depends(get_db),
-    current_user: AppUser = Depends(get_current_user),
+    project_id:   int           = Query(...),
+    lot_id:       Optional[int] = Query(default=None),
+    db:           Session       = Depends(get_db),
+    current_user: AppUser       = Depends(get_current_user),
 ):
     """Vue KPI individuelle complète (page profil développeur)."""
     service = AnalyticsService(db)
     result  = service.get_developer_kpi_summary(
-        developer_id=developer_id, project_id=project_id
+        developer_id=developer_id, project_id=project_id, lot_id=lot_id
     )
     if not result:
-        raise HTTPException(status_code=404, detail="Développeur ou snapshot introuvable.")
+        raise _http_error(404, "KPI_NOT_FOUND", "Developpeur ou snapshot introuvable.")
     return result
 
 
 @router.get("/developer/{developer_id}/summary", summary="Résumé global d'un développeur (toutes périodes)")
 def get_developer_global_summary(
     developer_id: int,
-    project_id:   Optional[int] = Query(None, description="ID du projet ou None pour global"),
+    project_id:   Any           = Query(None, description="ID du projet ou None pour global"),
+    lot_id:       Optional[int] = Query(None, description="Filtrer par session d'extraction"),
     db:           Session = Depends(get_db)
 ):
-    print(f"DEBUG: Endpoint Summary appelé pour dev={developer_id}, proj={project_id}")
     """
     Retourne les totaux ALL-TIME (depuis le début) d'un développeur sur le projet.
     Idéal pour la page de profil afin d'éviter d'afficher 0 si le développeur 
@@ -147,23 +139,39 @@ def get_developer_global_summary(
     from app.models.merge_request import MergeRequest
     from app.models.comment import Comment
     
+    # Normalize project_id
+    if project_id in ("all", "0", 0, ""):
+        p_id = None
+    else:
+        try:
+            p_id = int(project_id)
+        except (ValueError, TypeError):
+            p_id = None
+
     total_commits_query = db.query(func.count(Commit.id)).filter(Commit.developer_id == developer_id)
-    if project_id: total_commits_query = total_commits_query.filter(Commit.project_id == project_id)
+    if p_id: total_commits_query = total_commits_query.filter(Commit.project_id == p_id)
+    if lot_id:     total_commits_query = total_commits_query.filter(Commit.extraction_lot_id == lot_id)
     total_commits = total_commits_query.scalar() or 0
 
     total_mrs_created_query = db.query(func.count(MergeRequest.id)).filter(MergeRequest.developer_id == developer_id)
-    if project_id: total_mrs_created_query = total_mrs_created_query.filter(MergeRequest.project_id == project_id)
+    if p_id: total_mrs_created_query = total_mrs_created_query.filter(MergeRequest.project_id == p_id)
+    if lot_id:     total_mrs_created_query = total_mrs_created_query.filter(MergeRequest.extraction_lot_id == lot_id)
     total_mrs_created = total_mrs_created_query.scalar() or 0
 
     total_comments_query = db.query(func.count(Comment.id)).join(MergeRequest, Comment.merge_request_id == MergeRequest.id).filter(Comment.developer_id == developer_id)
-    if project_id: total_comments_query = total_comments_query.filter(MergeRequest.project_id == project_id)
+    if p_id: total_comments_query = total_comments_query.filter(MergeRequest.project_id == p_id)
+    if lot_id:     total_comments_query = total_comments_query.filter(MergeRequest.extraction_lot_id == lot_id)
     total_comments = total_comments_query.scalar() or 0
 
     # Enterprise Metric: "Active Review Involvement"
     # Includes explicit assignments AND organic reviews (comments left by the developer)
-    mr_with_comments_by_dev = db.query(Comment.merge_request_id).filter(
+    mr_with_comments_by_dev_q = db.query(Comment.merge_request_id).filter(
         Comment.developer_id == developer_id
-    ).subquery()
+    )
+    if lot_id:
+        mr_with_comments_by_dev_q = mr_with_comments_by_dev_q.join(MergeRequest, Comment.merge_request_id == MergeRequest.id).filter(MergeRequest.extraction_lot_id == lot_id)
+    
+    mr_with_comments_by_dev = mr_with_comments_by_dev_q.subquery()
 
     total_reviews_query = db.query(func.count(MergeRequest.id)).filter(
         MergeRequest.developer_id.is_distinct_from(developer_id),
@@ -173,28 +181,37 @@ def get_developer_global_summary(
             MergeRequest.id.in_(select(mr_with_comments_by_dev))
         )
     )
-    if project_id: total_reviews_query = total_reviews_query.filter(MergeRequest.project_id == project_id)
+    if p_id: total_reviews_query = total_reviews_query.filter(MergeRequest.project_id == p_id)
+    if lot_id:     total_reviews_query = total_reviews_query.filter(MergeRequest.extraction_lot_id == lot_id)
     total_reviews = total_reviews_query.scalar() or 0
 
     total_mrs_approved_query = db.query(func.count(MergeRequest.id)).filter(MergeRequest.developer_id == developer_id, MergeRequest.approved.is_(True))
-    if project_id: total_mrs_approved_query = total_mrs_approved_query.filter(MergeRequest.project_id == project_id)
+    if p_id: total_mrs_approved_query = total_mrs_approved_query.filter(MergeRequest.project_id == p_id)
+    if lot_id:     total_mrs_approved_query = total_mrs_approved_query.filter(MergeRequest.extraction_lot_id == lot_id)
     total_mrs_approved = total_mrs_approved_query.scalar() or 0
 
     total_mrs_merged_query = db.query(func.count(MergeRequest.id)).filter(MergeRequest.developer_id == developer_id, MergeRequest.state == "merged")
-    if project_id: total_mrs_merged_query = total_mrs_merged_query.filter(MergeRequest.project_id == project_id)
+    if p_id: total_mrs_merged_query = total_mrs_merged_query.filter(MergeRequest.project_id == p_id)
+    if lot_id:     total_mrs_merged_query = total_mrs_merged_query.filter(MergeRequest.extraction_lot_id == lot_id)
     total_mrs_merged = total_mrs_merged_query.scalar() or 0
 
-    latest_snap_query = db.query(KpiSnapshot).filter(KpiSnapshot.developer_id == developer_id)
-    if project_id: latest_snap_query = latest_snap_query.filter(KpiSnapshot.project_id == project_id)
-    latest_snap = latest_snap_query.order_by(KpiSnapshot.snapshot_date.desc()).first()
+    if lot_id:
+        from app.services.kpi.analytics_service import AnalyticsService
+        latest_snap = AnalyticsService(db)._calculate_virtual_snapshot_for_lot(
+            p_id, lot_id, developer_id=developer_id, site_id=None, group_id=None
+        )
+    else:
+        latest_snap_query = db.query(KpiSnapshot).filter(KpiSnapshot.developer_id == developer_id)
+        if p_id: latest_snap_query = latest_snap_query.filter(KpiSnapshot.project_id == p_id)
+        latest_snap = latest_snap_query.order_by(KpiSnapshot.snapshot_date.desc()).first()
 
-    # Ratios ALL-TIME (Calculés dynamiquement par le Senior Engineer)
+    # Ratios all-time.
     approved_mr_rate = round(total_mrs_approved / total_mrs_created, 4) if total_mrs_created > 0 else 0.0
     merged_mr_rate   = round(total_mrs_merged / total_mrs_approved, 4) if total_mrs_approved > 0 else 0.0
 
     return {
         "developer_id": developer_id,
-        "project_id": project_id,
+        "project_id": p_id,
         "total_commits": total_commits,
         "total_mrs_created": total_mrs_created,
         "total_mrs_approved": total_mrs_approved,
@@ -204,7 +221,8 @@ def get_developer_global_summary(
         "approved_mr_rate": approved_mr_rate,
         "merged_mr_rate": merged_mr_rate,
         "developer_score": latest_snap.developer_score if latest_snap else 0.0,
-        "score_rank_in_site": latest_snap.score_rank_in_site if latest_snap else None
+        "score_rank_in_site": latest_snap.score_rank_in_site if latest_snap else None,
+        "latest_snapshot": latest_snap
     }
 
 
@@ -212,7 +230,7 @@ def get_developer_global_summary(
 
 @router.get("/leaderboard", response_model=DeveloperLeaderboardResponse)
 def get_leaderboard(
-    project_id: int           = Query(...),
+    project_id: str           = Query("all"),
     period_id:  Optional[int] = Query(default=None),
     site_id:    Optional[int] = Query(default=None),
     group_id:   Optional[int] = Query(default=None),
@@ -222,8 +240,9 @@ def get_leaderboard(
     _:          AppUser       = Depends(get_current_user),
 ):
     """Leaderboard développeurs pour un site, un groupe et une période."""
-    # ✅ [SENIOR] Support du leaderboard Global (Tous les projets)
-    p_id = None if (project_id == 0) else project_id
+    # Support global leaderboard across projects.
+    # Support global mode (project_id="all", "0" or 0)
+    p_id = None if project_id in ("all", "0", 0, None) else int(project_id)
 
     if period_id is None:
         q = db.query(KpiSnapshot).filter(KpiSnapshot.developer_id.isnot(None))
@@ -253,46 +272,60 @@ def get_multi_period_kpis(
 ) -> List[Dict[str, Any]]:
     service = AnalyticsService(db)
     
-    # ✅ [SENIOR] Gestion du mode Global
+    # Support global mode.
     if project_id == 0:
-        history = service._get_global_history(site_id)
-        if not history:
-            return []
-            
-        # Transformer l'historique aggrégé au format multi-période
+        # 1. Récupérer les periods ayant des données (tous projets confondus)
+        # Correction PostgreSQL : DISTINCT sur un entier (period_id)
+        period_ids_subquery = db.query(KpiSnapshot.period_id).distinct().subquery()
+        periods = (
+            db.query(Period)
+            .filter(Period.id.in_(period_ids_subquery))
+            .order_by(Period.year.desc(), Period.month.desc())
+            .limit(months)
+            .all()
+        )
+        
         result = []
-        for snap in history:
-            period = db.query(Period).filter(Period.id == snap.period_id).first()
-            if not period: continue
+        for period in periods:
+            # Pour chaque période, on agrège les données par site à travers tous les projets
+            site_snapshots = service.get_site_comparison_global(period.id)
+            
+            snapshots_data = []
+            for snap in site_snapshots:
+                snapshots_data.append({
+                    "snapshot_id":            None, # Virtuel
+                    "site_id":               snap.site_id,
+                    "site_name":             getattr(snap, "site_name", f"Site {snap.site_id}"),
+                    "total_commits":         snap.total_commits,
+                    "nb_commits_per_project": snap.total_commits, # Alias compatibilité
+                    "total_mrs":             snap.total_mrs_created,
+                    "mr_rate":               snap.mr_rate_per_site,
+                    "approved_mr_rate":      snap.approved_mr_rate,
+                    "avg_review_time":       snap.avg_review_time_hours,
+                    "nb_developers":         snap.nb_developers
+                })
             
             result.append({
-                "period_id":    snap.period_id,
+                "period_id":    period.id,
                 "year":         period.year,
                 "month":        period.month,
                 "period_label": f"{MOIS_FR_LONG.get(period.month, '')} {period.year}",
-                "snapshots": [{
-                    "snapshot_id":            snap.id,
-                    "site_id":                snap.site_id,
-                    "site_name":              "Global" if not snap.site_id else (db.query(Site).filter(Site.id == snap.site_id).first().name if db.query(Site).filter(Site.id == snap.site_id).first() else "Site"),
-                    "mr_rate_per_site":       snap.mr_rate_per_site,
-                    "approved_mr_rate":       snap.approved_mr_rate,
-                    "merged_mr_rate":         snap.merged_mr_rate,
-                    "commit_rate_per_site":   snap.commit_rate_per_site,
-                    "nb_commits_per_project": snap.nb_commits_per_project,
-                    "avg_review_time_hours":  snap.avg_review_time_hours,
-                    "nb_developers":          snap.nb_developers,
-                    "total_mrs_created":      snap.total_mrs_created,
-                    "total_commits":          snap.total_commits,
-                }]
+                "snapshots":    snapshots_data
             })
+        
         return result
 
-    # Mode Projet Spécifique
+    # Project-scoped mode. Avoid DISTINCT on full Period model (PostgreSQL/json).
+    period_ids_query = (
+        db.query(KpiSnapshot.period_id)
+        .filter(KpiSnapshot.project_id == project_id)
+        .filter(KpiSnapshot.developer_id.is_(None)) # On ne veut que les périodes ayant des snapshots agrégés
+        .distinct()
+    )
+    
     periods_with_data = (
         db.query(Period)
-        .join(KpiSnapshot, KpiSnapshot.period_id == Period.id)
-        .filter(KpiSnapshot.project_id == project_id)
-        .distinct()
+        .filter(Period.id.in_(period_ids_query))
         .order_by(Period.year.desc(), Period.month.desc())
         .limit(months)
         .all()
@@ -350,27 +383,36 @@ def get_multi_period_kpis(
 
 @router.get("/trend", summary="Tendance KPI sur 12 mois (graphiques linéaires)")
 def get_kpi_trend(
-    project_id: int           = Query(...),
+    project_id: str           = Query(...),
     kpi_field:  str           = Query(default="mr_rate_per_site"),
     months:     int           = Query(default=12, ge=1, le=24),
     site_id:    Optional[int] = Query(default=None),
+    developer_id: Optional[int] = Query(default=None),
     db:         Session       = Depends(get_db),
     _:          AppUser       = Depends(get_current_user),
 ) -> Dict[str, Any]:
     if kpi_field not in ALLOWED_KPI_FIELDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"kpi_field '{kpi_field}' invalide. Valeurs autorisées : {sorted(ALLOWED_KPI_FIELDS)}",
-        )
+            raise _http_error(
+                400,
+                "KPI_FIELD_INVALID",
+                f"kpi_field '{kpi_field}' invalide. Valeurs autorisees: {sorted(ALLOWED_KPI_FIELDS)}",
+            )
 
-    # ✅ [SENIOR] Gestion du mode Global
-    if project_id == 0:
+    # Support global mode (p_id="all", "0" or 0)
+    if project_id in ("all", "0", 0):
         service = AnalyticsService(db)
-        history = service._get_global_history(site_id)
+        history = service._get_global_history(site_id, developer_id=developer_id)
         if not history:
             return {"labels": [], "datasets": []}
-            
-        labels = [f"{MOIS_FR_SHORT.get(db.query(Period).filter(Period.id == s.period_id).first().month, '')} {db.query(Period).filter(Period.id == s.period_id).first().year}" if db.query(Period).filter(Period.id == s.period_id).first() else "" for s in history]
+
+        period_map = {
+            p.id: p
+            for p in db.query(Period).filter(Period.id.in_([s.period_id for s in history])).all()
+        }
+        labels = []
+        for snap in history:
+            period = period_map.get(snap.period_id)
+            labels.append(f"{MOIS_FR_SHORT.get(period.month, '')} {period.year}" if period else "")
         data   = [round(float(getattr(s, kpi_field, 0) or 0), 2) for s in history]
         
         return {
@@ -418,9 +460,15 @@ def get_kpi_trend(
             snap = db.query(KpiSnapshot).filter(
                 KpiSnapshot.project_id   == project_id,
                 KpiSnapshot.period_id    == period.id,
-                KpiSnapshot.site_id      == sid,
-                KpiSnapshot.developer_id.is_(None),
-            ).first()
+            )
+            if developer_id:
+                snap = snap.filter(KpiSnapshot.developer_id == developer_id)
+            elif site_id:
+                snap = snap.filter(KpiSnapshot.site_id == site_id, KpiSnapshot.developer_id.is_(None))
+            else:
+                snap = snap.filter(KpiSnapshot.site_id.is_(None), KpiSnapshot.developer_id.is_(None))
+                
+            snap = snap.first()
             value = getattr(snap, kpi_field, None) if snap else None
             data.append(round(float(value), 2) if value is not None else None)
         datasets.append({"site_id": sid, "site_name": site_name, "data": data})
@@ -441,11 +489,7 @@ def get_available_sites(
     db:           Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
-    """
-    [SENIOR AUTO-DISCOVERY] Retourne les sites associés au projet.
-    Fusionne les sites explicitement configurés (M2M) ET les sites 
-    automatiquement détectés via les développeurs actifs du projet.
-    """
+    """Return sites attached to a project (explicit + discovered)."""
     explicit_ids   = project_site_repo.get_site_ids_for_project(db, project_id)
     discovered_ids = project_site_repo.get_discovered_site_ids(db, project_id)
     all_site_ids   = list(set(explicit_ids) | set(discovered_ids))
@@ -471,10 +515,7 @@ def get_available_developers(
     db:         Session       = Depends(get_db),
     _:          AppUser       = Depends(get_current_user),
 ):
-    """
-    Filtre via M2M (DeveloperSite / DeveloperProject).
-    Alimente le dropdown "Filtrer par développeur".
-    """
+    
     if site_id is not None:
         devs = dev_repo.get_by_site(db, site_id=site_id, active_only=True)
     else:
@@ -520,22 +561,32 @@ def compare_sites(
     if lot_id:
         return service.get_site_comparison_for_lot(project_id, lot_id, kpi_field)
 
+    # 1.5 Mode Vision Globale (Agrégation inter-projets)
+    if project_id == 0:
+        if period_id is None:
+            # Trouver la dernière période avec des données
+            latest_snap = db.query(KpiSnapshot).order_by(KpiSnapshot.snapshot_date.desc()).first()
+            if not latest_snap:
+                return []
+            period_id = latest_snap.period_id
+        try:
+            return service.get_site_comparison_global(period_id, kpi_field)
+        except ValueError as e:
+            raise _http_error(400, "KPI_COMPARE_INVALID", str(e))
+
     # 2. Mode Période (Données archivées)
     if period_id is None:
         latest_date = db.query(func.max(KpiSnapshot.snapshot_date)).filter(
             KpiSnapshot.project_id == project_id
         ).scalar()
         if latest_date is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Aucun snapshot pour le projet {project_id}.",
-            )
+            raise _http_error(404, "KPI_SNAPSHOT_NOT_FOUND", f"Aucun snapshot pour le projet {project_id}.")
         snap = db.query(KpiSnapshot).filter(
             KpiSnapshot.project_id   == project_id,
             KpiSnapshot.snapshot_date == latest_date,
         ).first()
         if not snap:
-            raise HTTPException(status_code=404, detail="Impossible de résoudre la période.")
+            raise _http_error(404, "KPI_PERIOD_NOT_RESOLVED", "Impossible de resoudre la periode.")
         period_id = snap.period_id
 
     try:
@@ -543,7 +594,7 @@ def compare_sites(
             db=db, project_id=project_id, period_id=period_id, kpi_field=kpi_field
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise _http_error(400, "KPI_COMPARE_INVALID", str(e))
 
     if not snapshots:
         snapshots = db.query(KpiSnapshot).filter(
@@ -554,10 +605,9 @@ def compare_sites(
         ).order_by(KpiSnapshot.snapshot_date.desc()).all()
 
     if not snapshots:
-        raise HTTPException(status_code=404, detail="Aucun snapshot inter-sites trouvé.")
+        raise _http_error(404, "KPI_SITE_SNAPSHOT_NOT_FOUND", "Aucun snapshot inter-sites trouve.")
 
-    # ── Peuplement dynamique des noms (pour le frontend) ──────────
-    from app.models.developer import Developer
+    # Populate display names for frontend consumption.
     for snap in snapshots:
         if snap.site_id:
             site_obj = db.query(Site).filter(Site.id == snap.site_id).first()
@@ -634,12 +684,11 @@ def get_top_developers(
             kpi_field=kpi_field, site_id=site_id, limit=limit, ascending=ascending,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+            raise _http_error(400, "KPI_RANKING_INVALID", str(e))
 
     if not snapshots:
         return []
 
-    from app.models.developer import Developer
     for snap in snapshots:
         if snap.site_id:
             site_obj = db.query(Site).filter(Site.id == snap.site_id).first()

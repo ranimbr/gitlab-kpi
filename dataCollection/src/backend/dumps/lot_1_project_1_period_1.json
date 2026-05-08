@@ -3,18 +3,559 @@
   "project_id": 1,
   "period_id": 1,
   "extraction_type": "MONTHLY",
-  "generated_at": "2026-04-29T12:11:35.918318+00:00",
+  "generated_at": "2026-05-08T11:55:22.806186+00:00",
   "commits": [
     {
-      "sha": "a1940fa7c9d894c79c6af63a5f9e75af70776baf",
-      "title": "Modifier README.md",
-      "authored_date": "2026-03-26T13:31:05+00:00",
-      "additions": 16,
-      "deletions": 73,
-      "total_changes": 89,
+      "sha": "8a91c4538ee7067b2bced8f7ad9cccd89986a282",
+      "title": "Remove 2.0 dev cruft",
+      "authored_date": "2026-01-05T21:08:10+00:00",
+      "additions": 1379,
+      "deletions": 3,
+      "total_changes": 1382,
       "is_merge_commit": false,
-      "developer_id": 2
+      "developer_id": 1
+    },
+    {
+      "sha": "1e53cb28dbdbe62718c22a0eb929af9c86737c86",
+      "title": "Allow one more year of SHA1 in index v1 tests",
+      "authored_date": "2026-01-05T21:35:19+00:00",
+      "additions": 1,
+      "deletions": 1,
+      "total_changes": 2,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "dd3d4c532d4b28a42a43473293e2d673e6778d0c",
+      "title": "Remove 2.0 dev cruft",
+      "authored_date": "2026-01-05T21:08:10+00:00",
+      "additions": 1380,
+      "deletions": 4,
+      "total_changes": 1384,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "6ede37119a7e3351ef23d71918c50d68783d2498",
+      "title": "Allow one more year of SHA1 in index v1 tests",
+      "authored_date": "2026-01-05T21:35:19+00:00",
+      "additions": 1,
+      "deletions": 1,
+      "total_changes": 2,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "4cdf79751540681db4472db0387b2888c07d34a9",
+      "title": "Ignore failing test testGetReportingWeekStart()",
+      "authored_date": "2026-01-05T21:55:25+00:00",
+      "additions": 2,
+      "deletions": 0,
+      "total_changes": 2,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "16dec72976df397b88209af8eff040a9bf759887",
+      "title": "Adapt nightly builds to 2.0 basic",
+      "authored_date": "2026-01-06T13:27:42+00:00",
+      "additions": 16,
+      "deletions": 3,
+      "total_changes": 19,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "be67dba0264a3708a1ab63c3d34c3212403d66c8",
+      "title": "Don't claim no apps installed when all apps have issues",
+      "authored_date": "2026-01-07T12:49:44+00:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "32e4a04cd6544f14e3d567e81cf81aa08ece045f",
+      "title": "Handle disabled pre-approval",
+      "authored_date": "2026-01-07T13:04:41+00:00",
+      "additions": 6,
+      "deletions": 5,
+      "total_changes": 11,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "b928235af2dfe18a59e68df749344e3ebc74ea01",
+      "title": "Fix top spacer when changing repos in app details",
+      "authored_date": "2026-01-07T20:05:59+00:00",
+      "additions": 1,
+      "deletions": 1,
+      "total_changes": 2,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "f65f355e953f159662e7ec831ff33e903ea9a588",
+      "title": "Show changelog of update (if existing) in app details",
+      "authored_date": "2026-01-09T19:07:02+00:00",
+      "additions": 2,
+      "deletions": 1,
+      "total_changes": 3,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "b5a97911d949cebcf940e5a48469838479da65f7",
+      "title": "Don't keep retrying sending ACRA reports",
+      "authored_date": "2026-01-09T19:08:36+00:00",
+      "additions": 16,
+      "deletions": 0,
+      "total_changes": 16,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0",
+      "title": "Use proper Litecoin icon",
+      "authored_date": "2026-01-09T19:17:44+00:00",
+      "additions": 67,
+      "deletions": 1,
+      "total_changes": 68,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "88c32b0b0029a3863d8c9fc3221664b8feee7c4d",
+      "title": "Only show repo errors if the repo is enabled",
+      "authored_date": "2026-01-12T18:31:42+00:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "46634ce38d7786f7a77138717dd03635044e167f",
+      "title": "Make repo error text selectable",
+      "authored_date": "2026-01-12T18:32:49+00:00",
+      "additions": 8,
+      "deletions": 5,
+      "total_changes": 13,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "189c697e5f761c64867bad38f1d0e39f896bfa85",
+      "title": "Remove int preferences hack, because library now supports Long",
+      "authored_date": "2026-01-12T18:40:36+00:00",
+      "additions": 20,
+      "deletions": 9,
+      "total_changes": 29,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "e337cf031ea249b4dde5406cbca6161d4696bee6",
+      "title": "Take signer into account when finding installed version in app details",
+      "authored_date": "2026-01-15T13:40:27+00:00",
+      "additions": 20,
+      "deletions": 5,
+      "total_changes": 25,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "7dfe86eea51a16cb86d435c2766a226ef6cda237",
+      "title": "Improve behavior of updating our own app last",
+      "authored_date": "2026-01-15T21:02:31+00:00",
+      "additions": 45,
+      "deletions": 3,
+      "total_changes": 48,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "364b3130fcf357a8a75d1f63efd3bb57292e29e8",
+      "title": "Merge branch '2.0' into 'master'",
+      "authored_date": "2026-01-15T21:05:52+00:00",
+      "additions": 23522,
+      "deletions": 901,
+      "total_changes": 24423,
+      "is_merge_commit": true,
+      "developer_id": 1
+    },
+    {
+      "sha": "b55babcdce5ec4c879447ac5c6a221d2eb04026a",
+      "title": "Move new strings into a separate file",
+      "authored_date": "2026-01-20T13:13:21+00:00",
+      "additions": 179,
+      "deletions": 180,
+      "total_changes": 359,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "52432777eb7efac7acf1a35a042e3b853c25f903",
+      "title": "Reload updates after deleting a repository",
+      "authored_date": "2026-01-20T18:13:41+00:00",
+      "additions": 3,
+      "deletions": 0,
+      "total_changes": 3,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "d35aad749da2b34b8a9fe628e68d2372004937c8",
+      "title": "Adapt strings according to material design 3 guidelines",
+      "authored_date": "2026-01-20T18:36:05+00:00",
+      "additions": 58,
+      "deletions": 41,
+      "total_changes": 99,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "2cd6b29c6e72d4c031d504bb975abc2d007f8b0f",
+      "title": "Merge branch '2.0' into 'master'",
+      "authored_date": "2026-01-21T10:22:53+00:00",
+      "additions": 23520,
+      "deletions": 901,
+      "total_changes": 24421,
+      "is_merge_commit": true,
+      "developer_id": 11
+    },
+    {
+      "sha": "f398bc449d229859e46d6d42e1e692464794f3af",
+      "title": "Reload updates after deleting a repository",
+      "authored_date": "2026-01-20T18:13:41+00:00",
+      "additions": 3,
+      "deletions": 0,
+      "total_changes": 3,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "887e378cf602dcc1bfb89d076e5657f99ab97d19",
+      "title": "Warn when we ignore external intent",
+      "authored_date": "2026-01-20T20:37:06+00:00",
+      "additions": 4,
+      "deletions": 2,
+      "total_changes": 6,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "eb710bbd6113c53ec4bba920929f40dc0f4177c6",
+      "title": "Fix versionCode of nightly builds",
+      "authored_date": "2026-01-21T14:17:54+00:00",
+      "additions": 2,
+      "deletions": 1,
+      "total_changes": 3,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "604429a9a1ace91215aa42d72c206056c1e0f74e",
+      "title": "Don't show an 'Open' button for ourselves",
+      "authored_date": "2026-01-21T14:28:18+00:00",
+      "additions": 5,
+      "deletions": 1,
+      "total_changes": 6,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "c2d68519f932e75c84fb760b8d68255b480d8e4d",
+      "title": "Don't show an 'More' button for short descriptions",
+      "authored_date": "2026-01-21T14:48:11+00:00",
+      "additions": 49,
+      "deletions": 27,
+      "total_changes": 76,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "06551796e8605e7496e243ecdaf988faa25b1bfe",
+      "title": "Simplify dynamic feature graphic handling",
+      "authored_date": "2026-01-21T16:21:53+00:00",
+      "additions": 28,
+      "deletions": 36,
+      "total_changes": 64,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "cb9667c917962db2b5db482dff62612e79799742",
+      "title": "Close search results when selecting an app",
+      "authored_date": "2026-01-21T17:03:36+00:00",
+      "additions": 8,
+      "deletions": 0,
+      "total_changes": 8,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "afb8912cc76bed835e6a2396b1d93c52437c85f6",
+      "title": "Treat old crash reports differently",
+      "authored_date": "2026-01-21T21:06:09+00:00",
+      "additions": 41,
+      "deletions": 7,
+      "total_changes": 48,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "fba9f03a0b1520ed654616f5abe4ff859f309789",
+      "title": "Implement custom search screen",
+      "authored_date": "2026-01-22T18:53:22+00:00",
+      "additions": 583,
+      "deletions": 433,
+      "total_changes": 1016,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "15f03fef37554864dc343922f15334c7f0d4236b",
+      "title": "Merge branch '2.0' into 'master'",
+      "authored_date": "2026-01-22T21:54:17+00:00",
+      "additions": 715,
+      "deletions": 499,
+      "total_changes": 1214,
+      "is_merge_commit": true,
+      "developer_id": 1
+    },
+    {
+      "sha": "aff0eca22a95166e359b38f5d9c28efc6f7806a2",
+      "title": "update start-alpha-cycle.py for 2.0",
+      "authored_date": "2026-01-23T12:51:24+00:00",
+      "additions": 4,
+      "deletions": 4,
+      "total_changes": 8,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "ed5995a16fd0ed2cc220b85107f17e75949dded1",
+      "title": "Add changelog",
+      "authored_date": "2026-01-23T12:55:46+00:00",
+      "additions": 8,
+      "deletions": 0,
+      "total_changes": 8,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "28db65f1088a8f3db1e8122d5100697b432eeb3a",
+      "title": "Clean up top app bar search bar",
+      "authored_date": "2026-01-23T14:25:46+00:00",
+      "additions": 74,
+      "deletions": 143,
+      "total_changes": 217,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "2d82fb3ac2930dad79a16ca67d66e04e5cc95422",
+      "title": "Merge branch '2.0' into 'master'",
+      "authored_date": "2026-01-23T18:08:15+00:00",
+      "additions": 86,
+      "deletions": 147,
+      "total_changes": 233,
+      "is_merge_commit": true,
+      "developer_id": 1
+    },
+    {
+      "sha": "f9f4eb715fa84d2217c80c2a62adcd5023cfda93",
+      "title": "Merge branch 'build-improvement' into 'master'",
+      "authored_date": "2026-01-24T18:51:15+00:00",
+      "additions": 5,
+      "deletions": 2,
+      "total_changes": 7,
+      "is_merge_commit": true,
+      "developer_id": 1
+    },
+    {
+      "sha": "0a72ab4573c4733dc303ef35b754d5421240e623",
+      "title": "Fix firstStart flag for people upgrading from 1.x",
+      "authored_date": "2026-01-26T14:34:42+00:00",
+      "additions": 10,
+      "deletions": 6,
+      "total_changes": 16,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "55e7047671ef10bcc4e1df7132e30c0163fa501f",
+      "title": "Show signer of installed version in technical info",
+      "authored_date": "2026-01-26T14:40:55+00:00",
+      "additions": 19,
+      "deletions": 0,
+      "total_changes": 19,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "f8a3610fa685992ce25306f1e6e81719027e183c",
+      "title": "Don't get version name from git tag",
+      "authored_date": "2026-01-26T16:43:34+00:00",
+      "additions": 1,
+      "deletions": 11,
+      "total_changes": 12,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "006f03679523f0d8ef3350450965409e96eb0a00",
+      "title": "Add version code to app details version item",
+      "authored_date": "2026-01-26T16:54:39+00:00",
+      "additions": 33,
+      "deletions": 18,
+      "total_changes": 51,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "c1efc6f6f1245952fc848ab6930a309111d0dd97",
+      "title": "Don't show issue for apps with incompatible signer installed by other stores",
+      "authored_date": "2026-01-26T17:27:18+00:00",
+      "additions": 79,
+      "deletions": 37,
+      "total_changes": 116,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "c982ec77332055ebe46012566e0d004d8d359b39",
+      "title": "Bump version to 2.0-alpha1",
+      "authored_date": "2026-01-26T17:40:22+00:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+      "title": "Try to get changelog picked up",
+      "authored_date": "2026-01-26T17:44:58+00:00",
+      "additions": 0,
+      "deletions": 0,
+      "total_changes": 0,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+      "title": "Improve manual repo update icon",
+      "authored_date": "2026-01-26T17:47:33+00:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "73bcc3ce419853842b2c5886feb326bffde7513c",
+      "title": "Bump version to 2.0-alpha1",
+      "authored_date": "2026-01-26T17:40:22+00:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+      "title": "Show issue for apps we had installed with different signer",
+      "authored_date": "2026-01-26T18:13:22+00:00",
+      "additions": 3,
+      "deletions": 1,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+      "title": "Bump version to 2.0-alpha1",
+      "authored_date": "2026-01-26T17:40:22+00:00",
+      "additions": 2,
+      "deletions": 2,
+      "total_changes": 4,
+      "is_merge_commit": false,
+      "developer_id": 1
+    },
+    {
+      "sha": "19788ffb34ae96cac6e1ebebeb70847f2bad1994",
+      "title": "Merge branch '2.0' into 'master'",
+      "authored_date": "2026-01-27T10:22:53+00:00",
+      "additions": 148,
+      "deletions": 76,
+      "total_changes": 224,
+      "is_merge_commit": true,
+      "developer_id": 11
     }
   ],
-  "merge_requests": []
+  "merge_requests": [
+    {
+      "gitlab_mr_id": 1614,
+      "title": "Fix first bugs found by people testing 2.0",
+      "state": "merged",
+      "is_draft": false,
+      "approved": false,
+      "review_time_hours": null,
+      "source_branch": "2.0",
+      "target_branch": "master",
+      "developer_id": 1,
+      "reviewer_id": 11
+    },
+    {
+      "gitlab_mr_id": 1611,
+      "title": "2.0 Changelogs",
+      "state": "merged",
+      "is_draft": false,
+      "approved": false,
+      "review_time_hours": null,
+      "source_branch": "2.0",
+      "target_branch": "master",
+      "developer_id": 1,
+      "reviewer_id": 11
+    },
+    {
+      "gitlab_mr_id": 1610,
+      "title": "Some fixes for Basic 2.0 alpha",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "review_time_hours": 2.15,
+      "source_branch": "2.0",
+      "target_branch": "master",
+      "developer_id": 1,
+      "reviewer_id": 11
+    },
+    {
+      "gitlab_mr_id": 1607,
+      "title": "F-Droid Basic 2.0",
+      "state": "merged",
+      "is_draft": false,
+      "approved": true,
+      "review_time_hours": 373.0,
+      "source_branch": "2.0",
+      "target_branch": "master",
+      "developer_id": 1,
+      "reviewer_id": null
+    },
+    {
+      "gitlab_mr_id": 1590,
+      "title": "[libs] More robust handling of language and script in `getBestLocale`",
+      "state": "merged",
+      "is_draft": false,
+      "approved": false,
+      "review_time_hours": null,
+      "source_branch": "better-getBestLocale",
+      "target_branch": "master",
+      "developer_id": null,
+      "reviewer_id": 1
+    }
+  ]
 }

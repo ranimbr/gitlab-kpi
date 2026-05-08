@@ -1,8 +1,7 @@
 """
 repositories/comment_repository.py
 
-Gestion de la persistance des commentaires (Notes) GitLab.
-Indispensable pour l'analyse granulée des KPIs Senior.
+
 """
 
 from typing import List, Optional

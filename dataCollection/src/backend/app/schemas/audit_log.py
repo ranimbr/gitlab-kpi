@@ -1,7 +1,6 @@
 """
 schemas/audit_log.py — CORRIGÉ
-- Lecture seule (créé automatiquement par audit_service)
-- Ajout pagination params
+
 """
 from pydantic import BaseModel, Field
 from typing import Optional, Any, Dict
@@ -17,6 +16,8 @@ class AuditLogResponse(BaseModel):
     old_value:   Optional[Dict[str, Any]]
     new_value:   Optional[Dict[str, Any]]
     ip_address:  Optional[str]
+    entity_name: Optional[str] = None
+    user_name:   Optional[str] = None
     created_at:  datetime
 
     model_config = {"from_attributes": True}
@@ -31,4 +32,4 @@ class AuditLogFilterParams(BaseModel):
     created_before: Optional[datetime] = None
     # Pagination
     page:  int = Field(default=1, ge=1)
-    limit: int = Field(default=50, ge=1, le=500)
+    limit: int = Field(default=50, ge=1, le=1000)

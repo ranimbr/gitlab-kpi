@@ -1,29 +1,7 @@
 """
 models/project_site.py
 
-Table de jonction Many-to-Many : Project ↔ Site.
 
-RAISON D'EXISTENCE :
-    Dans l'ancien modèle, Project avait site_id (FK directe) → 1 projet = 1 site.
-    La remarque de l'encadrant : un projet peut appartenir à PLUSIEURS sites.
-
-    Exemple concret : le projet "Middleware-Auth" est utilisé et maintenu
-    par les équipes de Tunis ET de Paris → il appartient aux deux sites.
-
-    Cette table remplace site_id dans Project par une relation M2M.
-
-Attributs métier :
-    assigned_at → date à laquelle le projet a été rattaché au site.
-
-Usage KPI :
-    Les KPIs par site filtrent les projets via ProjectSite.
-    KPI #6 (NB commits par projet) s'applique sur tous les projets
-    rattachés à un site donné.
-
-Exemple :
-    Middleware-Auth (project_id=3) → Tunis (site_id=1)
-    Middleware-Auth (project_id=3) → Paris (site_id=2)
-    API-Gateway     (project_id=7) → Tunis (site_id=1) seulement
 """
 
 from sqlalchemy import Column, Integer, ForeignKey, DateTime, Index, func

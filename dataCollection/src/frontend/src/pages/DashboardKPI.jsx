@@ -34,6 +34,7 @@ import developerService from "../services/developerService"; // ✅ Phase 1: Pul
 import siteService from "../services/siteService";
 import periodService from "../services/periodService";
 import extractionLotService from "../services/extractionLotService";
+import { toUserError } from "../services/api";
 import ReactApexChart from "react-apexcharts";
 import Chart from "chart.js/auto";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -48,11 +49,6 @@ const getCssVar = (name) => getComputedStyle(document.documentElement).getProper
 const rgba = (cssVar, alpha) => {
   const val = getCssVar(cssVar);
   return val ? `rgba(${val},${alpha})` : `rgba(64,81,137,${alpha})`;
-};
-
-const fmt = (num, decimals = 2) => {
-  if (num == null || isNaN(Number(num))) return "—";
-  return Number(num).toFixed(decimals);
 };
 
 const fmtDate = (d) =>
@@ -362,7 +358,6 @@ const DoraMetricsRow = ({ latest, loading }) => {
 
 // ── Graphique de tendance (ligne) ─────────────────────────────────────────────
 const KpiHistoryChart = ({ history }) => {
-  if (!history?.length) return null;
   const labels = history.map(getPeriodLabel);
   const series = useMemo(() => [
     { name: "Taux commit/site", data: history.map(s => Number((s.commit_rate_per_site || 0).toFixed(3))) },
@@ -380,6 +375,7 @@ const KpiHistoryChart = ({ history }) => {
     tooltip: { shared: true, intersect: false },
     dataLabels: { enabled: false },
   }), [labels]);
+  if (!history?.length) return null;
   return (
     <div className="card border-0" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
       <div className="card-header bg-white" style={{ borderBottom: "1px solid #f0f2f5" }}>
@@ -393,7 +389,6 @@ const KpiHistoryChart = ({ history }) => {
 };
 
 const MrRatesChart = ({ history }) => {
-  if (!history?.length) return null;
   const labels = history.map(getPeriodLabel);
   const series = useMemo(() => [
     { name: "Taux approbation", data: history.map(s => Number(((s.approved_mr_rate || 0) * 100).toFixed(1))) },
@@ -410,6 +405,7 @@ const MrRatesChart = ({ history }) => {
     dataLabels: { enabled: false },
     tooltip: { y: { formatter: v => v + "%" }, shared: true, intersect: false },
   }), [labels]);
+  if (!history?.length) return null;
   return (
     <div className="card border-0" style={{ boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
       <div className="card-header bg-white" style={{ borderBottom: "1px solid #f0f2f5" }}>
@@ -667,11 +663,9 @@ function exportSnapshotPDF(projectName) {
 const TeamPulseWidget = ({ projectId }) => {
   const [topDevs, setTopDevs]     = useState([]);
   const [atRisk, setAtRisk]       = useState([]);
-  const [loading, setLoading]     = useState(true);
 
   useEffect(() => {
-    if (!projectId) { setLoading(false); return; }
-    setLoading(true);
+    if (!projectId) return;
     developerService.getLeaderboard(projectId, { limit: 50 })
       .then(lb => {
         const entries = lb?.entries || [];
@@ -682,11 +676,10 @@ const TeamPulseWidget = ({ projectId }) => {
         setTopDevs(top);
         setAtRisk(risky);
       })
-      .catch(() => { setTopDevs([]); setAtRisk([]); })
-      .finally(() => setLoading(false));
+      .catch(() => { setTopDevs([]); setAtRisk([]); });
   }, [projectId]);
 
-  if (loading || (!topDevs.length && !atRisk.length)) return null;
+  if (!projectId || (!topDevs.length && !atRisk.length)) return null;
 
   return (
     <div className="row g-3 mb-4">
@@ -780,13 +773,11 @@ export default function DashboardKPI() {
   
   const [periods, setPeriods] = useState([]);
   const [selectedPeriodId, setSelectedPeriodId] = useState(null);
-  const [currentPeriod, setCurrentPeriod] = useState(null);
 
   const [kpiData, setKpiData] = useState(null);
   const [multiPeriodData, setMultiPeriodData] = useState([]);
   const [activeMultiKpi, setActiveMultiKpi] = useState("mr_rate_per_site");
-  
-  const [selectedSnapIndex, setSelectedSnapIndex] = useState(0);
+
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -809,7 +800,6 @@ export default function DashboardKPI() {
       if (!mounted) return;
       setProjects(projs);
       setPeriods(periodsData || []);
-      setCurrentPeriod(curPeriod);
       setSites(sitesData || []);
 
       // Init filters
@@ -848,9 +838,6 @@ export default function DashboardKPI() {
 
   // Chargement KPIs (Pulse)
   useEffect(() => {
-    // Si pas de périodes chargées, on attend
-    if (periods.length === 0 && loading) return;
-
     let mounted = true;
     setLoading(true);
     setError(null);
@@ -871,10 +858,12 @@ export default function DashboardKPI() {
         periodId: periodIdParam 
       }),
       // Tableau multi-périodes
-      analyticsService.getMultiPeriod(selectedProjectId || projects[0]?.id || 0, { 
-        months: 12, 
-        siteId: siteIdParam 
-      }).catch(() => []),
+      selectedProjectId
+        ? analyticsService.getMultiPeriod(selectedProjectId, {
+            months: 12,
+            siteId: siteIdParam
+          }).catch(() => [])
+        : Promise.resolve([]),
     ]).then(([data, multiData]) => {
       if (!mounted) return;
       setKpiData(data);
@@ -882,26 +871,30 @@ export default function DashboardKPI() {
     }).catch((err) => {
       if (mounted) {
         console.error("Dashboard fetch error:", err);
-        setError("Impossible de charger les KPIs. Vérifiez votre connexion au serveur.");
+        setError(toUserError(err, "Impossible de charger les KPIs."));
       }
     }).finally(() => {
       if (mounted) setLoading(false);
     });
 
     return () => { mounted = false; };
-  }, [selectedProjectId, selectedSiteId, selectedLotId, selectedPeriodId, periods.length]);
+  }, [selectedProjectId, selectedSiteId, selectedLotId, selectedPeriodId]);
 
-  // ✅ SYNC URL (Sépare du chargement pour plus de fiabilité)
+  // ✅ SYNC URL & LocalStorage (Sépare du chargement pour plus de fiabilité)
   useEffect(() => {
     const params = {
       project_id: selectedProjectId === null ? "all" : selectedProjectId
     };
     if (selectedPeriodId) params.period_id = selectedPeriodId;
-    if (selectedSiteId) params.site_id = selectedSiteId;
-    if (selectedLotId) params.lot_id = selectedLotId;
+    if (selectedSiteId)   params.site_id   = selectedSiteId;
+    if (selectedLotId)    params.lot_id    = selectedLotId;
+
+    if (selectedProjectId !== null) {
+      localStorage.setItem("last_project_id", selectedProjectId);
+    }
 
     setSearchParams(params);
-  }, [selectedProjectId, selectedPeriodId, selectedSiteId, selectedLotId]);
+  }, [selectedProjectId, selectedPeriodId, selectedSiteId, selectedLotId, setSearchParams]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedProjectId) return;
@@ -916,8 +909,8 @@ export default function DashboardKPI() {
       setKpiData(data);
       setMultiPeriodData(Array.isArray(multiData) ? multiData : []);
       setError(null);
-    } catch {
-      setError("Impossible de rafraîchir les données.");
+    } catch (err) {
+      setError(toUserError(err, "Impossible de rafraichir les donnees."));
     } finally {
       setRefreshing(false);
     }
@@ -928,14 +921,12 @@ export default function DashboardKPI() {
     setSelectedProjectId(val);
     setSelectedSiteId(null);
     setSelectedLotId(null);
-    setSelectedSnapIndex(0);
   }, []);
 
   const handlePeriodChange = useCallback((id) => {
     const val = id === "" ? null : parseInt(id);
     setSelectedPeriodId(val);
     setSelectedLotId(null); // On privilégie la période au lot
-    setSelectedSnapIndex(0);
   }, []);
 
   const history = kpiData?.history || [];
@@ -955,7 +946,6 @@ export default function DashboardKPI() {
   const noDataForChoice = isPeriodSpecific && !kpiData?.latest_metrics;
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
-  const selectedSite = sites.find(s => s.id === selectedSiteId);
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
 
   const radarScores = useMemo(() => {
@@ -1086,6 +1076,25 @@ export default function DashboardKPI() {
             </div>
           </div>
         )}
+
+        {/* ── Bandeau de contexte Lot */}
+        {selectedLotId && (() => {
+          const activeLot = lots.find(l => String(l.id) === String(selectedLotId));
+          return (
+            <div className="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-center gap-3 py-2 px-4" 
+              style={{ borderRadius: 12, background: "linear-gradient(90deg, #eff6ff, #f0fdf4)", borderLeft: "4px solid #3b82f6 !important" }}>
+              <i className="ri-stack-line fs-20 text-primary"></i>
+              <div className="flex-grow-1">
+                <span className="fw-bold text-primary me-2">Mode Exploration : Lot #{selectedLotId}</span>
+                {activeLot && <span className="text-muted fs-12">| Capturé le {new Date(activeLot.created_at || activeLot.started_at).toLocaleDateString("fr-FR")}</span>}
+                <span className="badge bg-primary-subtle text-primary ms-2 fs-11">Données isolées</span>
+              </div>
+              <Link to="/extraction-lots" className="btn btn-sm btn-soft-primary d-flex align-items-center gap-1">
+                <i className="ri-arrow-left-line"></i> Retour aux lots
+              </Link>
+            </div>
+          );
+        })()}
 
         {!loading && (
           <ExecutiveInsight latest={latest} projectName={selectedProject?.name} />

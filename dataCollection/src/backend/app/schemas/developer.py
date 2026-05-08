@@ -1,12 +1,9 @@
 """
 schemas/developer.py — v5
-SEUL AJOUT par rapport à v4 :
-    DeveloperImportRequest  → create_missing_groups : bool = False
-    DeveloperImportResponse → unknown_groups, created_groups
-    DeveloperImportRowResult → warnings (déjà présent v4)
+
 """
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from app.schemas.enums import ImportStatusEnum, DeveloperSourceEnum
 
@@ -58,9 +55,11 @@ class DeveloperCreate(BaseModel):
     company: Optional[str] = Field(default=None, max_length=255)
     is_external:     bool           = Field(default=False)
     onboarding_date: Optional[date] = Field(default=None)
+    offboarding_date: Optional[date] = Field(default=None)
     group_ids: List[int] = Field(default=[])
     sites:    List[DeveloperSiteAssociation]    = Field(default=[])
     projects: List[DeveloperProjectAssociation] = Field(default=[])
+    period_id: Optional[int] = Field(default=None, description="Période cible pour l'affectation des projets")
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -84,10 +83,12 @@ class DeveloperUpdate(BaseModel):
     avatar_url:      Optional[str]  = Field(default=None, max_length=512)
     is_external:     Optional[bool] = None
     onboarding_date: Optional[date] = None
+    offboarding_date: Optional[date] = None
     group_ids:       Optional[List[int]]  = None
     is_active:       Optional[bool] = None
     sites:    Optional[List[DeveloperSiteAssociation]]    = None
     projects: Optional[List[DeveloperProjectAssociation]] = None
+    period_id: Optional[int] = None
 
 class DeveloperValidate(BaseModel):
     is_validated: bool
@@ -111,8 +112,9 @@ class SiteAssociationResponse(BaseModel):
 class ProjectAssociationResponse(BaseModel):
     project_id:   int
     project_name: Optional[str] = None
-    gitlab_project_id: Optional[int] = None # IDENTIFIANT EXTERNE GitLab
+    gitlab_project_id: Optional[int] = None
     is_active:    bool
+    period_id:    Optional[int] = None # AJOUT SENIOR
     model_config = {"from_attributes": True}
 
 class DeveloperResponse(BaseModel):
@@ -125,8 +127,9 @@ class DeveloperResponse(BaseModel):
     avatar_url:      Optional[str]
     is_external:     bool
     auto_created:    bool
-    onboarding_date: Optional[date]
-    last_active_at:  Optional[datetime]
+    onboarding_date: Optional[date] = None
+    offboarding_date: Optional[date] = None
+    last_active_at:  Optional[datetime] = None
     group_ids:       List[int] = []
     is_active:       bool
     is_validated:    bool
@@ -164,6 +167,9 @@ class DeveloperSummary(BaseModel):
     is_bot:          bool
     group_ids:       List[int] = []
     primary_site_id: Optional[int] = None
+    onboarding_date:  Optional[date] = None
+    offboarding_date: Optional[date] = None
+    rh_status:        Optional[str]  = "ACTIVE"
     site:            Optional[str] = None
     sites:    List[SiteAssociationResponse]    = []
     projects: List[ProjectAssociationResponse] = []
@@ -190,6 +196,7 @@ class DeveloperSummary(BaseModel):
 class DeveloperImportRequest(BaseModel):
     default_group_id: Optional[int] = Field(default=None)
     default_site_id:  Optional[int] = Field(default=None)
+    period_id:        int           = Field(..., description="Période cible de synchronisation (Janvier, Février...)")
     dry_run: bool = Field(default=False)
     create_missing_sites:    bool = Field(default=False)
     create_missing_projects: bool = Field(default=False)
@@ -202,6 +209,10 @@ class DeveloperImportRequest(BaseModel):
             "(site_id=None, à compléter dans Administration → Groupes). "
             "Si False : les groupes inconnus sont ignorés et listés dans 'unknown_groups'."
         ),
+    )
+    full_sync: bool = Field(
+        default=False,
+        description="Si True : les développeurs absents du CSV seront marqués comme inactifs."
     )
 
 
@@ -222,6 +233,8 @@ class DeveloperImportResponse(BaseModel):
     success_count:   int
     error_count:     int
     duplicate_count: int
+    deactivated_count: int = 0
+    deactivated_list: Optional[List[Dict[str, Any]]] = Field(default=None)
     dry_run:         bool
     rows: Optional[List[DeveloperImportRowResult]] = Field(default=None)
 
@@ -250,3 +263,12 @@ class DeveloperImportLogResponse(BaseModel):
     imported_by:     Optional[int]
     created_at:      datetime
     model_config = {"from_attributes": True}
+
+
+class TimelineEvent(BaseModel):
+    date: datetime
+    title: str
+    description: Optional[str] = None
+    icon: str
+    color: str
+    details: Optional[dict] = None

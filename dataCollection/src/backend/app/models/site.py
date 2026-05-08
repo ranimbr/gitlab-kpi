@@ -1,24 +1,7 @@
 """
 models/site.py
 
-Entité représentant un site géographique / organisationnel.
 
-CORRECTIONS MAJEURES (remarques encadrant) :
-─────────────────────────────────────────────
-1. AJOUT des relations Many-to-Many :
-       project_associations    → ProjectSite    (site ↔ projets)
-       developer_associations  → DeveloperSite  (site ↔ développeurs)
-
-2. SUPPRESSION des relations directes :
-       developers → remplacé par developer_associations (M2M)
-       projects   → remplacé par project_associations  (M2M)
-
-3. La relation gitlab_configs reste directe (1 site → N instances GitLab).
-   La relation developer_groups reste directe (1 site → N groupes).
-   La relation dashboards reste directe (1 site → N dashboards).
-   La relation kpi_snapshots reste directe (1 site → N snapshots).
-
-Exemples de sites : "Tunis", "Lyon", "Paris", "HGW-OPE", "Casablanca"
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, Index

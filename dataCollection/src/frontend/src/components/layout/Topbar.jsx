@@ -360,7 +360,7 @@ export default function Topbar() {
 
   const ddRef = useRef(null);
 
-  const userName    = user?.name  || "Administrateur";
+  const userName    = user?.name  || "Utilisateur";
   const userEmail   = user?.email || "";
   const userRole    = (user?.role || "user").replace(/_/g, " ").toUpperCase();
   const initials    = userName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();

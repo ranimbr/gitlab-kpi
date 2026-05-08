@@ -9,6 +9,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import developerService from "../services/developerService";
 import analyticsService from "../services/analyticsService";
 import projectService  from "../services/projectService";
+import periodService   from "../services/periodService";
 import LoadingSpinner  from "../components/common/LoadingSpinner";
 import ReactApexChart  from "react-apexcharts";
 
@@ -97,38 +98,74 @@ function ComparisonBar({ label, icon, valueA, valueB, isRate = false }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function DeveloperComparisonPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectIdParam = searchParams.get("project_id");
+  const periodIdParam = searchParams.get("period_id");
+
   const [developers, setDevelopers] = useState([]);
   const [projects, setProjects]     = useState([]);
-  const [selectedPid, setSelectedPid] = useState("");
-  const [devAId, setDevAId] = useState(searchParams.get("a") || "");
-  const [devBId, setDevBId] = useState(searchParams.get("b") || "");
+  const [periods, setPeriods]       = useState([]);
+  const [selectedPid, setSelectedPid] = useState(projectIdParam || localStorage.getItem("last_project_id") || "");
+  const [selectedPeriodId, setSelectedPeriodId] = useState(periodIdParam || "");
+  const [devAId, setDevAId] = useState(searchParams.get("dev_a_id") || searchParams.get("a") || "");
+  const [devBId, setDevBId] = useState(searchParams.get("dev_b_id") || searchParams.get("b") || "");
   const [summaryA, setSummaryA] = useState(null);
   const [summaryB, setSummaryB] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // [SENIOR] Sync all filters to URL
+  useEffect(() => {
+    const params = {};
+    if (selectedPid) {
+      params.project_id = selectedPid;
+      localStorage.setItem("last_project_id", selectedPid);
+    }
+    if (selectedPeriodId) {
+      params.period_id = selectedPeriodId;
+    }
+    if (devAId) params.dev_a_id = devAId;
+    if (devBId) params.dev_b_id = devBId;
+
+    const currentParams = Object.fromEntries(searchParams.entries());
+    // Compatibility with legacy 'a' and 'b' if they exist in URL but not in state yet
+    if (JSON.stringify(currentParams) !== JSON.stringify(params)) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [selectedPid, selectedPeriodId, devAId, devBId, searchParams, setSearchParams]);
 
   useEffect(() => {
     Promise.all([
       developerService.getByTab("validated", null, true),
       projectService.getAll(),
-    ]).then(([devs, projs]) => {
+      periodService.getAll(),
+    ]).then(([devs, projs, periodsData]) => {
       setDevelopers(Array.isArray(devs) ? devs : []);
-      setProjects(Array.isArray(projs) ? projs : []);
-      if (projs?.length) setSelectedPid(String(projs[0].id));
+      const list = Array.isArray(projs) ? projs : [];
+      setProjects(list);
+      if (!selectedPid && list.length > 0) {
+        setSelectedPid(String(list[0].id));
+      }
+      const periodList = Array.isArray(periodsData) ? periodsData : [];
+      setPeriods(periodList);
+      if (!selectedPeriodId && periodList.length > 0) {
+        setSelectedPeriodId(String(periodList[0].id));
+      }
     }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!selectedPid || !devAId) { setSummaryA(null); return; }
+    // Pass periodId if available
     analyticsService.getDeveloperSummary(parseInt(selectedPid), parseInt(devAId))
       .then(setSummaryA).catch(() => setSummaryA(null));
-  }, [devAId, selectedPid]);
+  }, [devAId, selectedPid, selectedPeriodId]);
 
   useEffect(() => {
     if (!selectedPid || !devBId) { setSummaryB(null); return; }
+    // Pass periodId if available
     analyticsService.getDeveloperSummary(parseInt(selectedPid), parseInt(devBId))
       .then(setSummaryB).catch(() => setSummaryB(null));
-  }, [devBId, selectedPid]);
+  }, [devBId, selectedPid, selectedPeriodId]);
 
   const devA = developers.find(d => String(d.id) === String(devAId));
   const devB = developers.find(d => String(d.id) === String(devBId));
@@ -184,13 +221,22 @@ export default function DeveloperComparisonPage() {
           </div>
         </div>
 
-        {/* Project Selector */}
-        <div className="row mb-4">
-          <div className="col-md-4">
+        {/* Project & Period Selectors */}
+        <div className="row mb-4 g-3">
+          <div className="col-md-3">
             <label className="fs-11 fw-bold text-muted text-uppercase mb-1">Contexte Projet</label>
             <select className="form-select" value={selectedPid} onChange={e => setSelectedPid(e.target.value)}>
               <option value="" disabled>Choisir…</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <label className="fs-11 fw-bold text-muted text-uppercase mb-1">Période d'Analyse</label>
+            <select className="form-select" value={selectedPeriodId} onChange={e => setSelectedPeriodId(e.target.value)}>
+              <option value="">Dernier Snapshot</option>
+              {periods.map(p => (
+                <option key={p.id} value={p.id}>{p.month}/{p.year}</option>
+              ))}
             </select>
           </div>
         </div>

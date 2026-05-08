@@ -1,11 +1,6 @@
 """
 services/kpi/analytics_service.py
 
-CORRECTIONS (modèles mis à jour) :
-─────────────────────────────────────
-1. get_dashboard_summary() : group_id et developer_id dans le dict.
-2. AJOUT get_developer_kpi_summary() : vue KPI individuelle.
-3. AJOUT get_leaderboard() : classement des développeurs d'un site.
 """
 import logging
 from datetime import date
@@ -52,7 +47,17 @@ class AnalyticsService:
             .all()
         ]
 
-    def get_latest_kpis(self, project_id, site_id=None, group_id=None, developer_id=None):
+    def get_latest_kpis(self, project_id, site_id=None, group_id=None, developer_id=None, lot_id=None, period_id=None):
+        if lot_id:
+            return self._calculate_virtual_snapshot_for_lot(
+                project_id, lot_id, site_id, group_id, developer_id
+            )
+        
+        if period_id:
+            return self.snapshot_repo.get_by_project_period_site(
+                self.db, project_id, period_id, site_id=site_id, group_id=group_id, developer_id=developer_id
+            )
+
         return self.snapshot_repo.get_latest(
             self.db, project_id, site_id=site_id, group_id=group_id, developer_id=developer_id
         )
@@ -91,9 +96,9 @@ class AnalyticsService:
         elif project_id is None:
             # ✅ NOUVEAU : Mode Senior Global (Tous les projets)
             # On aggrège les KPIs par période
-            logger.info(f"Dashboard Summary: Aggregating global data (period_id={period_id}, site_id={site_id})")
-            latest = self._get_aggregated_global_snapshot(period_id, site_id)
-            history = self._get_global_history(site_id)
+            logger.info(f"Dashboard Summary: Aggregating global data (period_id={period_id}, site_id={site_id}, developer_id={developer_id})")
+            latest = self._get_aggregated_global_snapshot(period_id, site_id, developer_id=developer_id)
+            history = self._get_global_history(site_id, developer_id=developer_id)
             logger.info(f"Dashboard Summary: Aggregated global data success. History count: {len(history)}")
             period_label = "Tous les projets"
             if period_id and latest:
@@ -125,7 +130,7 @@ class AnalyticsService:
             "period_label":    period_label,
         }
 
-    def _get_aggregated_global_snapshot(self, period_id: Optional[int], site_id: Optional[int]) -> Optional[KpiSnapshot]:
+    def _get_aggregated_global_snapshot(self, period_id: Optional[int] = None, site_id: Optional[int] = None, developer_id: Optional[int] = None) -> Optional[KpiSnapshot]:
         """Aggrège les snapshots de tous les projets pour une période donnée."""
         
         # 1. Identifier la période si non fournie (dernière période avec snapshots)
@@ -137,6 +142,17 @@ class AnalyticsService:
             )
             if not last_period: return None
             period_id = last_period[0]
+
+        # 1b. Calculer le nombre UNIQUE de développeurs pour cette période (Global)
+        nb_devs_query = self.db.query(func.count(distinct(DeveloperProject.developer_id))).filter(
+            DeveloperProject.period_id == period_id,
+            DeveloperProject.is_active == True
+        )
+        if site_id:
+            nb_devs_query = nb_devs_query.join(Developer).join(
+                DeveloperSite, (DeveloperSite.developer_id == Developer.id) & (DeveloperSite.site_id == site_id)
+            )
+        nb_devs_total = nb_devs_query.scalar() or 0
 
         # 2. Aggréger les snapshots de niveau 'Project' (dev_id=NULL, group_id=NULL)
         # On fait la moyenne des taux et la somme des volumes
@@ -153,19 +169,22 @@ class AnalyticsService:
             func.sum(KpiSnapshot.total_reviews).label("total_reviews"),
             func.sum(KpiSnapshot.total_mrs_draft).label("total_mrs_draft"),
             func.avg(KpiSnapshot.avg_review_time_hours).label("avg_review"),
-            func.sum(KpiSnapshot.review_time_hours).label("total_review_time"), # ✅ ADDED
-            func.sum(KpiSnapshot.nb_developers).label("nb_devs"),
+            func.sum(KpiSnapshot.review_time_hours).label("total_review_time"),
+            func.avg(KpiSnapshot.developer_score).label("developer_score"),
         ).filter(
             KpiSnapshot.period_id == period_id,
-            KpiSnapshot.developer_id.is_(None),
             KpiSnapshot.group_id.is_(None)
         )
         
-        if site_id:
-            q = q.filter(KpiSnapshot.site_id == site_id)
+        if developer_id:
+            q = q.filter(KpiSnapshot.developer_id == developer_id)
+            if site_id: q = q.filter(KpiSnapshot.site_id == site_id)
         else:
-            # Pour le mode "Global", on prend les snapshots globaux par projet (site_id is null)
-            q = q.filter(KpiSnapshot.site_id.is_(None))
+            q = q.filter(KpiSnapshot.developer_id.is_(None))
+            if site_id:
+                q = q.filter(KpiSnapshot.site_id == site_id)
+            else:
+                q = q.filter(KpiSnapshot.site_id.is_(None))
 
         stats = q.one_or_none()
         if not stats or stats.total_commits is None: return None
@@ -177,7 +196,7 @@ class AnalyticsService:
             approved_mr_rate       = round(float(stats.approved_rate or 0), 4),
             merged_mr_rate         = round(float(stats.merged_rate or 0), 4),
             commit_rate_per_site   = round(float(stats.commit_rate or 0), 2),
-            nb_commits_per_project = int(stats.total_commits or 0), # ✅ Required field
+            nb_commits_per_project = int(stats.total_commits or 0),
             total_commits          = int(stats.total_commits or 0),
             total_mrs_created      = int(stats.total_mrs or 0),
             total_mrs_approved     = int(stats.total_mrs_approved or 0),
@@ -186,8 +205,9 @@ class AnalyticsService:
             total_reviews          = int(stats.total_reviews or 0),
             total_mrs_draft        = int(stats.total_mrs_draft or 0),
             avg_review_time_hours  = round(float(stats.avg_review or 0), 1),
-            review_time_hours      = float(stats.total_review_time or 0), # ✅ CORRECTED
-            nb_developers          = int(stats.nb_devs or 0),
+            review_time_hours      = float(stats.total_review_time or 0),
+            developer_score        = float(stats.developer_score or 0) if developer_id else None,
+            nb_developers          = nb_devs_total, # Utilisation du compte distinct
             
             # ✅ AJOUT : Initialiser les métriques Enterprise pour éviter validation fail (None -> int)
             bus_factor             = 0,
@@ -196,21 +216,25 @@ class AnalyticsService:
             
             snapshot_date          = date.today()
         )
-        logger.info(f"Global Aggregation for period {period_id}: devs={stats.nb_devs}, commits={stats.total_commits}")
+        logger.info(f"Global Aggregation for period {period_id}: commits={snap.total_commits}, mrs={snap.total_mrs_created}")
         return snap
 
-    def _get_global_history(self, site_id: Optional[int]) -> List[KpiSnapshot]:
+    def _get_global_history(self, site_id: Optional[int] = None, developer_id: Optional[int] = None) -> List[KpiSnapshot]:
         """Historique aggrégé de tous les projets par période."""
-        period_ids = (
-            self.db.query(KpiSnapshot.period_id)
-            .distinct()
-            .order_by(KpiSnapshot.period_id.asc())
-            .all()
-        )
+        if developer_id:
+            # Pour un développeur, on récupère les IDs de périodes où il a des snapshots (peu importe le projet)
+            period_ids = self.db.query(KpiSnapshot.period_id).filter(KpiSnapshot.developer_id == developer_id).distinct().all()
+        else:
+            q = self.db.query(KpiSnapshot.period_id).filter(KpiSnapshot.project_id.is_(None))
+            if site_id:
+                q = q.filter(KpiSnapshot.site_id == site_id, KpiSnapshot.developer_id.is_(None))
+            else:
+                q = q.filter(KpiSnapshot.site_id.is_(None), KpiSnapshot.developer_id.is_(None))
+            period_ids = q.distinct().all()
         
         history = []
         for (pid,) in period_ids:
-            snap = self._get_aggregated_global_snapshot(pid, site_id)
+            snap = self._get_aggregated_global_snapshot(pid, site_id, developer_id=developer_id)
             if snap:
                 # Ajouter le label de période manuellement pour le frontend
                 period = self.period_repo.get_by_id(self.db, pid)
@@ -224,6 +248,7 @@ class AnalyticsService:
         developer_id: int,
         project_id:   int,
         period_id:    Optional[int] = None,
+        lot_id:       Optional[int] = None,
     ) -> Dict:
         """
         ✅ AJOUT : vue KPI individuelle pour la page profil développeur.
@@ -231,11 +256,24 @@ class AnalyticsService:
         developer = self.dev_repo.get_by_id(self.db, developer_id)
         if not developer:
             return {}
-
-        # Dernier snapshot individuel
-        snapshot = self.snapshot_repo.get_latest(
-            self.db, project_id, developer_id=developer_id
-        )
+        
+        if lot_id:
+            snapshot = self._calculate_virtual_snapshot_for_lot(
+                project_id, lot_id, developer_id=developer_id, site_id=None, group_id=None
+            )
+        else:
+            # Dernier snapshot individuel
+            if project_id is None:
+                snapshot = (
+                    self.db.query(KpiSnapshot)
+                    .filter(KpiSnapshot.developer_id == developer_id)
+                    .order_by(KpiSnapshot.snapshot_date.desc())
+                    .first()
+                )
+            else:
+                snapshot = self.snapshot_repo.get_latest(
+                    self.db, project_id, developer_id=developer_id
+                )
 
         # Site primaire du développeur
         primary_site = (
@@ -280,6 +318,13 @@ class AnalyticsService:
                 project_id, lot_id, site_id, group_id, limit
             )
 
+        # ✅ NOUVEAU [SENIOR] : Support de la vue Globale (Tous les projets)
+        # Si project_id est None, on agrège les stats de chaque développeur
+        if project_id is None:
+            return self._get_global_developer_leaderboard(
+                period_id=period_id, site_id=site_id, group_id=group_id, limit=limit
+            )
+
         snapshots = self.snapshot_repo.get_developers_ranking(
             db=self.db, project_id=project_id, period_id=period_id,
             kpi_field="developer_score", site_id=site_id, group_id=group_id, limit=limit,
@@ -305,9 +350,12 @@ class AnalyticsService:
                 "gitlab_username":       dev.gitlab_username  if dev else None,
                 "avatar_url":            dev.avatar_url       if dev else None,
                 "commit_count":          snap.total_commits,
+                "total_commits":         snap.total_commits, # Alias pour compatibilité frontend
                 "mr_count":              snap.total_mrs_created,
+                "total_mrs_created":     snap.total_mrs_created, # Alias pour compatibilité frontend
                 "approved_mr_count":     snap.total_mrs_approved,
                 "approved_rate":         approved_rate,
+                "approved_mr_rate":      approved_rate, # Alias pour compatibilité frontend
                 "avg_review_time_hours": snap.avg_review_time_hours,
                 "avg_review_hours":      snap.avg_review_time_hours,
                 "developer_score":       snap.developer_score,
@@ -323,6 +371,83 @@ class AnalyticsService:
             "entries":      entries,
         }
 
+    def _get_global_developer_leaderboard(
+        self,
+        period_id: int,
+        site_id:   Optional[int] = None,
+        group_id:  Optional[int] = None,
+        limit:     int           = 50,
+    ) -> Dict:
+        """
+        [SENIOR] Calcule les KPIs agrégés pour chaque développeur sur TOUS les projets.
+        Utile pour le tracking "Dev-Centric" demandé par le management.
+        """
+        from sqlalchemy import func
+        from app.models.developer import Developer
+        
+        # 1. Requête d'agrégation groupée par développeur
+        q = self.db.query(
+            KpiSnapshot.developer_id,
+            func.sum(KpiSnapshot.total_commits).label("total_commits"),
+            func.sum(KpiSnapshot.total_mrs_created).label("total_mrs"),
+            func.sum(KpiSnapshot.total_mrs_approved).label("total_mrs_approved"),
+            func.avg(KpiSnapshot.avg_review_time_hours).label("avg_review"),
+            func.avg(KpiSnapshot.developer_score).label("avg_score"),
+        ).filter(
+            KpiSnapshot.period_id == period_id,
+            KpiSnapshot.developer_id.isnot(None),
+            KpiSnapshot.project_id != 0 # On ignore les snapshots virtuels globaux
+        )
+        
+        if site_id:
+            q = q.filter(KpiSnapshot.site_id == site_id)
+        if group_id:
+            q = q.filter(KpiSnapshot.group_id == group_id)
+            
+        # Tri par score moyen (performance globale)
+        q = q.group_by(KpiSnapshot.developer_id).order_by(func.avg(KpiSnapshot.developer_score).desc()).limit(limit)
+        
+        rows = q.all()
+        
+        period = self.period_repo.get_by_id(self.db, period_id)
+        period_label = f"{_MOIS_FR.get(period.month, '')} {period.year}" if period else "—"
+        
+        entries = []
+        for rank, r in enumerate(rows, start=1):
+            dev = self.dev_repo.get_by_id(self.db, r.developer_id)
+            if not dev: continue
+            
+            approved_rate = None
+            if r.total_mrs and r.total_mrs > 0:
+                approved_rate = r.total_mrs_approved / r.total_mrs
+                
+            entries.append({
+                "rank":                  rank,
+                "developer_id":          r.developer_id,
+                "developer_name":        dev.name,
+                "gitlab_username":       dev.gitlab_username,
+                "avatar_url":            dev.avatar_url,
+                "commit_count":          int(r.total_commits or 0),
+                "total_commits":         int(r.total_commits or 0),
+                "mr_count":              int(r.total_mrs or 0),
+                "total_mrs_created":     int(r.total_mrs or 0),
+                "approved_mr_count":     int(r.total_mrs_approved or 0),
+                "approved_rate":         approved_rate,
+                "approved_mr_rate":      approved_rate,
+                "avg_review_hours":      round(float(r.avg_review or 0), 1),
+                "developer_score":       round(float(r.avg_score or 0), 4),
+                "score_delta":           None, 
+                "rank_delta":            None,
+            })
+            
+        return {
+            "site_id":      site_id,
+            "group_id":     group_id,
+            "period_label": f"Global — {period_label}",
+            "total_devs":   len(entries),
+            "entries":      entries,
+        }
+
     def get_developer_insights(
         self,
         developer_id: int,
@@ -334,10 +459,11 @@ class AnalyticsService:
         Compare les KPIs du développeur avec la moyenne du site.
         """
         # 1. Récupérer le snapshot individuel
-        # On ne filtre PAS par site_id=None ici car un snapshot individuel 
-        # est souvent lié à un site spécifique.
+        # Correction [SENIOR] : project_id=None (global) -> project_id=0 dans la DB
+        p_id = 0 if project_id is None else project_id
+        
         q = self.db.query(KpiSnapshot).filter(
-            KpiSnapshot.project_id   == project_id,
+            KpiSnapshot.project_id   == p_id,
             KpiSnapshot.developer_id == developer_id
         )
         if period_id:
@@ -350,7 +476,7 @@ class AnalyticsService:
 
         # 2. Récupérer le snapshot moyen du site correspondant pour la même période
         site_snap = self.snapshot_repo.get_by_project_period_site(
-            self.db, project_id, dev_snap.period_id, site_id=dev_snap.site_id
+            self.db, p_id, dev_snap.period_id, site_id=dev_snap.site_id
         )
 
         insights = []
@@ -405,18 +531,25 @@ class AnalyticsService:
         from sqlalchemy import distinct
         from app.models.site import Site
 
-        # 1. Identifier les sites ayant eu une activité dans ce lot
+        from app.models.developer_site import DeveloperSite
+        from app.models.developer import Developer
+        
+        # 1. Identifier les sites ayant eu une activité dans ce lot (via les développeurs)
         site_ids = (
-            self.db.query(distinct(Commit.site_id))
-            .filter(Commit.project_id == project_id, Commit.extraction_lot_id == lot_id, Commit.site_id.isnot(None))
+            self.db.query(distinct(DeveloperSite.site_id))
+            .join(Developer, Developer.id == DeveloperSite.developer_id)
+            .join(Commit, Commit.developer_id == Developer.id)
+            .filter(Commit.project_id == project_id, Commit.extraction_lot_id == lot_id)
             .all()
         )
         site_ids = [r[0] for r in site_ids]
 
-        # Compléter avec les sites présents via les MRs (cas rare de MR sans commit dans le lot)
+        # Compléter avec les sites présents via les MRs (via les développeurs)
         mr_site_ids = (
-            self.db.query(distinct(MergeRequest.site_id))
-            .filter(MergeRequest.project_id == project_id, MergeRequest.extraction_lot_id == lot_id, MergeRequest.site_id.isnot(None))
+            self.db.query(distinct(DeveloperSite.site_id))
+            .join(Developer, Developer.id == DeveloperSite.developer_id)
+            .join(MergeRequest, MergeRequest.developer_id == Developer.id)
+            .filter(MergeRequest.project_id == project_id, MergeRequest.extraction_lot_id == lot_id)
             .all()
         )
         for r in mr_site_ids:
@@ -435,6 +568,97 @@ class AnalyticsService:
                 results.append(snap)
 
         # 3. Tri par le KPI demandé (facultatif, le router le fait aussi)
+        results.sort(key=lambda x: getattr(x, kpi_field, 0), reverse=True)
+        return results
+
+    def get_site_comparison_global(self, period_id: int, kpi_field: str = "total_commits") -> List[KpiSnapshot]:
+        """
+         NOUVEAU [SENIOR] : Agrégation inter-projets par site.
+        Calcule la performance de chaque site sur TOUS les projets pour une période donnée.
+        Permet la "Vision Globale" réelle demandée par le management.
+        """
+        from app.models.site import Site
+        
+        # Validation [SENIOR]
+        allowed_fields = {
+            "mr_rate_per_site", "approved_mr_rate", "merged_mr_rate",
+            "commit_rate_per_site", "nb_commits_per_project", "total_commits", "avg_review_time_hours",
+        }
+        if kpi_field not in allowed_fields:
+            raise ValueError(f"kpi_field '{kpi_field}' non autorisé.")
+
+        # 1. Aggréger les volumes et moyennes
+        q = self.db.query(
+            KpiSnapshot.site_id,
+            func.sum(KpiSnapshot.total_commits).label("total_commits"),
+            func.sum(KpiSnapshot.total_mrs_created).label("total_mrs"),
+            func.sum(KpiSnapshot.total_mrs_approved).label("total_mrs_approved"),
+            func.sum(KpiSnapshot.total_mrs_merged).label("total_mrs_merged"),
+            func.avg(KpiSnapshot.mr_rate_per_site).label("avg_mr_rate"),
+            func.avg(KpiSnapshot.approved_mr_rate).label("avg_approved_rate"),
+            func.avg(KpiSnapshot.merged_mr_rate).label("avg_merged_rate"),
+            func.avg(KpiSnapshot.avg_review_time_hours).label("avg_review_time"),
+            # func.sum(KpiSnapshot.nb_developers).label("total_devs"), # Remplacé par calcul unique
+            func.sum(KpiSnapshot.total_reviews).label("total_reviews"),
+            func.sum(KpiSnapshot.total_comments).label("total_comments"),
+        ).filter(
+            KpiSnapshot.period_id == period_id,
+            KpiSnapshot.project_id != 0,
+            KpiSnapshot.site_id.isnot(None),
+            KpiSnapshot.developer_id.is_(None),
+            KpiSnapshot.group_id.is_(None)
+        ).group_by(KpiSnapshot.site_id)
+
+        rows = q.all()
+        
+        # 2. Récupérer les comptes uniques de développeurs par site pour cette période
+        # (On ne peut pas faire ça simplement dans le même GROUP BY sans join complexe)
+        site_dev_counts = {}
+        for r in rows:
+            sid = r.site_id
+            cnt = (
+                self.db.query(func.count(distinct(DeveloperProject.developer_id)))
+                .join(DeveloperSite, DeveloperSite.developer_id == DeveloperProject.developer_id)
+                .filter(
+                    DeveloperProject.period_id == period_id,
+                    DeveloperProject.is_active == True,
+                    DeveloperSite.site_id == sid
+                ).scalar() or 0
+            )
+            site_dev_counts[sid] = cnt
+
+        results = []
+        for r in rows:
+            site_obj = self.db.query(Site).filter(Site.id == r.site_id).first()
+            nb_devs = site_dev_counts.get(r.site_id, 0)
+            snap = KpiSnapshot(
+                project_id=0,
+                site_id=r.site_id,
+                period_id=period_id,
+                total_commits=int(r.total_commits or 0),
+                nb_commits_per_project=int(r.total_commits or 0),
+                total_mrs_created=int(r.total_mrs or 0),
+                total_mrs_approved=int(r.total_mrs_approved or 0),
+                total_mrs_merged=int(r.total_mrs_merged or 0),
+                mr_rate_per_site=round(float(r.avg_mr_rate or 0), 2),
+                approved_mr_rate=round(float(r.avg_approved_rate or 0), 4),
+                merged_mr_rate=round(float(r.avg_merged_rate or 0), 4),
+                avg_review_time_hours=round(float(r.avg_review_time or 0), 1),
+                nb_developers=nb_devs,
+                total_reviews=int(r.total_reviews or 0),
+                total_comments=int(r.total_comments or 0),
+                total_mrs_draft=0,
+                review_time_hours=round(float(r.avg_review_time or 0) * int(r.total_mrs_approved or 0), 1),
+                bus_factor=0,
+                sprint_velocity=0.0,
+                code_churn_rate=0.0,
+                commit_rate_per_site=round(float(r.total_commits or 0) / float(r.total_devs) if r.total_devs else 0, 2),
+                snapshot_date=date.today()
+            )
+            snap.site_name = site_obj.name if site_obj else f"Site {r.site_id}"
+            results.append(snap)
+
+        # Tri par le KPI demandé
         results.sort(key=lambda x: getattr(x, kpi_field, 0), reverse=True)
         return results
 
@@ -718,4 +942,4 @@ class AnalyticsService:
                     "nb_developers": s.nb_developers,
                 }
             })
-        return results
+        return results

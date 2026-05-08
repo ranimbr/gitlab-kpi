@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/gitlab-configs", tags=["GitLab Configs"])
 repo   = GitLabConfigRepository()
 
+
+def _http_error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status_code, detail=f"{code}: {message}")
+
 @router.get("", response_model=List[GitLabConfigResponse])
 def list_configs(db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     configs = repo.get_all(db)
@@ -28,8 +32,8 @@ def list_configs(db: Session = Depends(get_db), current_admin: AppUser = Depends
 def create_config(request: GitLabConfigCreate, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     try:
         encrypted = encrypt_token(request.token)
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=f"Token encryption failed: {e}")
+    except ValueError:
+        raise _http_error(500, "GITLAB_CONFIG_ENCRYPTION_FAILED", "Token encryption failed")
     data = request.model_dump()
     data["token"] = encrypted
     config = repo.create(db, data)
@@ -41,7 +45,7 @@ def create_config(request: GitLabConfigCreate, db: Session = Depends(get_db), cu
 def get_config(config_id: int, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     config = repo.get_by_id(db, config_id)
     if not config:
-        raise HTTPException(status_code=404, detail="GitLab config not found")
+        raise _http_error(404, "GITLAB_CONFIG_NOT_FOUND", "GitLab config not found")
     config.projects_count = db.query(func.count(Project.id)).filter(Project.gitlab_config_id == config_id).scalar() or 0
     return config
 
@@ -49,13 +53,13 @@ def get_config(config_id: int, db: Session = Depends(get_db), current_admin: App
 def update_config(config_id: int, request: GitLabConfigUpdate, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     config = repo.get_by_id(db, config_id)
     if not config:
-        raise HTTPException(status_code=404, detail="GitLab config not found")
+        raise _http_error(404, "GITLAB_CONFIG_NOT_FOUND", "GitLab config not found")
     update_data = request.model_dump(exclude_unset=True)
     if "token" in update_data:
         try:
             update_data["token"] = encrypt_token(update_data["token"])
-        except ValueError as e:
-            raise HTTPException(status_code=500, detail=f"Token encryption failed: {e}")
+        except ValueError:
+            raise _http_error(500, "GITLAB_CONFIG_ENCRYPTION_FAILED", "Token encryption failed")
     repo.update(db, config, update_data)
     db.commit(); db.refresh(config)
     config.projects_count = db.query(func.count(Project.id)).filter(Project.gitlab_config_id == config_id).scalar() or 0
@@ -65,7 +69,7 @@ def update_config(config_id: int, request: GitLabConfigUpdate, db: Session = Dep
 def delete_config(config_id: int, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
     config = repo.get_by_id(db, config_id)
     if not config:
-        raise HTTPException(status_code=404, detail="GitLab config not found")
+        raise _http_error(404, "GITLAB_CONFIG_NOT_FOUND", "GitLab config not found")
     db.delete(config); db.commit()
 
 @router.post("/{config_id}/test", status_code=200)
@@ -73,18 +77,18 @@ async def test_config(config_id: int, db: Session = Depends(get_db), current_adm
     import httpx
     config = repo.get_by_id(db, config_id)
     if not config:
-        raise HTTPException(status_code=404, detail="GitLab config not found")
+        raise _http_error(404, "GITLAB_CONFIG_NOT_FOUND", "GitLab config not found")
     try:
         plain_token = decrypt_token(config.token)
     except Exception:
-        raise HTTPException(status_code=500, detail="Cannot decrypt GitLab token")
+        raise _http_error(500, "GITLAB_CONFIG_TOKEN_INVALID", "Cannot decrypt GitLab token")
     url = f"{config.domain.rstrip('/')}/api/v4/user"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, headers={"PRIVATE-TOKEN": plain_token})
-    except httpx.RequestError as e:
-        return {"status": "error", "detail": f"Cannot reach GitLab: {e}"}
+    except httpx.RequestError:
+        return {"status": "error", "detail": "Cannot reach GitLab"}
     if response.status_code == 200:
         user_data = response.json()
         return {"status": "ok", "gitlab_user": user_data.get("username"), "gitlab_url": config.domain}
-    return {"status": "error", "http_status": response.status_code, "detail": response.text[:200]}
+    return {"status": "error", "http_status": response.status_code, "detail": "GitLab API error"}

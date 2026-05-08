@@ -110,8 +110,8 @@ export default function DeveloperPerformanceReport({ developerId, projectId, per
   );
 
   return (
-    <div className="performance-report-overlay @media-print-none">
-      <div className="card border-0 shadow-lg rounded-4 overflow-hidden performance-report-modal">
+    <div className="performance-report-overlay" onClick={onClose}>
+      <div className="card border-0 shadow-lg rounded-4 overflow-hidden performance-report-modal" onClick={e => e.stopPropagation()}>
         {/* Header (Masqué à l'impression si on veut mais ici on garde pour le titre PDF) */}
         <div className="card-header bg-dark p-4 d-flex align-items-center justify-content-between border-0">
           <div className="d-flex align-items-center gap-3">
@@ -142,7 +142,14 @@ export default function DeveloperPerformanceReport({ developerId, projectId, per
                   <h6 className="fw-bold mb-4 text-muted text-uppercase fs-11" style={{ letterSpacing: "1px" }}>
                     Comparaison vs Moyenne Site
                   </h6>
-                  <Chart options={radarOptions.options} series={radarOptions.series} type="radar" height={350} />
+                  {radarOptions ? (
+                    <Chart options={radarOptions.options} series={radarOptions.series} type="radar" height={350} />
+                  ) : (
+                    <div className="text-center py-5 text-muted opacity-50">
+                      <i className="ri-radar-line fs-1 d-block mb-2"></i>
+                      Radar non disponible (données site manquantes)
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

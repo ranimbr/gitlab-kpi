@@ -1,11 +1,5 @@
 """
 api/routers/alerts.py
-
-CORRECTIONS (modèles mis à jour) :
-─────────────────────────────────────
-1. list_alerts() : ajout filtre developer_id.
-2. AJOUT GET /alerts/developer/{developer_id}/summary.
-3. AJOUT GET /alerts/developer/{developer_id} : alertes d'un développeur.
 """
 import logging
 from typing import List, Optional

@@ -37,6 +37,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security    = HTTPBearer(auto_error=True)
 
 
+def _http_error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status_code, detail=f"{code}: {message}")
+
+
 def hash_password(password: str) -> str:
     """Hash un mot de passe utilisateur via bcrypt."""
     return pwd_context.hash(password)
@@ -191,38 +195,43 @@ def get_current_user(
     payload = decode_access_token(credentials.credentials)
 
     if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+        raise _http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "AUTH_TOKEN_INVALID_OR_EXPIRED",
+            "Invalid or expired token",
         )
 
     user_id_raw = payload.get("sub")
     if user_id_raw is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
+        raise _http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "AUTH_TOKEN_PAYLOAD_INVALID",
+            "Invalid token payload",
         )
 
     try:
         user_id = int(user_id_raw)
     except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user id in token",
+        raise _http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "AUTH_TOKEN_USER_ID_INVALID",
+            "Invalid user id in token",
         )
 
     user = db.query(AppUser).filter(AppUser.id == user_id).first()
 
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+        raise _http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "AUTH_USER_NOT_FOUND",
+            "User not found",
         )
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive",
+        raise _http_error(
+            status.HTTP_403_FORBIDDEN,
+            "AUTH_USER_INACTIVE",
+            "User account is inactive",
         )
 
     return user

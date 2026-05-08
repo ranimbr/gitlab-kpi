@@ -1,13 +1,7 @@
 """
 schemas/user.py
 
-CORRECTIONS (remarques encadrant + modèles mis à jour) :
-──────────────────────────────────────────────────────────
-1. UserRoleEnum mis à jour : 4 rôles (super_admin, site_manager, team_lead, developer).
-2. AJOUT de site_id et group_id dans CreateUserRequest et UserManagementResponse.
-   site_manager → site_id obligatoire
-   team_lead    → group_id obligatoire
-3. Validation croisée : site_id requis si role=site_manager, etc.
+
 """
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional, List

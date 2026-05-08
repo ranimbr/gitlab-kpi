@@ -22,7 +22,13 @@ function BackfillBanner() {
   );
 }
 
-export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects = [] }) {
+export default function ExtractionByTeamTab({ 
+  gitlabConfigs, 
+  periods, 
+  projects = [], 
+  selectedPeriod: propPeriod, 
+  isSmartSync: propSmartSync 
+}) {
   const [sites, setSites] = useState([]);
   const [groups, setGroups] = useState([]);
   const [developers, setDevelopers] = useState([]);
@@ -34,6 +40,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
   const [extractionType, setExtractionType] = useState("REALTIME");
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [isBackfill, setIsBackfill] = useState(false);
+  const [isSmartSync, setIsSmartSync] = useState(false); // ✅ AJOUT SENIOR
   const [simulation, setSimulation] = useState(null);
   const [simulating, setSimulating] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState([]);
@@ -56,18 +63,19 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
       const [sitesRes, groupsRes, devsRes] = await Promise.all([
         siteService.getAll(false), // active_only: false
         developerService.getGroups(),
-        developerService.getByTab("all") // On prend TOUS les développeurs (même non validés) pour l'extraction
+        api.get("/developers", { params: { tab: "all", period_id: selectedPeriod || undefined } }) // ✅ AJOUT SENIOR
       ]);
+      const devsData = devsRes.data;
       setSites(Array.isArray(sitesRes) ? sitesRes : []);
       setGroups(Array.isArray(groupsRes) ? groupsRes : []);
-      setDevelopers(Array.isArray(devsRes) ? devsRes : devsRes.items || []);
+      setDevelopers(Array.isArray(devsData) ? devsData : devsData.items || []);
     } catch (err) {
       console.warn("Failed to load sites/groups/devs", err);
       setError("Erreur lors du chargement des listes. Veuillez rafraîchir.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedPeriod]);
 
   useEffect(() => {
     fetchLists();
@@ -76,6 +84,15 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
   useEffect(() => {
     setSelectedPeriod("");
   }, [isBackfill]);
+
+  // ✅ SYNC SENIOR : Synchronisation avec l'onglet principal
+  useEffect(() => {
+    if (propPeriod !== undefined) setSelectedPeriod(propPeriod);
+  }, [propPeriod]);
+
+  useEffect(() => {
+    if (propSmartSync !== undefined) setIsSmartSync(propSmartSync);
+  }, [propSmartSync]);
 
   const onRefresh = (e) => {
     e.preventDefault();
@@ -220,7 +237,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
     return ids.size;
   }, [personalProjectIds, teamProjectIds]);
 
-  const canRun = selectedConfig && (selectedSite || selectedGroup || selectedDeveloperIds.length > 0) && (!loading) && (extractionType !== "MONTHLY" || selectedPeriod);
+  const canRun = selectedConfig && (selectedSite || selectedGroup || selectedDeveloperIds.length > 0 || isSmartSync) && (!loading) && (extractionType !== "MONTHLY" || selectedPeriod);
 
   const handleRun = async () => {
     setError(null);
@@ -235,18 +252,23 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
           group_id: selectedGroup || undefined,
           developer_ids: selectedDeveloperIds.length > 0 ? selectedDeveloperIds.join(",") : undefined,
           extraction_type: extractionType,
+          all_developers: (isSmartSync && !selectedSite && !selectedGroup) ? true : false,
+          is_smart_sync: isSmartSync,
           period_id: selectedPeriod || undefined,
           is_backfill: isBackfill,
-          project_ids: selectedProjectIds.length > 0 ? selectedProjectIds.join(",") : undefined
+          project_ids: selectedProjectIds.length > 0 ? selectedProjectIds.join(",") : undefined,
+          auto_target_by_period: isSmartSync
         }
       });
 
       const initialJobs = {};
-      res.data.jobs.forEach(job => {
+      const jobsToProcess = res.data.lots || res.data.jobs || []; 
+      
+      jobsToProcess.forEach(job => {
         initialJobs[job.lot_id] = {
           lot_id: job.lot_id,
           developer_name: job.developer_name,
-          status: "running",
+          status: job.status || "running",
           step_index: 0,
           step_label: "Démarrage en arrière-plan...",
           step_progress: 0
@@ -274,7 +296,11 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
           site_id: selectedSite || undefined,
           group_id: selectedGroup || undefined,
           developer_ids: selectedDeveloperIds.length > 0 ? selectedDeveloperIds.join(",") : undefined,
-          project_ids: selectedProjectIds.length > 0 ? selectedProjectIds.join(",") : undefined
+          project_ids: selectedProjectIds.length > 0 ? selectedProjectIds.join(",") : undefined,
+          auto_target_by_period: isSmartSync,
+          period_id: selectedPeriod || undefined,
+          is_smart_sync: isSmartSync,
+          all_developers: (isSmartSync && !selectedSite && !selectedGroup) ? true : false
         }
       });
       setSimulation(res.data);
@@ -371,8 +397,13 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
       <div className="col-xl-4">
         <div className="card">
           <div className="card-header d-flex align-items-center justify-content-between py-2">
-            <div className="d-flex align-items-center">
+            <div className="d-flex align-items-center gap-2">
               <h5 className="card-title mb-0"><i className="ri-building-2-fill me-2 text-primary"></i>Ciblage des Business Units</h5>
+              {isSmartSync && (
+                <span className="badge bg-success-subtle text-success fs-10 animate__animated animate__pulse animate__infinite">
+                  <i className="ri-shield-check-line me-1"></i>SMART-SYNC
+                </span>
+              )}
             </div>
             <button 
               className={`btn btn-sm btn-soft-secondary ${loading ? 'disabled' : ''}`} 
@@ -415,11 +446,37 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
 
             <div className="mb-3">
               <label className="form-label fs-12 text-muted fw-semibold text-uppercase d-flex justify-content-between">
-                <span>Développeurs (Option 3)</span>
+                <span className={isSmartSync ? "text-success fw-bold" : ""}>
+                  <i className={`ri-user-star-line me-1 ${isSmartSync ? "text-success" : ""}`}></i>
+                  Développeurs {isSmartSync ? "(Smart-Sync RH)" : "(Option 3)"}
+                </span>
+                
                 <div className="d-flex align-items-center gap-2">
-                   <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.map(d => String(d.id)))}>Tout cocher</button>
-                   <span className="text-muted">|</span>
-                   <button className="btn btn-link p-0 fs-10 text-danger" onClick={() => setSelectedDeveloperIds([])}>Reset</button>
+                   {/* ✅ AJOUT SENIOR : Toggle Smart-Sync */}
+                   <div className="form-check form-switch mb-0 bg-success-subtle px-2 py-1 rounded-2 d-flex align-items-center gap-2 border border-success border-opacity-10 me-2">
+                     <label className="form-check-label fs-10 text-success fw-bold mb-0" htmlFor="team-smart-sync-toggle" style={{cursor:"pointer"}}>
+                        Smart-Sync
+                     </label>
+                     <input
+                       className="form-check-input ms-0"
+                       type="checkbox"
+                       id="team-smart-sync-toggle"
+                       checked={isSmartSync}
+                       onChange={e => {
+                         setIsSmartSync(e.target.checked);
+                         if (e.target.checked) setSelectedDeveloperIds([]);
+                       }}
+                       style={{cursor:"pointer", width: "1.6em", height: "0.8em"}}
+                     />
+                   </div>
+
+                   {!isSmartSync && (
+                     <>
+                        <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.filter(d => d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED").map(d => String(d.id)))}>Tout cocher</button>
+                        <span className="text-muted">|</span>
+                        <button className="btn btn-link p-0 fs-10 text-danger" onClick={() => setSelectedDeveloperIds([])}>Reset</button>
+                     </>
+                   )}
                 </div>
               </label>
               
@@ -439,7 +496,8 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                 )}
               </div>
 
-              <div className="border rounded p-2 bg-light-subtle" style={{maxHeight: "180px", overflowY: "auto", border: "1px solid #e9ebec"}}>
+              <div className={`border rounded p-2 transition-all ${isSmartSync ? "bg-success-subtle bg-opacity-10 border-success border-opacity-25" : "bg-light-subtle"}`} 
+                   style={{maxHeight: "180px", overflowY: "auto", border: "1px solid #e9ebec", opacity: isSmartSync ? 0.7 : 1, filter: isSmartSync ? "grayscale(0.3)" : "none"}}>
                 {searchedDevelopers.length === 0 ? (
                   <div className="text-center py-3 text-muted fs-11">Aucun développeur trouvé</div>
                 ) : searchedDevelopers.map(d => {
@@ -452,6 +510,7 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                         type="checkbox" 
                         id={`team-dev-${d.id}`}
                         checked={selectedDeveloperIds.includes(String(d.id))}
+                        disabled={isSmartSync || d.rh_status === "FUTURE_JOINER" || d.rh_status === "OFFBOARDED"}
                         onChange={e => {
                           const id = String(d.id);
                           setSelectedDeveloperIds(prev => 
@@ -460,29 +519,59 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                           if (e.target.checked) { setSelectedSite(""); setSelectedGroup(""); }
                         }}
                       />
-                      <label className="form-check-label fs-12 ms-1" htmlFor={`team-dev-${d.id}`}>
+                      <label className={`form-check-label fs-12 ms-1 d-flex align-items-center gap-1 ${ (d.rh_status === "FUTURE_JOINER" || d.rh_status === "OFFBOARDED") ? "text-muted" : "text-dark"}`} htmlFor={`team-dev-${d.id}`}>
                         {d.name || d.gitlab_username}
+                        {/* ✅ BADGES RH SENIOR */}
+                        {d.rh_status === "ACTIVE"         && <span className="badge bg-success-subtle text-success fs-8 ms-1">ACTIF</span>}
+                        {d.rh_status === "ONBOARDING"     && <span className="badge bg-info-subtle text-info fs-8 ms-1">NEW</span>}
+                        {d.rh_status === "FUTURE_JOINER"  && <span className="badge bg-light text-muted fs-8 ms-1 border">FUTUR</span>}
+                        {d.rh_status === "OFFBOARDED"     && <span className="badge bg-danger-subtle text-danger fs-8 ms-1">INACTIF</span>}
+                        
+
                       </label>
                     </div>
-                    {projCount > 0 && (
-                      <span className="badge bg-light text-muted border fs-10" title={`${projCount} projets associés`}>
-                        {projCount} proj.
-                      </span>
-                    )}
+                    {/* ✅ BADGES PROJETS PAR NOM */}
+                    <div className="d-flex flex-wrap gap-1 mt-1 ms-4">
+                      {(d.projects || []).length === 0 && (
+                        <span className="badge bg-light text-muted border fs-9" style={{fontStyle:'italic'}}>Aucun projet</span>
+                      )}
+                      {(d.projects || []).map((p, pi) => {
+                        const name = p.name || p.project_name || `Projet #${p.project_id}`;
+                        const colors = [
+                          { bg:'rgba(67,97,238,0.1)',  color:'#4361ee',  border:'rgba(67,97,238,0.3)'  },
+                          { bg:'rgba(6,182,212,0.1)',  color:'#0891b2',  border:'rgba(6,182,212,0.3)'  },
+                          { bg:'rgba(245,158,11,0.1)', color:'#d97706',  border:'rgba(245,158,11,0.3)' },
+                          { bg:'rgba(139,92,246,0.1)', color:'#7c3aed',  border:'rgba(139,92,246,0.3)' },
+                        ];
+                        const c = colors[pi % colors.length];
+                        return (
+                          <span key={pi} style={{
+                            fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4,
+                            background: c.bg, color: c.color, border:`1px solid ${c.border}`,
+                            whiteSpace:'nowrap', letterSpacing:'0.2px',
+                          }}>
+                            <i className="ri-git-repository-line me-1" style={{fontSize:8}} />
+                            {name}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
                 })}
+                {isSmartSync && (
+                  <div className="text-center py-3">
+                    <i className="ri-shield-check-line text-success fs-24 d-block mb-1"></i>
+                    <p className="text-success fs-11 fw-medium mb-0">Synchronisation RH active</p>
+                    <small className="text-muted fs-10">L'effectif sera ciblé selon les dates d'onboarding.</small>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="mb-3 mt-3">
               <label className="form-label fs-12 text-muted fw-semibold text-uppercase d-flex justify-content-between align-items-center">
                 <span>Périmètre Projets (Optionnel)</span>
-                {contextCount > 0 && (
-                  <span className="badge bg-info-subtle text-info animate__animated animate__fadeIn">
-                    <i className="ri-lightbulb-line me-1"></i>{contextCount} suggérés
-                  </span>
-                )}
               </label>
               <div className="bg-light p-2 rounded" style={{maxHeight: "150px", overflowY: "auto", border: "1px solid #e9ebec"}}>
                 {availableProjects.length === 0 ? (
@@ -501,41 +590,111 @@ export default function ExtractionByTeamTab({ gitlabConfigs, periods, projects =
                          ✨ Tous les projets actifs
                       </label>
                     </div>
+
+                    {/* ✅ SENIOR : RÉSUMÉ DU HEADCOUNT UNIQUE — Résout la confusion 13 vs 12 */}
+                    {developers.length > 0 && (
+                      <div className="mb-2 p-2 rounded bg-white border border-dashed border-info border-opacity-50 d-flex align-items-center justify-content-between animate__animated animate__fadeIn">
+                        <span className="fs-10 text-muted fw-bold text-uppercase">
+                          <i className="ri-group-line me-1 text-info"></i> EFFECTIF UNIQUE
+                        </span>
+                        <span className="badge bg-info text-white rounded-pill px-2 py-1 fs-10">
+                          {(() => {
+                            const activeOnPeriod = developers.filter(d => d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED");
+                            const uniqueIds = new Set();
+                            activeOnPeriod.forEach(d => {
+                              const projectsOfDev = d.projects || [];
+                              const isMatch = selectedProjectIds.length === 0 || 
+                                              projectsOfDev.some(dp => selectedProjectIds.includes(dp.gitlab_project_id));
+                              if (isMatch) uniqueIds.add(d.id);
+                            });
+                            return uniqueIds.size;
+                          })()} développeurs
+                        </span>
+                      </div>
+                    )}
                     <hr className="my-1 opacity-25" />
                     {sortedProjects.map(p => {
                       const pId = String(p.gitlab_project_id);
                       const isPersonal = personalProjectIds.has(pId);
                       const isTeam = teamProjectIds.has(pId);
+
+                      // ✅ SENIOR — Comptage DYNAMIQUE selon la période sélectionnée
+                      // On exclut les FUTURE_JOINER et OFFBOARDED (non actifs sur la période)
+                      const devCount = developers.filter(d => {
+                        const isActiveOnPeriod = d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED";
+                        const isOnProject = (d.projects || []).some(dp =>
+                          String(dp.gitlab_project_id) === pId || String(dp.project_id) === String(p.id)
+                        );
+                        return isActiveOnPeriod && isOnProject;
+                      }).length;
+
+                      const isHighlighted = isPersonal || isTeam;
+                      const isChecked = selectedProjectIds.length === 0 || selectedProjectIds.includes(p.gitlab_project_id);
                       
                       return (
-                        <div key={p.id} className="form-check mb-1 d-flex align-items-center justify-content-between pe-1">
+                        <div key={p.id} className="form-check mb-2 d-flex align-items-start justify-content-between pe-1"
+                          style={{
+                            background: isHighlighted ? 'rgba(67,97,238,0.04)' : 'transparent',
+                            borderRadius: 6,
+                            padding: '4px 6px',
+                            border: isHighlighted ? '1px solid rgba(67,97,238,0.12)' : '1px solid transparent',
+                          }}>
                           <div className="d-flex align-items-center">
-                            <input 
-                              className="form-check-input" 
-                              type="checkbox" 
+                            <input
+                              className="form-check-input"
+                              type="checkbox"
                               id={`proj-${p.id}`}
-                              checked={selectedProjectIds.includes(p.gitlab_project_id)}
+                              checked={isChecked}
                               onChange={e => {
-                                if (e.target.checked) {
-                                  setSelectedProjectIds([...selectedProjectIds, p.gitlab_project_id]);
+                                if (selectedProjectIds.length === 0) {
+                                  // Mode "Tous" → on passe en mode sélectif en décochant ce projet
+                                  if (!e.target.checked) {
+                                    const others = sortedProjects
+                                      .filter(op => op.gitlab_project_id !== p.gitlab_project_id)
+                                      .map(op => op.gitlab_project_id);
+                                    setSelectedProjectIds(others);
+                                  }
                                 } else {
-                                  setSelectedProjectIds(selectedProjectIds.filter(id => id !== p.gitlab_project_id));
+                                  if (e.target.checked) {
+                                    const next = [...selectedProjectIds, p.gitlab_project_id];
+                                    // Si tous cochés → repasse en mode "Tous"
+                                    if (next.length === sortedProjects.length) setSelectedProjectIds([]);
+                                    else setSelectedProjectIds(next);
+                                  } else {
+                                    setSelectedProjectIds(selectedProjectIds.filter(id => id !== p.gitlab_project_id));
+                                  }
                                 }
                               }}
                             />
-                            <label className="form-check-label fs-12 ms-1" htmlFor={`proj-${p.id}`}>
-                              {p.name} <small className="text-muted">({p.gitlab_project_id})</small>
+                            <label className="form-check-label fs-12 ms-1 fw-medium" htmlFor={`proj-${p.id}`}>
+                              {p.name}
+                              <small className="text-muted ms-1" style={{fontWeight:400}}>({p.gitlab_project_id})</small>
                             </label>
+
                           </div>
-                          <div className="d-flex gap-1">
+                          {/* ✅ BADGES CONTEXTUELS — Dynamiques selon la période */}
+                          <div className="d-flex flex-column gap-1 align-items-end ms-1">
+                            {/* Badge: nombre de devs ACTIFS sur la période */}
+                            <span style={{
+                              fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:99,
+                              background: devCount > 0 ? 'rgba(16,185,129,0.12)' : '#f1f5f9',
+                              color: devCount > 0 ? '#059669' : '#94a3b8',
+                              border: `1px solid ${devCount > 0 ? 'rgba(16,185,129,0.3)' : '#e2e8f0'}`,
+                              whiteSpace:'nowrap',
+                            }} title={`${devCount} développeur(s) ACTIF(s) sur ce projet pour la période sélectionnée`}>
+                              <i className="ri-user-line me-1" style={{fontSize:8}} />
+                              {devCount} dev{devCount > 1 ? 's' : ''} actif{devCount > 1 ? 's' : ''}
+                            </span>
                             {isPersonal && (
-                              <span className="badge bg-primary-subtle text-primary border border-primary border-opacity-10 fs-10" title="Projet lié aux développeurs sélectionnés">
-                                 <i className="ri-user-heart-line me-1"></i>Personnel
+                              <span className="badge bg-primary-subtle text-primary border border-primary border-opacity-10 fs-9"
+                                title="Projet lié aux développeurs sélectionnés">
+                                <i className="ri-user-heart-line me-1" />Personnel
                               </span>
                             )}
                             {isTeam && selectedSite && (
-                              <span className="badge bg-success-subtle text-success border border-success border-opacity-10 fs-10" title={`Projet lié au site ${sites.find(s=>String(s.id)===String(selectedSite))?.name}`}>
-                                 <i className="ri-building-line me-1"></i>Site
+                              <span className="badge bg-success-subtle text-success border border-success border-opacity-10 fs-9"
+                                title={`Projet lié au site ${sites.find(s=>String(s.id)===String(selectedSite))?.name}`}>
+                                <i className="ri-building-line me-1" />Site
                               </span>
                             )}
                             {isTeam && selectedGroup && (

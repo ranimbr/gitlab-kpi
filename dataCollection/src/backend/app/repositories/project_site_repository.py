@@ -1,16 +1,6 @@
 """
 repositories/project_site_repository.py
 
-Gestion de la table de jonction Many-to-Many : Project ↔ Site.
-
-RAISON D'EXISTENCE :
-    Remplace le filtre sur Project.site_id (FK directe supprimée).
-    Un projet peut appartenir à plusieurs sites → table ProjectSite.
-
-Méthodes principales :
-    get_site_ids_for_project()   → tous les sites d'un projet
-    get_project_ids_for_site()   → tous les projets d'un site (pour KPI #6)
-    sync()                       → remplacer la liste des sites d'un projet
 """
 from typing import List, Optional
 

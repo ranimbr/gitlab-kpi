@@ -1,6 +1,6 @@
 """
-schemas/kpi_definition.py — CORRIGÉ
-- AggregationLevelEnum importé depuis enums.py
+schemas/kpi_definition.py 
+
 """
 from pydantic import BaseModel, Field
 from typing import Optional

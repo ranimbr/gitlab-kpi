@@ -1,41 +1,6 @@
 """
 models/commit.py
 
-Commit Git extrait via l'API GitLab.
-
-AMÉLIORATIONS APPORTÉES :
-─────────────────────────
-1. AJOUT de author_name et author_email :
-   Champs de secours quand developer_id est NULL.
-   Cas réel : lors d'une extraction, un commit peut appartenir
-   à un utilisateur GitLab non encore référencé comme Developer.
-   Le GitLabMapper stocke le nom/email brut pour permettre
-   à l'admin de matcher manuellement le commit à un Developer.
-   → Aussi utile pour les commits de bots non encore détectés.
-
-2. AJOUT de branch_name :
-   Nom de la branche source du commit.
-   Utile pour : filtrer les commits par branche (ex: main uniquement),
-   détecter les commits directs sur main (mauvaise pratique),
-   et relier les commits aux MRs via la branche source.
-
-3. AJOUT de is_merge_commit (Boolean) :
-   Distingue les commits réels des commits de merge automatiques
-   (ex: "Merge branch 'feature/x' into 'main'").
-   Les commits de merge sont exclus du KPI #5 (Commit Rate)
-   car ils ne représentent pas du travail de développement réel.
-
-4. AJOUT de CheckConstraints :
-   - total_changes = additions + deletions (cohérence des compteurs)
-   - authored_date <= committed_date (ordre temporel logique)
-
-5. AJOUT d'un index composite pour les alertes d'inactivité :
-   Index(developer_id, authored_date) → permet de détecter rapidement
-   les développeurs sans commit depuis N jours (alertes automatiques).
-
-CORRECTION conservée :
-   Suppression des index=True redondants sur les colonnes
-   qui ont déjà un Index() nommé dans __table_args__.
 """
 
 from sqlalchemy import (

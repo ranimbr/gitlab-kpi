@@ -71,20 +71,23 @@ const SIDEBAR_CSS = `
   }
 
   .sb-brand-img-wrap {
-    width: 40px; height: 40px;
-    background: #FFFFFF;
-    border-radius: 10px;
+    width: 32px; height: 32px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.35); /* Aura Technology */
-    border: 1px solid rgba(255,255,255,.1);
+    color: #FFFFFF;
   }
-  .sb-brand-img { width: 28px; height: 28px; object-fit: contain; }
   .sb-brand-name {
-    font-size: 18px; font-weight: 900;
-    color: #FFFFFF; letter-spacing: 0.15em;
+    font-size: 19px; font-weight: 800;
+    color: #00D1FF; /* Electric Cyan */
+    letter-spacing: 0.08em;
     text-transform: uppercase; line-height: 1;
-    text-shadow: 0 2px 10px rgba(0,0,0,.5);
+    display: flex; flex-direction: column;
+    filter: drop-shadow(0 0 8px rgba(0, 209, 255, 0.3));
+  }
+  .sb-brand-sub {
+    font-size: 8.5px; font-weight: 600;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.38em; margin-top: 3px;
   }
 
   /* Navigation — Flexible Layer */
@@ -272,6 +275,34 @@ const SIDEBAR_CSS = `
   }
 `;
 
+// ─── Logo Component (Premium Industrial Vector) ───────────────────────────
+function TelnetSymbol() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{filter:'drop-shadow(0 0 10px rgba(0,209,255,0.25))'}}>
+      <defs>
+        <linearGradient id="sphereGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#E5E7EB" />
+          <stop offset="45%" stopColor="#9CA3AF" />
+          <stop offset="100%" stopColor="#374151" />
+        </linearGradient>
+        <filter id="innerGlow">
+          <feGaussianBlur stdDeviation="1.5" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      </defs>
+      {/* Polished Sphere */}
+      <circle cx="16" cy="16" r="14" fill="url(#sphereGrad)" />
+      {/* Light Reflections (Stripes) */}
+      <path d="M5 21Q16 13 27 21" stroke="white" strokeWidth="0.8" strokeOpacity="0.6" fill="none" />
+      <path d="M8 25Q16 19 24 25" stroke="white" strokeWidth="0.8" strokeOpacity="0.4" fill="none" />
+      <path d="M12 29Q16 26 20 29" stroke="white" strokeWidth="0.8" strokeOpacity="0.2" fill="none" />
+      {/* Electric Triangle Cutout */}
+      <path d="M14 2L28 2L16 14Z" fill="#00D1FF" filter="url(#innerGlow)" />
+      <circle cx="16" cy="16" r="14" stroke="white" strokeWidth="0.5" strokeOpacity="0.15" fill="none" />
+    </svg>
+  );
+}
+
 let cssInjected = false;
 function injectCSS() {
   if (cssInjected) return;
@@ -354,19 +385,14 @@ export default function Sidebar() {
     <aside className="sb-shell">
       {/* Brand Header — Elite Corner (Monolith) */}
       <div className="sb-brand">
-        <div className="sb-logo-box">
+        <div className="sb-logo-box" style={{display:'flex', alignItems:'center', gap:'12px'}}>
           <div className="sb-brand-img-wrap">
-            <img 
-              src="/assets/images/telnet.png" 
-              alt="TELNET Logo" 
-              className="sb-brand-img"
-              onError={(e) => { 
-                e.target.style.display='none'; 
-                e.target.parentNode.innerHTML='<i class="ri-rocket-fill" style="color:#3B82F6;font-size:22px;"></i>'
-              }} 
-            />
+            <TelnetSymbol />
           </div>
-          <span className="sb-brand-name">TELNET</span>
+          <div className="sb-brand-name">
+            <span>TELNET</span>
+            <span className="sb-brand-sub">HOLDING</span>
+          </div>
         </div>
       </div>
 
@@ -376,7 +402,7 @@ export default function Sidebar() {
           <Section title="Pilotage">
             <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" />
             {isAdmin && (
-              <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to="/analytics/comparison?project_id=1" />
+              <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} />
             )}
             <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" />
           </Section>
@@ -384,8 +410,8 @@ export default function Sidebar() {
           <div className="sb-divider" />
 
           <Section title="Activité Code">
-            <NavItem icon="ri-git-merge-line"        label="Merge Requests"      to="/merge" />
-            <NavItem icon="ri-git-commit-line"       label="Commits GitLab"      to="/commits" />
+            <NavItem icon="ri-git-merge-line"        label="Merge Requests"      to={`/merge${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} />
+            <NavItem icon="ri-git-commit-line"       label="Commits GitLab"      to={`/commits${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} />
             <NavItem icon="ri-line-chart-line"       label="Analyses KPI"        to="/kpi-analysis" />
             <NavItem icon="ri-notification-3-line"   label="Alertes KPI"         to="/alerts" />
           </Section>

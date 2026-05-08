@@ -1,23 +1,13 @@
 """
 repositories/alert_repository.py
 
-CORRECTIONS (modèles mis à jour) :
-─────────────────────────────────────
-1. get_active_alerts() : ajout filtre developer_id.
 
-2. create_alert() : ajout paramètre developer_id (nullable).
-
-3. AJOUT get_by_developer() : alertes d'un développeur spécifique.
-
-4. AJOUT count_active_by_level() : enrichi avec le filtre developer_id.
-
-5. AJOUT get_summary_for_developer() : résumé alertes pour la page profil dev.
 """
 from datetime import datetime, timezone
 from typing import Optional, List
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.alert import Alert, AlertLevelEnum
 from app.models.kpi_snapshot import KpiSnapshot
@@ -80,7 +70,11 @@ class AlertRepository(BaseRepository[Alert]):
         """Alertes non résolues, multi-critères."""
         q = (
             db.query(Alert)
-            .join(KpiThreshold, Alert.threshold_id == KpiThreshold.id)
+            .options(
+                joinedload(Alert.acknowledger),
+                joinedload(Alert.developer),
+                joinedload(Alert.threshold).joinedload(KpiThreshold.project),
+            )
             .filter(Alert.is_resolved.is_(False))
         )
         if project_id is not None:

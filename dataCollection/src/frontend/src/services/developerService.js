@@ -11,18 +11,20 @@ const developerService = {
 
   // ── Liste & Summary ────────────────────────────────────────────────────────
 
-  getByTab: (tab = "all", projectId = null, activeOnly = false) => {
+  getByTab: (tab = "all", projectId = null, activeOnly = false, periodId = null) => {
     const params = { tab };
     if (activeOnly) params.active_only = true;
     if (projectId && projectId !== "all") params.project_id = parseInt(projectId);
+    if (periodId  && periodId  !== "all") params.period_id  = parseInt(periodId);
     return api.get("/developers", { params }).then(r => r.data);
   },
 
-  getSummary: (projectId = null, siteId = null, activeOnly = false) => {
+  getSummary: (projectId = null, siteId = null, activeOnly = false, periodId = null) => {
     const params = {};
     if (activeOnly) params.active_only = true;
     if (projectId && projectId !== "all") params.project_id = parseInt(projectId);
     if (siteId    && siteId    !== "all") params.site_id    = parseInt(siteId);
+    if (periodId  && periodId  !== "all") params.period_id  = parseInt(periodId);
     return api.get("/developers/summary", { params }).then(r => r.data);
   },
 
@@ -54,12 +56,15 @@ const developerService = {
   deleteGroup: (id) => api.delete(`/developer-groups/${id}`).then(r => r.data),
 
   // ── KPI & Analytics ───────────────────────────────────────────────────────
-
+  
   getDeveloperKpis: (id, projectId) =>
     api.get(`/kpis/developer/${id}`, { params: { project_id: projectId } }).then(r => r.data),
 
   getHeatmap: (id, months = 12) =>
     api.get(`/analytics/developer/${id}/heatmap`, { params: { months } }).then(r => r.data),
+    
+  getTimeline: (id) =>
+    api.get(`/developers/${id}/timeline`).then(res => res.data),
 
   getLeaderboard: (projectId, { siteId = null, periodId = null, lotId = null, limit = 20 } = {}) => {
     const params = { project_id: projectId };
@@ -99,11 +104,15 @@ const developerService = {
     if (options.defaultGitlabConfigId)
       form.append("default_gitlab_config_id", String(options.defaultGitlabConfigId));
 
+    if (options.periodId)
+      form.append("period_id", String(options.periodId));
+
     // Booléens → strings "true"/"false" (FormData ne sérialise pas les booléens)
     form.append("dry_run",                 options.dryRun                ? "true" : "false");
     form.append("create_missing_sites",    options.createMissingSites    ? "true" : "false");
     form.append("create_missing_projects", options.createMissingProjects ? "true" : "false");
-    form.append("create_missing_groups",   options.createMissingGroups   ? "true" : "false"); // ✅ NOUVEAU
+    form.append("create_missing_groups",   options.createMissingGroups   ? "true" : "false");
+    form.append("full_sync",               options.fullSync              ? "true" : "false");
 
     return api.post("/developers/import", form, {
       headers: { "Content-Type": "multipart/form-data" },

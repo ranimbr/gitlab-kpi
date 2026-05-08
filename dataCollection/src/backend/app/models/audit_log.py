@@ -23,6 +23,7 @@ Actions tracées :
     CLOSE_PERIOD       | CREATE_GITLAB_CONFIG
 """
 
+from typing import Optional
 from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 
@@ -39,6 +40,7 @@ class AuditLog(Base):
     entity_id   = Column(Integer,     nullable=True)    # ID de l'entité modifiée
     old_value   = Column(JSON,        nullable=True)    # État avant modification
     new_value   = Column(JSON,        nullable=True)    # État après modification
+    entity_name = Column(String(200), nullable=True)    # Nom lisible (ex: "Jean Dupont")
     ip_address  = Column(String(45),  nullable=True)    # IPv4 (15 chars) ou IPv6 (45 chars)
 
     user_id = Column(
@@ -53,6 +55,13 @@ class AuditLog(Base):
         back_populates="audit_logs",
         foreign_keys=[user_id],
     )
+
+    # ── Properties ───────────────────────────────────────────────────────────
+    @property
+    def user_name(self) -> Optional[str]:
+        if not self.user:
+            return "Système"
+        return self.user.name or self.user.login or self.user.email or f"Utilisateur #{self.user.id}"
 
     # ── Index — tous dans __table_args__ avec références STRING ──────────────
     # ✅ FIX : utiliser le nom de colonne en string (pas AuditLog.created_at)

@@ -31,7 +31,7 @@ def list_audit_logs(
     created_after:  Optional[datetime] = Query(default=None),
     created_before: Optional[datetime] = Query(default=None),
     page:          int              = Query(default=1, ge=1),
-    limit:         int              = Query(default=50, ge=1, le=500),
+    limit:         int              = Query(default=50, ge=1, le=1000),
 ):
     """
     Journal d'audit — lecture seule, admin uniquement.

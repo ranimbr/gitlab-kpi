@@ -1,11 +1,6 @@
 """
 services/kpi/alert_service.py
 
-CORRECTIONS (modèles mis à jour) :
-─────────────────────────────────────
-1. get_active_alerts() : ajout developer_id.
-2. AJOUT get_developer_alert_summary() : alertes individuelles d'un développeur.
-3. AJOUT check_developer_inactivity() : alerte si développeur inactif > N jours.
 """
 import logging
 from datetime import datetime, timezone, timedelta

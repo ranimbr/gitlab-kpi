@@ -1,11 +1,7 @@
 """
 api/routers/admin_users.py
 
-CORRECTIONS (modèles mis à jour) :
-─────────────────────────────────────
-1. Rôle admin → super_admin pour les vérifications auto-protection.
-2. Downgrade check : "user" → "developer".
-3. AJOUT : vérification auto-protection pour les 4 rôles.
+
 """
 import logging
 from typing import List

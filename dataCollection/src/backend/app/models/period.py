@@ -35,6 +35,14 @@ class Period(Base):
     # ── [SENIOR GRADE] Audit & Gouvernance ───────────────────────────────────
     closed_by_id    = Column(Integer, ForeignKey("app_user.id"), nullable=True)
     closure_summary = Column(JSON, nullable=True, comment="Checklist de validation pré-clôture")
+    # [ENTERPRISE] Effectif figé au moment de la clôture MONTHLY
+    # Ce chiffre est IMMUTABLE une fois la période fermée.
+    # Les KPIs historiques l'utilisent toujours, même si des devs sont désactivés après.
+    headcount_snapshot = Column(
+        Integer, 
+        nullable=True,
+        comment="Nombre de devs actifs figé au moment de la clôture (règle 15j appliquée)"
+    )
 
     closed_by       = relationship("AppUser")
     # ──────────────────────────────────────────────────────────────────────────

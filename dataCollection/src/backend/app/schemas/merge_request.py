@@ -1,20 +1,6 @@
 """
 schemas/merge_request.py
 
-CORRECTIONS (modèles mis à jour) :
-────────────────────────────────────
-1. AJOUT des nouveaux champs du modèle MergeRequest :
-       source_branch → branche feature de la MR
-       target_branch → branche cible (ex: main, develop)
-       reviewer_id   → développeur relecteur assigné
-       author_name   → nom brut de l'auteur (fallback quand developer_id=NULL)
-
-2. AJOUT MergeRequestSummary : version allégée pour les listes.
-
-3. AJOUT UnmatchedMRResponse : MRs sans developer_id à traiter par l'admin.
-
-4. AJOUT ReviewerWorkloadResponse : charge de review par développeur
-   (requête fréquente pour détecter les relecteurs surchargés).
 """
 from pydantic import BaseModel
 from typing import Optional, List

@@ -1,5 +1,5 @@
 """
-repositories/gitlab_config_repository.py — nettoyé + get_by_site_id ajouté.
+repositories/gitlab_config_repository.py 
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session

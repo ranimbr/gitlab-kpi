@@ -1,23 +1,6 @@
 """
 repositories/site_repository.py
 
-MODIFICATION v2 — Enterprise-grade import :
-──────────────────────────────────────────────────────────────────
-AJOUT create_from_import() :
-    Crée un site minimal depuis l'import CSV.
-    Distinct de create() pour tracer l'origine (source="csv_import")
-    et garantir des valeurs par défaut sûres sans exposer tous les
-    champs à l'appelant.
-
-    Le site est créé actif avec :
-        name      = nom tel qu'il apparaît dans le CSV (casse conservée)
-        country   = "À définir"  (l'admin complètera via la page Sites)
-        timezone  = None
-        is_active = True
-
-AJOUT get_by_names() :
-    Charge plusieurs sites par leurs noms en une seule requête SQL.
-    Utilisé par import_from_file() pour éviter N requêtes get_by_name().
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session

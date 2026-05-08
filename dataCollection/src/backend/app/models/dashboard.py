@@ -8,12 +8,6 @@ from app.models.base import Base
 
 
 class Dashboard(Base):
-    """
-    Tableau de bord associé à un projet et un site.
-
-    Accès contrôlé via AppUser.dashboard_access (liste d'IDs PostgreSQL ARRAY)
-    ou is_public=True pour les dashboards publics.
-    """
 
     __tablename__ = "dashboard"
 

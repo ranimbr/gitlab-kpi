@@ -411,19 +411,42 @@ function ScoreGaugeCard({ score, devName }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function DeveloperPerformancePage() {
-  const { id }         = useParams();
-  const [searchParams] = useSearchParams();
+  const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
+  const periodIdParam = searchParams.get("period_id");
+  const lotIdParam    = searchParams.get("lot_id");
 
   const [developer,   setDeveloper]   = useState(null);
   const [snapshot,    setSnapshot]    = useState(null);
   const [summary,     setSummary]     = useState(null);
   const [heatmap,     setHeatmap]     = useState([]);
   const [projects,    setProjects]    = useState([]);
-  const [selectedPid, setSelectedPid]= useState(projectIdParam || "");
+  const [selectedPid, setSelectedPid]= useState(projectIdParam || localStorage.getItem("last_project_id") || "");
+  const [selectedPeriodId, setSelectedPeriodId] = useState(periodIdParam || "");
+  const [selectedLotId,    setSelectedLotId]    = useState(lotIdParam || "");
   const [allDevScores,setAllDevScores]= useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
+
+  // [SENIOR] Sync project_id & period_id to URL
+  useEffect(() => {
+    const params = {};
+    if (selectedPid) {
+      params.project_id = selectedPid;
+      localStorage.setItem("last_project_id", selectedPid);
+    }
+    if (selectedPeriodId) {
+      params.period_id = selectedPeriodId;
+    }
+    if (selectedLotId) {
+      params.lot_id = selectedLotId;
+    }
+    const currentParams = Object.fromEntries(searchParams.entries());
+    if (JSON.stringify(currentParams) !== JSON.stringify(params)) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [selectedPid, selectedPeriodId, selectedLotId, setSearchParams]);
 
   // ── Data Loading ────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -439,40 +462,52 @@ export default function DeveloperPerformancePage() {
       const projList = Array.isArray(projData) ? projData : [];
       setProjects(projList);
 
-      const pid = parseInt(selectedPid) || projList[0]?.id;
-      if (!pid) { setLoading(false); return; }
+      const isAll = selectedPid === "all";
+      const pid = isAll ? null : (parseInt(selectedPid) || projList[0]?.id);
+      
+      // If no valid PID and not "all", we can't load project-specific stats
+      if (!pid && !isAll) { setLoading(false); return; }
 
       // 2. Fetch snapshot + heatmap + all-team stats in parallel
+      // Pass selectedPeriodId if available to get historical performance
       const [snapData, heatData, summaryData] = await Promise.all([
-        analyticsService.getLatest(pid, { developerId: parseInt(id) }).catch(() => null),
+        analyticsService.getLatest(pid || "all", { 
+          developerId: parseInt(id), 
+          lotId: selectedLotId, 
+          periodId: selectedPeriodId 
+        }).catch(() => null),
         developerService.getHeatmap(id, 6).catch(() => null),
-        analyticsService.getDeveloperSummary(pid, parseInt(id)).catch(() => null),
+        analyticsService.getDeveloperSummary(pid, parseInt(id), { lot_id: selectedLotId }).catch(() => null),
       ]);
 
       setSnapshot(snapData);
       setSummary(summaryData);
       setHeatmap(heatData?.activity || []);
 
-      // 3. All developers in project → scores for percentile
-      try {
-        const allDevsRes = await api.get("/admin/developers", { params: { project_id: pid, page_size: 100 } });
-        const allDevs = allDevsRes.data?.items || allDevsRes.data || [];
-        
-        const allSnapshots = await Promise.allSettled(
-          allDevs
-            .filter(d => d.id !== parseInt(id)) // exclude self (added back below)
-            .slice(0, 20)                        // cap at 20 for performance
-            .map(d => analyticsService.getLatest(pid, { developerId: d.id }))
-        );
-        const scores = allSnapshots
-          .filter(r => r.status === "fulfilled" && r.value?.developer_score != null)
-          .map(r => r.value.developer_score);
+      // 3. All developers in project → scores for percentile (Only if PID is valid)
+      if (pid) {
+        try {
+          const allDevsRes = await api.get("/developers", { params: { project_id: pid, page_size: 100 } }).catch(() => null);
+          if (allDevsRes) {
+            const allDevs = allDevsRes.data?.items || allDevsRes.data || [];
+            const allSnapshots = await Promise.allSettled(
+              allDevs
+                .filter(d => d.id !== parseInt(id))
+                .slice(0, 15)
+                .map(d => analyticsService.getLatest(pid, { developerId: d.id, lotId: selectedLotId }))
+            );
+            const scores = allSnapshots
+              .filter(r => r.status === "fulfilled" && r.value?.developer_score != null)
+              .map(r => r.value.developer_score);
 
-        // Add self score
-        if (snapData?.developer_score != null) scores.push(snapData.developer_score);
-        setAllDevScores(scores);
-      } catch {
-        // Percentile not critical — skip silently
+            if (snapData?.developer_score != null) scores.push(snapData.developer_score);
+            setAllDevScores(scores);
+          }
+        } catch {
+          if (snapData?.developer_score != null) setAllDevScores([snapData.developer_score]);
+        }
+      } else {
+        // Mode Global: score unique
         if (snapData?.developer_score != null) setAllDevScores([snapData.developer_score]);
       }
 
@@ -481,7 +516,7 @@ export default function DeveloperPerformancePage() {
     } finally {
       setLoading(false);
     }
-  }, [id, selectedPid]);
+  }, [id, selectedPid, selectedLotId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -537,6 +572,22 @@ export default function DeveloperPerformancePage() {
     <div className="page-content">
       <div className="container-fluid">
 
+        {/* ─── Lot Context Banner ─── */}
+        {selectedLotId && (
+          <div className="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-center gap-3 py-2 px-4" 
+            style={{ borderRadius: 12, background: "linear-gradient(90deg, #eff6ff, #f0fdf4)", borderLeft: "4px solid #3b82f6 !important" }}>
+            <i className="ri-stack-line fs-20 text-primary"></i>
+            <div className="flex-grow-1">
+              <span className="fw-bold text-primary me-2">Mode Exploration : Session #{selectedLotId}</span>
+              <span className="text-muted fs-12">| Les scores sont calculés sur ce périmètre d'extraction uniquement</span>
+              <span className="badge bg-primary-subtle text-primary ms-2 fs-11">Isolation Totale</span>
+            </div>
+            <Link to="/extraction-lots" className="btn btn-sm btn-soft-primary d-flex align-items-center gap-1">
+              <i className="ri-arrow-left-line"></i> Retour aux lots
+            </Link>
+          </div>
+        )}
+
         {/* ─── Header ─── */}
         <div style={{marginBottom:24}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
@@ -550,7 +601,7 @@ export default function DeveloperPerformancePage() {
                   <Link to="/developers" style={{color:"#878a99",textDecoration:"none"}}>Hub Développeurs</Link>
                 </li>
                 <li className="breadcrumb-item">
-                  <Link to={`/developers/${id}${pid ? `?project_id=${pid}` : ""}`} style={{color:"#878a99",textDecoration:"none"}}>
+                  <Link to={`/developers/${id}${pid ? `?project_id=${pid}` : ""}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} style={{color:"#878a99",textDecoration:"none"}}>
                     {devDisplayName}
                   </Link>
                 </li>
@@ -564,7 +615,7 @@ export default function DeveloperPerformancePage() {
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               )}
-              <Link to={`/developers/${id}${pid ? `?project_id=${pid}` : ""}`}
+              <Link to={`/developers/${id}${pid ? `?project_id=${pid}` : ""}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`}
                 className="btn btn-sm btn-soft-secondary">
                 <i className="ri-user-line me-1"></i>Profil
               </Link>

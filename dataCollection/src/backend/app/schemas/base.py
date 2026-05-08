@@ -1,17 +1,7 @@
 """
 schemas/base.py
 
-Classes de base Pydantic partagées par tous les schémas.
 
-Conventions utilisées dans ce projet :
-    - *Create  : payload POST  (création)  — pas d'id
-    - *Update  : payload PATCH (mise à jour) — tous champs Optional
-    - *Response: payload GET   (lecture)    — inclut id + timestamps
-    - *Summary : version allégée pour les listes (sans nested objects)
-
-Configuration globale :
-    from_attributes=True  → lecture depuis des instances SQLAlchemy ORM
-    populate_by_name=True → accepte les deux formes snake_case et alias
 """
 
 from datetime import datetime

@@ -10,6 +10,7 @@ import projectService   from "../../services/projectService";
 import siteService      from "../../services/siteService";
 import dashboardService from "../../services/dashboardService";
 import adminService     from "../../services/adminService";
+import AdminModal      from "../../components/common/AdminModal";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EmptyState     from "../../components/common/EmptyState";
 import ConfirmModal   from "../../components/common/ConfirmModal";
@@ -31,31 +32,78 @@ function CreateDashboardModal({ projects, sites, onClose, onSave }) {
     finally { setLoading(false); }
   };
   return (
-    <div className="modal fade show d-block" tabIndex="-1" style={{background:"rgba(0,0,0,0.5)",zIndex:1055}} onClick={(e)=>{if(e.target===e.currentTarget)onClose();}}>
-      <div className="modal-dialog modal-dialog-centered">
-        <div className="modal-content border-0 shadow">
-          <div className="modal-header bg-light p-3">
-            <h5 className="modal-title"><i className="ri-layout-grid-line me-2 text-primary"></i>Nouveau dashboard</h5>
-            <button className="btn-close" onClick={onClose} disabled={loading}></button>
-          </div>
-          <div className="modal-body p-4">
-            {error&&<div className="alert alert-danger py-2 fs-13"><i className="ri-error-warning-line me-1"></i>{error}</div>}
-            <div className="row g-3">
-              <div className="col-12"><label className="form-label fw-medium">Nom *</label><input type="text" name="name" className="form-control" placeholder="ex: Dashboard Q1 2026" value={form.name} onChange={handle}/></div>
-              <div className="col-md-6"><label className="form-label fw-medium">Projet *</label><select name="project_id" className="form-select" value={form.project_id} onChange={handle}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-              <div className="col-md-6"><label className="form-label fw-medium">Site <span className="text-muted fs-12">(optionnel)</span></label><select name="site_id" className="form-select" value={form.site_id} onChange={handle}><option value="">-- Tous les sites --</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}{s.country?` (${s.country})`:""}</option>)}</select></div>
-              <div className="col-12"><div className="form-check form-switch"><input type="checkbox" className="form-check-input" name="is_public" id="is_public" checked={form.is_public} onChange={handle}/><label className="form-check-label fw-medium" htmlFor="is_public">{form.is_public?<span className="text-success">Dashboard public — accessible à tous les utilisateurs</span>:<span className="text-muted">Dashboard privé — accès via liste explicite</span>}</label></div></div>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Nouveau dashboard"
+      subtitle="Organisez vos KPIs par projet et gérez la visibilité"
+      icon="ri-layout-grid-line"
+      loading={loading}
+      maxWidth={520}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4 fw-medium" onClick={onClose} disabled={loading}>Annuler</button>
+          <button className="btn btn-sm btn-primary px-4 fw-bold shadow-sm" onClick={submit} disabled={loading}>
+            {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Création...</> : <><i className="ri-add-line me-1"></i>Créer le dashboard</>}
+          </button>
+        </>
+      }
+    >
+      {error && (
+        <div className="alert alert-danger py-2 fs-13 mb-3 border-0 shadow-sm">
+          <i className="ri-error-warning-line me-1"></i>{error}
+        </div>
+      )}
+      <div className="row g-3">
+        <div className="col-12">
+          <label className="form-label fw-semibold fs-13 mb-1">Nom du dashboard <span className="text-danger">*</span></label>
+          <input type="text" name="name" className="form-control" placeholder="ex: Dashboard Q1 2026" value={form.name} onChange={handle} />
+        </div>
+        <div className="col-md-6">
+          <label className="form-label fw-semibold fs-13 mb-1">Projet <span className="text-danger">*</span></label>
+          <select name="project_id" className="form-select" value={form.project_id} onChange={handle}>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="col-md-6">
+          <label className="form-label fw-semibold fs-13 mb-1">Site <span className="text-muted fs-11 ms-1">(optionnel)</span></label>
+          <select name="site_id" className="form-select" value={form.site_id} onChange={handle}>
+            <option value="">-- Tous les sites --</option>
+            {sites.map(s => <option key={s.id} value={s.id}>{s.name}{s.country ? ` (${s.country})` : ""}</option>)}
+          </select>
+        </div>
+        <div className="col-12 mt-3">
+          <div 
+            className="rounded-3 p-3 border d-flex align-items-center justify-content-between"
+            style={{ 
+              background: form.is_public ? "rgba(16,185,129,0.04)" : "#f8fafc",
+              borderColor: form.is_public ? "#10b981" : "#e2e8f0"
+            }}
+          >
+            <div className="flex-grow-1">
+              <div className={`fw-bold fs-13 ${form.is_public ? "text-success" : "text-muted"}`}>
+                <i className={`${form.is_public ? "ri-globe-line" : "ri-lock-line"} me-1`}></i>
+                {form.is_public ? "Dashboard public" : "Dashboard privé"}
+              </div>
+              <div className="text-muted fs-11 mt-1">
+                {form.is_public ? "Accessible à tous les utilisateurs connectés" : "Accès restreint via liste blanche"}
+              </div>
             </div>
-          </div>
-          <div className="modal-footer">
-            <button className="btn btn-light" onClick={onClose} disabled={loading}>Annuler</button>
-            <button className="btn btn-primary" onClick={submit} disabled={loading}>
-              {loading?<><span className="spinner-border spinner-border-sm me-2"></span>Création...</>:<><i className="ri-add-line me-1"></i>Créer</>}
-            </button>
+            <div className="form-check form-switch mb-0">
+              <input 
+                type="checkbox" 
+                className="form-check-input" 
+                name="is_public" 
+                id="is_public_switch" 
+                checked={form.is_public} 
+                onChange={handle} 
+                style={{ width: "2.6em", height: "1.4em", cursor: "pointer" }}
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </AdminModal>
   );
 }
 
@@ -88,44 +136,77 @@ function AccessModal({ dashboard, users, onClose, onGrant, onRevoke }) {
   };
 
   return (
-    <div className="modal fade show d-block" tabIndex="-1" style={{background:"rgba(0,0,0,0.5)",zIndex:1055}} onClick={(e)=>{if(e.target===e.currentTarget)onClose();}}>
-      <div className="modal-dialog modal-dialog-centered modal-lg">
-        <div className="modal-content border-0 shadow">
-          <div className="modal-header bg-light p-3">
-            <h5 className="modal-title"><i className="ri-user-add-line me-2 text-success"></i>Gérer les accès — {dashboard.name}</h5>
-            <button className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body p-4">
-            {error&&<div className="alert alert-danger py-2 fs-13 mb-3"><i className="ri-error-warning-line me-1"></i>{error}</div>}
-            {dashboard.is_public&&<div className="alert alert-success py-2 fs-13 mb-3"><i className="ri-globe-line me-1"></i>Ce dashboard est <strong>public</strong> — accessible à tous les utilisateurs connectés.</div>}
-            <label className="form-label fw-medium">Accorder l'accès à un utilisateur</label>
-            <div className="input-group mb-3">
-              <select className="form-select" value={userId} onChange={(e)=>setUserId(e.target.value)}>
-                <option value="">-- Choisir un utilisateur --</option>
-                {usersWithout.map(u=><option key={u.id} value={u.id}>{u.email} ({u.role})</option>)}
-              </select>
-              <button className="btn btn-success" onClick={handleGrant} disabled={loading||!userId}>
-                {loading?<span className="spinner-border spinner-border-sm"></span>:<><i className="ri-add-line me-1"></i>Accorder</>}
-              </button>
-            </div>
-            {usersWithAccess.length>0&&(
-              <>
-                <p className="fw-medium fs-13 mb-2">Utilisateurs ayant accès ({usersWithAccess.length}) :</p>
-                <div className="d-flex flex-wrap gap-2">
-                  {usersWithAccess.map(u=>(
-                    <span key={u.id} className="badge bg-primary-subtle text-primary d-inline-flex align-items-center gap-1 px-2 py-1">
-                      <i className="ri-user-line fs-11"></i>{u.email}
-                      <button className="btn p-0 ms-1" style={{fontSize:12,lineHeight:1}} onClick={()=>handleRevoke(u.id)} title="Retirer l'accès"><i className="ri-close-line text-danger"></i></button>
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="modal-footer"><button className="btn btn-light" onClick={onClose}>Fermer</button></div>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Gérer les accès"
+      subtitle={dashboard.name}
+      icon="ri-user-add-line"
+      iconBg="bg-success-subtle"
+      iconColor="text-success"
+      maxWidth={640}
+      footer={<button className="btn btn-sm btn-light px-4 fw-medium" onClick={onClose}>Fermer</button>}
+    >
+      {error && (
+        <div className="alert alert-danger py-2 fs-13 mb-3 border-0 shadow-sm">
+          <i className="ri-error-warning-line me-1"></i>{error}
+        </div>
+      )}
+
+      {dashboard.is_public && (
+        <div className="alert alert-soft-success d-flex align-items-center gap-2 py-2 fs-13 mb-4 border-0">
+          <i className="ri-globe-line fs-16"></i>
+          <span>Ce dashboard est <strong>public</strong> — accessible à tous les utilisateurs connectés.</span>
+        </div>
+      )}
+
+      <div className="mb-4">
+        <label className="form-label fw-semibold fs-13 mb-2">Accorder l'accès à un utilisateur</label>
+        <div className="input-group shadow-sm">
+          <select className="form-select border-end-0" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            <option value="">-- Choisir un utilisateur --</option>
+            {usersWithout.map(u => <option key={u.id} value={u.id}>{u.email} ({u.role})</option>)}
+          </select>
+          <button className="btn btn-success px-3" onClick={handleGrant} disabled={loading || !userId}>
+            {loading ? <span className="spinner-border spinner-border-sm"></span> : <><i className="ri-add-line me-1"></i>Accorder</>}
+          </button>
         </div>
       </div>
-    </div>
+
+      <div>
+        <p className="fw-bold fs-12 text-uppercase text-muted mb-3" style={{ letterSpacing: '0.05em' }}>
+          Utilisateurs autorisés ({usersWithAccess.length})
+        </p>
+        {usersWithAccess.length === 0 ? (
+          <div className="text-center py-4 bg-light rounded-3 border-dashed">
+            <p className="text-muted fs-13 mb-0">Aucun accès spécifique configuré.</p>
+          </div>
+        ) : (
+          <div className="d-flex flex-wrap gap-2">
+            {usersWithAccess.map(u => (
+              <div 
+                key={u.id} 
+                className="d-flex align-items-center gap-2 px-2 py-1 rounded-pill border bg-white shadow-sm transition-all hover-shadow"
+                style={{ border: '1px solid #e2e8f0' }}
+              >
+                <div className="avatar-xxs rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style={{ width: 22, height: 22 }}>
+                  <i className="ri-user-line fs-11"></i>
+                </div>
+                <span className="fs-12 fw-medium">{u.email}</span>
+                <button 
+                  className="btn btn-link p-0 text-danger" 
+                  style={{ lineHeight: 1 }} 
+                  onClick={() => handleRevoke(u.id)} 
+                  title="Révoquer l'accès"
+                >
+                  <i className="ri-close-circle-fill fs-15"></i>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </AdminModal>
   );
 }
 
@@ -162,19 +243,27 @@ export default function DashboardsAdminPage() {
   };
 
   return (
-    <div className="page-content"><div className="container-fluid">
-      {toast&&<div className={`alert alert-${toast.type} position-fixed top-0 end-0 m-3 shadow`} style={{zIndex:9999,minWidth:300}}><i className={`${toast.type==="success"?"ri-checkbox-circle-line":"ri-error-warning-line"} me-2`}></i>{toast.msg}</div>}
+    <div className="page-content">
+      <div className="container-fluid">
+        {toast && <div className={`alert alert-${toast.type} position-fixed top-0 end-0 m-3 shadow`} style={{ zIndex: 9999, minWidth: 300 }}><i className={`${toast.type === "success" ? "ri-checkbox-circle-line" : "ri-error-warning-line"} me-2`}></i>{toast.msg}</div>}
 
-      <div className="row"><div className="col-12">
-        <div className="page-title-box d-sm-flex align-items-center justify-content-between">
-          <h4 className="mb-sm-0"><i className="ri-layout-grid-line me-2 text-primary"></i>Gestion des Dashboards</h4>
-          <ol className="breadcrumb m-0"><li className="breadcrumb-item"><a href="/">Dashboard</a></li><li className="breadcrumb-item active">Dashboards Admin</li></ol>
+        {/* Header */}
+        <div className="row mt-3">
+          <div className="col-12">
+            <div className="page-title-box d-sm-flex align-items-center justify-content-between">
+              <h4 className="mb-sm-0">
+                <i className="ri-layout-grid-line me-2 text-primary"></i>Gestion des Dashboards
+              </h4>
+              <button className="btn btn-primary shadow-sm fs-13 fw-bold px-4" onClick={() => setShowCreate(true)}>
+                <i className="ri-add-line me-1"></i> Nouveau Dashboard
+              </button>
+            </div>
+            <ol className="breadcrumb m-0 mb-4">
+              <li className="breadcrumb-item fs-11 fw-bold text-uppercase ls-1 text-muted">Administration</li>
+              <li className="breadcrumb-item active fs-11 fw-bold text-uppercase ls-1" aria-current="page">Dashboards</li>
+            </ol>
+          </div>
         </div>
-      </div></div>
-
-      <div className="d-flex justify-content-end mb-4">
-        <button className="btn btn-primary" onClick={()=>setShowCreate(true)}><i className="ri-add-line me-1"></i>Nouveau dashboard</button>
-      </div>
 
       {loading ? <LoadingSpinner fullPage text="Chargement des dashboards..."/> : dashboards.length===0 ? (
         <EmptyState icon="ri-layout-grid-line" title="Aucun dashboard" description="Créez votre premier dashboard pour organiser les KPIs par projet." actionLabel="Créer un dashboard" onAction={()=>setShowCreate(true)}/>

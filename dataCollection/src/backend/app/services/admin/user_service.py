@@ -65,6 +65,7 @@ class UserService:
         self.audit_repo.log(
             db=db, user_id=created_by, action="CREATE_USER",
             entity_type="AppUser", entity_id=user.id,
+            entity_name=user.name or user.email,
             new_value={"email": user.email, "role": user.role.value},
             ip_address=ip_address,
         )
@@ -113,6 +114,7 @@ class UserService:
         self.audit_repo.log(
             db=db, user_id=updated_by, action="UPDATE_USER",
             entity_type="AppUser", entity_id=user_id,
+            entity_name=user.name or user.email,
             old_value=old_value,
             new_value=payload.model_dump(exclude_unset=True, exclude={"new_password"}),
             ip_address=ip_address,
@@ -133,6 +135,7 @@ class UserService:
         self.audit_repo.log(
             db=db, user_id=deleted_by, action="DELETE_USER",
             entity_type="AppUser", entity_id=user_id,
+            entity_name=user.name or user.email,
             old_value={"email": user.email, "role": user.role.value},
             ip_address=ip_address,
         )

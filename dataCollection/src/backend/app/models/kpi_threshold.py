@@ -1,23 +1,6 @@
 """
 models/kpi_threshold.py
 
-Seuils d'alerte configurables par KPI, par site et par projet.
-
-CORRECTIONS MAJEURES (remarques encadrant) :
-─────────────────────────────────────────────
-1. AJOUT de site_id (FK nullable) :
-   Un seuil peut être défini au niveau d'un site spécifique.
-   NULL = seuil global applicable à tous les sites.
-   Permet de configurer des seuils différents par site
-   (ex: site Tunis → warning_value=0.6, site Paris → warning_value=0.7).
-
-2. Relation vers Site ajoutée.
-
-CORRECTIONS TECHNIQUES (conservées) :
-──────────────────────────────────────
-3. RENOMMAGE : type → threshold_type (réservé Python/SQLAlchemy).
-4. Index UNIQUE DDL avec COALESCE pour gérer les NULLs.
-5. CheckConstraints sur les valeurs des seuils.
 """
 
 from sqlalchemy import (

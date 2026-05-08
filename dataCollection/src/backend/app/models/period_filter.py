@@ -1,8 +1,7 @@
 """
 models/period_filter.py — version corrigée
 
-AJOUT : CheckConstraint métier — si type=custom, date_from et date_to
-sont obligatoires. Validé côté service ET côté DB.
+
 """
 from sqlalchemy import (
     Column, Integer, Boolean, DateTime,

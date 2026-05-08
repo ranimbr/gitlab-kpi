@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     SECRET_KEY:                  str = "change-me-in-production-min-32-chars-!!"
     ALGORITHM:                   str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    LOGIN_MAX_ATTEMPTS:          int = 5
+    LOGIN_LOCK_SECONDS:          int = 300
 
     # ── Encryption (token GitLab stocké chiffré en base) ─────────────────────
     # Fernet key : 32 bytes encodés en base64-url (44 chars ASCII)

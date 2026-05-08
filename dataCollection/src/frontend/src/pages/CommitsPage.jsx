@@ -645,11 +645,11 @@ const INITIAL_FILTERS = {
   period: "all",
   lot: "all",
   search: "",
-  site: "all",
-  group: "all",
-  author: "all",
+  siteId: "all",
+  groupId: "all",
+  developerId: "all",
   sort: "date",
-  excludeMerges: true // [SENIOR] Default to certified human contribution (excludes noise)
+  excludeMerges: true
 };
 
 export default function CommitsPage() {
@@ -669,8 +669,9 @@ export default function CommitsPage() {
     project: searchParams.get("project_id") || "all",
     lot: searchParams.get("lot_id") || "all",
     period: searchParams.get("period_id") || "all",
-    group: searchParams.get("group_id") || "all",
-    // Site and Author will be hydrated in useEffect once meta-data is ready
+    groupId: searchParams.get("group_id") || "all",
+    developerId: searchParams.get("developer_id") || "all",
+    siteId: searchParams.get("site_id") || "all",
   });
 
   const [developers,         setDevelopers]        = useState([]);
@@ -682,68 +683,67 @@ export default function CommitsPage() {
   const isInitialized = useRef(false);
 
   // Chargement projets, développeurs et groupes
-  // Initialisation : Projets, Périodes, Développeurs, Groupes
+  // Initialisation : Chargement des données de base (une seule fois)
   useEffect(() => {
-    const initData = async () => {
+    const fetchBaseData = async () => {
       try {
         const [projRes, perRes, devRes, grpRes, currRes, siteRes] = await Promise.all([
           api.get("/projects"),
           api.get("/periods"),
-          api.get("/developers?active_only=true"),
-          api.get("/developer-groups?active_only=true"),
+          api.get("/developers"), // Removed active_only to support historical lots
+          api.get("/developer-groups"),
           api.get("/periods/current").catch(() => ({ data: null })),
-          api.get("/sites?active_only=true").catch(() => ({ data: [] }))
+          api.get("/sites").catch(() => ({ data: [] }))
         ]);
         
         const projData = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
         const perData = Array.isArray(perRes.data) ? perRes.data : (perRes.data?.items ?? []);
         const devData = Array.isArray(devRes.data) ? devRes.data : (devRes.data?.items ?? []);
         const siteData = Array.isArray(siteRes.data) ? siteRes.data : (siteRes.data?.items ?? []);
-        const cur = currRes.data;
-
+        
         setProjects(projData);
         setPeriods(perData);
         setDevelopers(devData);
         setGroups(Array.isArray(grpRes.data) ? grpRes.data : (grpRes.data?.items ?? []));
         setAllSites(siteData);
-        setCurrentPeriod(cur);
-
-        // [SENIOR] URL Context Hydration
-        const urlDevId = searchParams.get("developer_id");
-        const urlSiteId = searchParams.get("site_id");
-        
-        setFilters(prev => {
-          let next = { ...prev };
-          
-          if (urlDevId) {
-            const dev = devData.find(d => String(d.id) === urlDevId);
-            if (dev) next.author = dev.name || dev.gitlab_username;
-          }
-          
-          if (urlSiteId) {
-            const site = siteData.find(s => String(s.id) === urlSiteId);
-            if (site) next.site = site.name;
-          }
-
-          const urlLotId = searchParams.get("lot_id");
-          const urlProjectId = searchParams.get("project_id");
-          if (urlLotId) next.lot = urlLotId;
-          if (urlProjectId) next.project = urlProjectId;
-
-          // Auto-select current period if none selected and NOT in lot/session context
-          if (cur && next.period === "all" && !searchParams.get("period_id") && !searchParams.get("lot_id")) {
-            next.period = cur.id;
-          }
-          
-          return next;
-        });
+        setCurrentPeriod(currRes.data);
 
       } catch (err) {
-        console.error("Initialization error", err);
+        console.error("Base data loading error", err);
       }
     };
-    initData();
-  }, []); // eslint-disable-line
+    fetchBaseData();
+  }, []);
+
+  // [SENIOR] URL Context Hydration (Responsive to URL changes)
+  useEffect(() => {
+    if (projects.length === 0 || periods.length === 0) return;
+
+    const urlDevId = searchParams.get("developer_id");
+    const urlSiteId = searchParams.get("site_id");
+    const urlLotId = searchParams.get("lot_id");
+    const urlProjectId = searchParams.get("project_id");
+    const urlPeriodId = searchParams.get("period_id");
+    const urlGroupId = searchParams.get("group_id");
+
+    setFilters(prev => {
+      let next = { ...prev };
+      
+      if (urlDevId) next.developerId = urlDevId;
+      if (urlSiteId) next.siteId = urlSiteId;
+      if (urlGroupId) next.groupId = urlGroupId;
+      if (urlLotId) next.lot = urlLotId;
+      if (urlProjectId) next.project = urlProjectId;
+      if (urlPeriodId) next.period = urlPeriodId;
+
+      // Auto-select current period ONLY if no period is in URL and no lot context
+      if (currentPeriod && next.period === "all" && !urlPeriodId && !urlLotId) {
+        next.period = String(currentPeriod.id);
+      }
+      
+      return next;
+    });
+  }, [searchParams, projects, periods, currentPeriod]);
 
   const handleFilterChange = (key, val) => {
     setFilters(prev => ({ ...prev, [key]: val }));
@@ -756,8 +756,10 @@ export default function CommitsPage() {
       const targetId = isGlobal ? "all" : filters.project;
 
       const params = {};
-      if (filters.period !== "all") params.period_id = parseInt(filters.period);
-      if (filters.lot    !== "all") params.lot_id    = parseInt(filters.lot);
+      if (filters.period      !== "all") params.period_id    = parseInt(filters.period);
+      if (filters.lot         !== "all") params.lot_id       = parseInt(filters.lot);
+      if (filters.developerId !== "all") params.developer_id = parseInt(filters.developerId);
+      params.exclude_merge_commits = filters.excludeMerges;
 
       const res = await api.get(`/projects/${targetId}/commits`, { params });
       const data = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
@@ -772,7 +774,7 @@ export default function CommitsPage() {
     } finally {
       setLoading(false); setSpinning(false);
     }
-  }, [filters.project, filters.period, filters.lot, projects]);
+  }, [filters.project, filters.period, filters.lot, filters.developerId, filters.excludeMerges, projects]);
 
   useEffect(() => { loadCommits(); }, [loadCommits]);
 
@@ -809,34 +811,30 @@ export default function CommitsPage() {
         (c.gitlab_commit_id || "").toLowerCase().includes(q)
       );
     }
-    if (filters.site !== "all") {
-      result = result.filter((c) => getSite(c) === filters.site);
+    if (filters.siteId !== "all") {
+      const targetSiteId = parseInt(filters.siteId);
+      result = result.filter((c) => (c.site_id || c.developer?.site_id) === targetSiteId);
     }
 
     // [SENIOR] Normalisation des données (Exclusion des Merges)
-    // On détecte les merges par flag ou par titre (pattern GitLab standard)
+    // On s'appuie désormais sur le flag is_merge_commit renforcé par le backend
     if (filters.excludeMerges) {
-      result = result.filter(c => {
-        const title = getCommitTitle(c).toLowerCase();
-        return !c.is_merge && !title.startsWith("merge branch") && !title.startsWith("merge pull request");
-      });
+      result = result.filter(c => !c.is_merge_commit);
     }
 
     // [NEW] Filtre Equipe
-    if (filters.group !== "all") {
-      const gId = parseInt(filters.group);
-      const groupDevs = developers.filter(d => (d.group_ids || []).map(Number).includes(gId));
-      const groupNames = groupDevs.flatMap(d => [(d.name || "").toLowerCase(), (d.gitlab_username || "").toLowerCase()]).filter(Boolean);
+    if (filters.groupId !== "all") {
+      const gId = parseInt(filters.groupId);
       result = result.filter(c => {
-         const auth = getAuthor(c).toLowerCase();
-         return groupNames.some(n => auth.includes(n));
+         const devGroupIds = (c.developer?.group_ids || []);
+         return devGroupIds.map(Number).includes(gId);
       });
     }
 
-    // [NEW] Filtre Auteur
-    if (filters.author !== "all") {
-      const target = filters.author.toLowerCase().trim();
-      result = result.filter(c => getAuthor(c).toLowerCase().trim() === target);
+    // [NEW] Filtre Auteur (par ID)
+    if (filters.developerId !== "all") {
+      const targetId = parseInt(filters.developerId);
+      result = result.filter(c => c.developer_id === targetId);
     }
 
     // [NEW] Tri
@@ -846,7 +844,7 @@ export default function CommitsPage() {
       if (filters.sort === "changes") return (b.total_changes || 0) - (a.total_changes || 0);
       return 0;
     });
-  }, [commits, filters, developers]);
+  }, [commits, filters]);
 
   const [page, setPage] = useState(1);
   const [detailCommit, setDetailCommit] = useState(null);
@@ -883,34 +881,28 @@ export default function CommitsPage() {
   // On ne montre que les sites présents parmi les développeurs effectivement trackés.
   // Cela évite les "filtres morts" qui mènent à un tableau vide.
   const sites = useMemo(() => {
-    if (!developers || developers.length === 0) return [];
+    if (!developers || developers.length === 0 || !allSites) return [];
     
-    // 1. On identifie les sites des développeurs ciblés par l'extraction actuelle
-    const activeSitesNames = new Set(
+    const activeSiteIds = new Set(
       developers
         .filter(d => trackedDevIds.includes(d.id))
-        .map(d => d.site)
+        .map(d => d.site_id)
         .filter(Boolean)
     );
 
-    // 2. On croise avec la liste globale pour garantir la cohérence des noms (et casquette pro)
-    if (activeSitesNames.size > 0) {
-      return allSites
-        .filter(s => activeSitesNames.has(s.name))
-        .map(s => s.name)
-        .sort();
+    if (activeSiteIds.size > 0) {
+      return allSites.filter(s => activeSiteIds.has(s.id)).sort((a,b) => a.name.localeCompare(b.name));
     }
-    // Fallback : si rien n'est tracké (ex: début), on montre tout le périmètre configuré
-    return allSites.map(s => s.name).sort();
+    return [...allSites].sort((a,b) => a.name.localeCompare(b.name));
   }, [allSites, developers, trackedDevIds]);
 
   // ✅ SENIOR AUTO-RESET : Si le site sélectionné n'est plus dans le périmètre actif, 
   // on reset à "all" pour éviter un écran vide incompréhensible.
   useEffect(() => {
-    if (filters.site !== "all" && sites.length > 0 && !sites.includes(filters.site)) {
-      handleFilterChange("site", "all");
+    if (filters.siteId !== "all" && sites.length > 0 && !sites.find(s => String(s.id) === filters.siteId)) {
+      handleFilterChange("siteId", "all");
     }
-  }, [sites, filters.site]);
+  }, [sites, filters.siteId]);
 
 
   const groupList = useMemo(() => {
@@ -936,32 +928,35 @@ export default function CommitsPage() {
     // Raffinement : Filtre par Lot de capture (trackedDevIds) ET par Site ET par Groupe
     let filteredDevs = developers.filter(d => trackedDevIds.includes(d.id));
     
-    if (filters.site !== "all") {
-      filteredDevs = filteredDevs.filter(d => d.site === filters.site);
+    if (filters.siteId !== "all") {
+      const sId = parseInt(filters.siteId);
+      filteredDevs = filteredDevs.filter(d => d.site_id === sId);
     }
 
-    if (filters.group !== "all") {
-      const groupId = parseInt(filters.group);
-      filteredDevs = filteredDevs.filter(d => (d.group_ids || []).map(Number).includes(groupId));
+    if (filters.groupId !== "all") {
+      const gId = parseInt(filters.groupId);
+      filteredDevs = filteredDevs.filter(d => (d.group_ids || []).map(Number).includes(gId));
     }
     
-    return filteredDevs.map(d => d.name || d.gitlab_username).filter(Boolean).sort();
-  }, [trackedDevIds, developers, filters.group, filters.site]);
+    return filteredDevs
+      .map(d => ({ id: d.id, name: d.name || d.gitlab_username }))
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }, [trackedDevIds, developers, filters.siteId, filters.groupId]);
 
   // ✅ SENIOR AUTO-RESETS : Cascade descendante
   // 1. Reset Groupe si invalide par rapport au Site
   useEffect(() => {
-    if (filters.group !== "all" && groupList.length > 0 && !groupList.find(g => String(g.id) === filters.group)) {
-      handleFilterChange("group", "all");
+    if (filters.groupId !== "all" && groupList.length > 0 && !groupList.find(g => String(g.id) === filters.groupId)) {
+      handleFilterChange("groupId", "all");
     }
-  }, [groupList, filters.group]);
+  }, [groupList, filters.groupId]);
 
   // 2. Reset Auteur si invalide par rapport au Site/Groupe
   useEffect(() => {
-    if (filters.author !== "all" && authorsList.length > 0 && !authorsList.includes(filters.author)) {
-      handleFilterChange("author", "all");
+    if (filters.developerId !== "all" && authorsList.length > 0 && !authorsList.find(a => String(a.id) === filters.developerId)) {
+      handleFilterChange("developerId", "all");
     }
-  }, [authorsList, filters.author]);
+  }, [authorsList, filters.developerId]);
 
   const stats = useMemo(() => ({
     totalAdditions: filtered.reduce((s, c) => s + (c.additions    || 0), 0),
@@ -1019,6 +1014,33 @@ export default function CommitsPage() {
           </div>
         </div>
 
+        {/* ── Bandeau de contexte Lot (visible uniquement depuis ExtractionLotsPage) */}
+        {filters.lot !== "all" && (() => {
+          const activeLot = lots.find(l => String(l.id) === String(filters.lot));
+          const activeDev = developers.find(d => String(d.id) === String(filters.developerId));
+          return (
+            <div className="row mb-3">
+              <div className="col-12">
+                <div className="alert alert-info border-0 d-flex align-items-center gap-3 py-2 px-4" 
+                  style={{ borderRadius: 10, background: "linear-gradient(90deg, #eff6ff, #f0fdf4)", borderLeft: "4px solid #3b82f6 !important" }}>
+                  <i className="ri-stack-line fs-18 text-primary"></i>
+                  <div className="flex-grow-1">
+                    <span className="fw-bold text-primary me-2">Extraction Lot #{filters.lot}</span>
+                    {activeDev && <span className="text-dark me-2">— {activeDev.name || activeDev.gitlab_username}</span>}
+                    {activeLot && <span className="text-muted fs-12">| Capturé le {new Date(activeLot.created_at || activeLot.started_at).toLocaleDateString("fr-FR")}</span>}
+                    <span className="badge bg-primary-subtle text-primary ms-2 fs-11">
+                      {commits.length} commit{commits.length !== 1 ? "s" : ""} dans ce lot
+                    </span>
+                  </div>
+                  <a href="/extraction-lots" className="btn btn-sm btn-soft-primary d-flex align-items-center gap-1" style={{ whiteSpace: "nowrap" }}>
+                    <i className="ri-arrow-left-line"></i> Retour aux lots
+                  </a>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Toolbar Unifié Senior+++++ */}
         <div className="card mb-3">
           <div className="card-body pb-2">
@@ -1049,15 +1071,15 @@ export default function CommitsPage() {
 
               <div className="col-xl-1 col-md-3">
                 <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Site</label>
-                <select className="form-select form-select-sm" value={filters.site} onChange={(e)=>handleFilterChange("site",e.target.value)}>
+                <select className="form-select form-select-sm" value={filters.siteId} onChange={(e)=>handleFilterChange("siteId",e.target.value)}>
                   <option value="all">Tous</option>
-                  {sites.map(s => <option key={s} value={s}>{s}</option>)}
+                  {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
 
               <div className="col-xl-1 col-md-3">
                 <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Équipe</label>
-                <select className="form-select form-select-sm" value={filters.group} onChange={(e)=>{handleFilterChange("group",e.target.value);handleFilterChange("author","all");}}>
+                <select className="form-select form-select-sm" value={filters.groupId} onChange={(e)=>{handleFilterChange("groupId",e.target.value);handleFilterChange("developerId","all");}}>
                   <option value="all">Toutes</option>
                   {groupList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
@@ -1065,9 +1087,9 @@ export default function CommitsPage() {
 
               <div className="col-xl-2 col-md-3">
                 <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Développeur</label>
-                <select className="form-select form-select-sm" value={filters.author} onChange={(e)=>handleFilterChange("author",e.target.value)}>
+                <select className="form-select form-select-sm" value={filters.developerId} onChange={(e)=>handleFilterChange("developerId",e.target.value)}>
                   <option value="all">Tous</option>
-                  {authorsList.map(a => <option key={a} value={a}>{a}</option>)}
+                  {authorsList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
 
@@ -1120,10 +1142,10 @@ export default function CommitsPage() {
                 {filters.search && <span className="badge bg-light text-dark border py-1.5 px-2">Recherche: {filters.search}</span>}
                 {filters.period !== "all" && <span className="badge bg-info-subtle text-info py-1.5 px-2">Période: {periods.find(p=>p.id===parseInt(filters.period))?.name}</span>}
                 {filters.project !== "all" && <span className="badge bg-primary-subtle text-primary py-1.5 px-2">Projet: {projects.find(p=>p.id===parseInt(filters.project))?.name}</span>}
-                {filters.site !== "all" && <span className="badge bg-success-subtle text-success py-1.5 px-2">Site: {filters.site}</span>}
+                {filters.siteId !== "all" && <span className="badge bg-success-subtle text-success py-1.5 px-2">Site: {allSites.find(s=>String(s.id)===filters.siteId)?.name}</span>}
                 {filters.lot !== "all" && <span className="badge bg-info-subtle text-info py-1.5 px-2">Session: {lots.find(l=>String(l.id)===String(filters.lot))?.created_at ? new Date(lots.find(l=>String(l.id)===String(filters.lot)).created_at).toLocaleDateString("fr-FR") : `#${filters.lot}`}</span>}
-                {filters.group !== "all" && <span className="badge bg-warning-subtle text-warning py-1.5 px-2">Équipe: {groups.find(g=>g.id===parseInt(filters.group))?.name}</span>}
-                {filters.author !== "all" && <span className="badge bg-secondary-subtle text-secondary py-1.5 px-2">Auteur: {filters.author}</span>}
+                {filters.groupId !== "all" && <span className="badge bg-warning-subtle text-warning py-1.5 px-2">Équipe: {groups.find(g=>g.id===parseInt(filters.groupId))?.name}</span>}
+                {filters.developerId !== "all" && <span className="badge bg-secondary-subtle text-secondary py-1.5 px-2">Auteur: {developers.find(d=>String(d.id)===filters.developerId)?.name}</span>}
               </div>
             )}
           </div>

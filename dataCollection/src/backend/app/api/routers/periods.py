@@ -63,11 +63,13 @@ def create_period(request: PeriodCreate, db: Session = Depends(get_db), current_
     return period
 
 
-@router.get("/current", response_model=PeriodResponse)
+from typing import List, Optional
+
+@router.get("/current", response_model=Optional[PeriodResponse])
 def get_current_period(db: Session = Depends(get_db), current_user: AppUser = Depends(get_current_user)):
     period = repo.get_current_period(db)
     if not period:
-        raise HTTPException(status_code=404, detail="No period found for current month")
+        return None
     return period
 
 

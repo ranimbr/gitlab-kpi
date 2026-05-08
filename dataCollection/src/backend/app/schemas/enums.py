@@ -1,28 +1,6 @@
 """
 schemas/enums.py
 
-Source unique de vérité (Single Source of Truth) pour tous les enums
-partagés entre plusieurs schemas.
-
-CORRECTIONS (remarques encadrant + modèles mis à jour) :
-─────────────────────────────────────────────────────────
-1. UserRoleEnum : 4 rôles granulaires (remplace admin/user)
-       super_admin  → accès total
-       site_manager → accès limité à son site
-       team_lead    → accès limité à son groupe d'équipe
-       developer    → lecture seule de ses propres KPIs
-
-2. AJOUT DeveloperScoreRankEnum : pour le tri du leaderboard développeur.
-
-3. AJOUT ImportStatusEnum : pour le suivi des imports CSV/Excel.
-
-4. AJOUT MRStateEnum et CommitSourceEnum : évite la duplication
-   dans commit.py et merge_request.py.
-
-RÈGLE :
-    Tous les schemas importent leurs enums depuis CE fichier.
-    Les modèles définissent leurs propres enums indépendants
-    (mêmes valeurs, classes séparées → loose coupling).
 """
 
 from enum import Enum
@@ -31,7 +9,7 @@ from enum import Enum
 # ── Utilisateurs ──────────────────────────────────────────────────────────────
 
 class UserRoleEnum(str, Enum):
-    # ✅ CORRECTION : 4 rôles granulaires (remplace admin/user)
+    #  4 rôles granulaires (remplace admin/user)
     super_admin  = "super_admin"   # Accès total — gestion sites, devs, KPIs, extractions
     site_manager = "site_manager"  # Accès limité à son site (filtré par site_id)
     team_lead    = "team_lead"     # Accès limité à son groupe (filtré par group_id)

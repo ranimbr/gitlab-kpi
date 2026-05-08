@@ -1,17 +1,6 @@
 """
 schemas/kpi.py
 
-CORRECTIONS APPLIQUÉES :
-──────────────────────────────────────────────────────────────────
-1. KpiSnapshotResponse.delta_nb_commits : type changé Optional[float] → Optional[int].
-   Cohérent avec le modèle KpiSnapshot.delta_nb_commits qui est maintenant Integer.
-
-2. DeveloperLeaderboardEntry.rank_delta : commentaire corrigé.
-   "négatif = amélioration du rang" (rank 1 est meilleur que rank 5,
-   donc passer de 5→3 donne rank_delta = -2 = amélioration).
-   L'ancien commentaire disait "positif = amélioration" — c'était l'inverse.
-
-3. Aucune autre modification — schemas étaient déjà corrects.
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -48,7 +37,7 @@ class KpiSnapshotResponse(BaseModel):
 
     # ── KPI #1 : MR Rate par site ─────────────────────────────────────────────
     # Formule : total_mrs_created / nb_developers
-    mr_rate_per_site: float
+    mr_rate_per_site: float = 0.0
 
     # ── KPI #2 : MR Rate par ticket (réservé) ────────────────────────────────
     # Nullable — encadrant : "pour le moment on néglige les tickets"
@@ -56,22 +45,22 @@ class KpiSnapshotResponse(BaseModel):
 
     # ── KPI #3 : Approved MR Rate ─────────────────────────────────────────────
     # Formule : total_mrs_approved / total_mrs_created
-    approved_mr_rate: float
+    approved_mr_rate: float = 0.0
 
     # ── KPI #4 : Merged MR Rate ───────────────────────────────────────────────
     # Formule : total_mrs_merged / total_mrs_approved
-    merged_mr_rate: float
+    merged_mr_rate: float = 0.0
 
     # ── KPI #5 : Commit Rate par site ─────────────────────────────────────────
     # Formule : total_commits / nb_developers
-    commit_rate_per_site: float
+    commit_rate_per_site: float = 0.0
 
     # ── KPI #6 : NB commits par projet ───────────────────────────────────────
-    nb_commits_per_project: int
+    nb_commits_per_project: int = 0
 
     # ── KPI #7 : Temps moyen de relecture ─────────────────────────────────────
     # Formule : review_time_hours (somme) / total_mrs_approved
-    avg_review_time_hours: float
+    avg_review_time_hours: float = 0.0
 
     # ── Deltas vs snapshot précédent (trend indicators) ───────────────────────
     # NULL = premier snapshot — pas de comparaison disponible

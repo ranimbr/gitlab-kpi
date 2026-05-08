@@ -1,46 +1,7 @@
 """
 models/merge_request.py
 
-Merge Request GitLab extraite via l'API.
 
-AMÉLIORATIONS APPORTÉES :
-─────────────────────────
-1. AJOUT de source_branch et target_branch :
-   Informations de branche essentielles pour l'analyse GitLab.
-   source_branch : branche feature (ex: "feature/AUTH-42")
-   target_branch : branche cible   (ex: "main", "develop")
-   Utile pour : détecter les MRs qui ciblent directement main
-   (mauvaise pratique) et pour relier les commits à la MR via
-   la source_branch (complément du CommitMergeRequest).
-
-2. AJOUT de reviewer_id (FK nullable) :
-   Développeur assigné comme relecteur de la MR.
-   Utile pour : calculer la charge de review par développeur,
-   identifier les relecteurs les plus sollicités, détecter
-   les MRs sans relecteur assigné (risque qualité).
-   → Relation review_by vers Developer.
-
-3. AJOUT de author_name (fallback) :
-   Même logique que Commit.author_name — nom brut de l'auteur
-   GitLab quand developer_id est NULL (dev non encore matché).
-
-4. AJOUT de CheckConstraints métier :
-   - Si approved=True  → approved_at  ne peut pas être NULL
-   - Si state=merged   → merged_at    ne peut pas être NULL
-   - Si state=closed   → closed_at    ne peut pas être NULL
-   - review_time_hours >= 0 si renseigné
-   - total_changes = additions + deletions
-
-5. AJOUT d'index supplémentaires :
-   - Index sur reviewer_id (charge de review par développeur)
-   - Index composite (developer_id, created_at_gitlab) pour
-     le KPI individuel MR Rate par développeur
-   - Index sur target_branch (filtrage MRs vers main)
-
-CORRECTION conservée :
-   Suppression des index=True redondants.
-   Seules les MRs non-draft (is_draft=False) comptent pour
-   les KPIs #1, #3 et #7.
 """
 
 from sqlalchemy import (

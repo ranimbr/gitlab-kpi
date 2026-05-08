@@ -1,22 +1,4 @@
-"""
-services/kpi/kpi_calculator.py
-
-CORRECTIONS :
-──────────────────────────────────────────────────────────────────
-1. FIX SAWarning — Subquery dans .in_() :
-   _validated_dev_ids() retournait un Subquery SQLAlchemy 1.x.
-   SQLAlchemy 1.4+ exige un select() explicite dans .in_().
-   → Retourne désormais la Query brute.
-   → Chaque appelant appelle .subquery() au moment du .in_().
-
-2. FIX commits=0 / devs=0 après extraction :
-   Les développeurs créés automatiquement par ExtractionService
-   ont is_validated=False par défaut → exclus du calcul KPI.
-   → Suppression du filtre is_validated dans _validated_dev_ids()
-   e t _count_developers() pour les snapshots REALTIME.
-   → Remplacement par is_active=True uniquement (les bots restent exclus).
-   Note : l'admin peut toujours rejeter manuellement un dev via PATCH /validate.
-"""
+"""KPI computation service for project, site, group and developer scopes."""
 from datetime import datetime
 from typing import Optional
 
@@ -30,13 +12,13 @@ from app.models.developer_site import DeveloperSite
 from app.models.merge_request import MergeRequest
 from app.models.comment import Comment
 from app.models.developer_group import developer_group_link
+from app.models.period import Period
+from app.models.extraction_lot import ExtractionLot
 
 
 class KpiCalculator:
 
-    # [SENIOR] Seuils de normalisation configurables au niveau de la classe.
-    # Ajustez ces valeurs selon le rythme réel de votre équipe.
-    # Exemple équipe active : COMMIT_NORMALIZATION = 20, MR_NORMALIZATION = 8
+    # Team-level normalization thresholds.
     COMMIT_NORMALIZATION = 10.0   # commits/mois → score_commit = 1.0
     MR_NORMALIZATION     = 5.0    # MRs/mois     → score_mr = 1.0
     REVIEW_REF_HOURS     = 24.0   # heures → score_review = 0.5 (point d'inflexion)
@@ -75,9 +57,7 @@ class KpiCalculator:
                                   score = 1 / (1 + h / REVIEW_REF_HOURS)
                                   → 0h=1.0 | 24h=0.5 | 72h=0.25
 
-        [SENIOR] Les seuils de normalisation sont des constantes de classe.
-        Pour adapter aux normes de votre équipe, ajustez COMMIT_NORMALIZATION
-        et MR_NORMALIZATION sans toucher à la formule.
+        Normalization thresholds are class constants and can be tuned per team.
         """
         if weights is None:
             weights = {
@@ -117,7 +97,9 @@ class KpiCalculator:
         developer_id: Optional[int] = None,
     ) -> dict:
 
-        nb_commits_project = self._count_all_project_commits(project_id, start_date, end_date)
+        # 1. Volumes bruts
+        # Keep project commit volume site-aware when a site filter is provided.
+        nb_commits_project = self._count_all_project_commits(project_id, start_date, end_date, site_id=site_id)
         nb_devs            = self._count_developers(project_id, start_date, end_date, site_id, group_id, developer_id)
         nb_commits_devs    = self._count_commits_by_devs(project_id, start_date, end_date, site_id, group_id, developer_id)
         nb_mrs             = self._count_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
@@ -125,19 +107,19 @@ class KpiCalculator:
         nb_mrs_merged      = self._count_merged_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
         sum_review_time    = self._sum_review_time(project_id, start_date, end_date, site_id, group_id, developer_id)
 
-        # ✅ KPIs SENIOR (Collaboration)
+        # Collaboration KPIs
         nb_comments        = self._count_comments(project_id, start_date, end_date, developer_id)
         nb_reviews         = self._count_reviews_involved(project_id, start_date, end_date, developer_id)
 
-        # ✅ ACTIVITÉ LATENTE : brouillons en cours (Draft MRs)
+        # Draft merge requests (work in progress)
         nb_mrs_draft       = self._count_draft_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
 
-        # ✅ KPIs ENTERPRISE (Niveau International)
+        # Additional engineering KPIs
         bus_factor         = self._calculate_bus_factor(project_id, start_date, end_date)
         sprint_velocity    = self._calculate_sprint_velocity(project_id, start_date, end_date, developer_id)
         code_churn_rate    = self._calculate_code_churn(project_id, start_date, end_date, developer_id)
 
-        # ✅ DORA METRICS (Standard Google Research)
+        # DORA METRICS (Standard Google Research)
         deployment_count   = self._count_deployments(project_id, start_date, end_date, site_id, group_id, developer_id)
         lead_time_hours    = self._avg_lead_time(project_id, start_date, end_date, site_id, group_id, developer_id)
 
@@ -191,24 +173,60 @@ class KpiCalculator:
     # HELPERS INTERNES
     # =========================================================================
 
-    def _active_dev_ids_query(self, project_id: int, site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int]):
+    def _active_dev_ids_query(self, project_id: int, start_date: datetime, site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int]):
         """
-        [SENIOR OPTIMIZATION] Retourne la Query SQLAlchemy pour les IDs de développeurs valides.
-        L'appelant peut utiliser .subquery() pour injecter le résultat dans un .in_().
+        [SENIOR] Retourne les IDs de développeurs ASSIGNÉS pour cette période.
+
+        Règle d'or Enterprise :
+             Filtrer sur DeveloperProject.period_id  → "A-t-il une mission ce mois-ci ?"
+             Filtrer sur Developer.is_bot             → "Est-ce un humain ?"
+             JAMAIS filtrer sur Developer.is_active   → "A-t-il quitté l'entreprise PLUS TARD ?"
+                                                          (un commit en janvier est réel, même si le dev est parti en mars)
         """
+        # Résolution de la période pour le scoping temporel strict
+        period = self.db.query(Period).filter(
+            Period.year == start_date.year,
+            Period.month == start_date.month
+        ).first()
+
         q = (
             self.db.query(Developer.id)
             .join(
                 DeveloperProject,
                 (DeveloperProject.developer_id == Developer.id) &
                 (DeveloperProject.project_id   == project_id)   &
-                (DeveloperProject.is_active.is_(True)),
+                (DeveloperProject.is_active.is_(True))
             )
             .filter(
-                Developer.is_active.is_(True),
                 Developer.is_bot.is_(False),
+                # is_active NON filtré : les contributions historiques sont immuables
             )
         )
+
+        # Scoping strict par période (Seule source de vérité pour "qui travaillait ce mois")
+        if period:
+            q = q.filter(DeveloperProject.period_id == period.id)
+
+        # ── Synchronisation optionnelle avec le Registre RH (ExtractionLot) ──
+        # Si des lots individuels existent pour ce projet × période, on s'y conforme.
+        if period:
+            has_individual_lots = self.db.query(ExtractionLot).filter(
+                ExtractionLot.period_id == period.id,
+                ExtractionLot.project_id == project_id,
+                ExtractionLot.developer_id.isnot(None)
+            ).first() is not None
+
+            if has_individual_lots:
+                valid_ids_subquery = (
+                    self.db.query(ExtractionLot.developer_id)
+                    .filter(
+                        ExtractionLot.period_id == period.id,
+                        ExtractionLot.project_id == project_id,
+                        ExtractionLot.developer_id.isnot(None)
+                    )
+                    .subquery()
+                )
+                q = q.filter(Developer.id.in_(valid_ids_subquery))
 
         if site_id is not None and developer_id is None:
             q = q.join(
@@ -244,26 +262,29 @@ class KpiCalculator:
         Indispensable pour le pilotage de la capacité et du ROI.
         """
         # On utilise le helper d'ID qui gère déjà les filtres Project/Site/Group
-        q = self._active_dev_ids_query(project_id, site_id, group_id, developer_id)
+        q = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id)
         return q.count()
 
-    def _count_all_project_commits(self, project_id: int, start_date: datetime, end_date: datetime) -> int:
-        return (
-            self.db.query(func.count(Commit.id))
-            .filter(
-                Commit.project_id    == project_id,
-                Commit.authored_date >= start_date,
-                Commit.authored_date <  end_date,
-                Commit.is_merge_commit.is_(False),
-            )
-            .scalar() or 0
+    def _count_all_project_commits(self, project_id: int, start_date: datetime, end_date: datetime, site_id: Optional[int] = None) -> int:
+        """Total de commits pour un projet sur une période (filtrable par site)."""
+        q = self.db.query(func.count(Commit.id)).filter(
+            Commit.project_id    == project_id,
+            Commit.authored_date >= start_date,
+            Commit.authored_date <  end_date,
+            Commit.is_merge_commit.is_(False),
         )
+        if site_id:
+            from app.models.developer_site import DeveloperSite
+            q = q.join(DeveloperSite, Commit.developer_id == DeveloperSite.developer_id).filter(
+                DeveloperSite.site_id == site_id
+            )
+        return q.scalar() or 0
 
     def _count_commits_by_devs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(Commit.id))
             .filter(
@@ -271,16 +292,18 @@ class KpiCalculator:
                 Commit.authored_date       >= start_date,
                 Commit.authored_date       <  end_date,
                 Commit.is_merge_commit.is_(False),
-                Commit.developer_id.in_(valid_ids), # ✅ FIX: direct subquery
+                Commit.developer_id.in_(valid_ids), #  FIX: direct subquery
             )
             .scalar() or 0
         )
+
 
     def _count_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+        from sqlalchemy import or_
+        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
             .filter(
@@ -288,7 +311,11 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab >= start_date,
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.is_draft.is_(False),
-                MergeRequest.developer_id.in_(valid_ids), # ✅ FIX: direct subquery
+                or_(
+                    MergeRequest.developer_id.in_(valid_ids),
+                    MergeRequest.reviewer_id.in_(valid_ids),
+                    MergeRequest.assignee_id.in_(valid_ids)
+                )
             )
             .scalar() or 0
         )
@@ -297,7 +324,7 @@ class KpiCalculator:
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
             .filter(
@@ -310,11 +337,13 @@ class KpiCalculator:
             .scalar() or 0
         )
 
+
     def _count_approved_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+        from sqlalchemy import or_
+        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
             .filter(
@@ -323,16 +352,22 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.is_draft.is_(False),
                 MergeRequest.approved.is_(True),
-                MergeRequest.developer_id.in_(select(valid_ids)),
+                or_(
+                    MergeRequest.developer_id.in_(valid_ids),
+                    MergeRequest.reviewer_id.in_(valid_ids),
+                    MergeRequest.assignee_id.in_(valid_ids)
+                )
             )
             .scalar() or 0
         )
+
 
     def _count_merged_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+        from sqlalchemy import or_
+        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
         return (
             self.db.query(func.count(MergeRequest.id))
             .filter(
@@ -341,16 +376,22 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.is_draft.is_(False),
                 MergeRequest.merged_at.isnot(None),
-                MergeRequest.developer_id.in_(select(valid_ids)),
+                or_(
+                    MergeRequest.developer_id.in_(valid_ids),
+                    MergeRequest.reviewer_id.in_(valid_ids),
+                    MergeRequest.assignee_id.in_(valid_ids)
+                )
             )
             .scalar() or 0
         )
+
 
     def _sum_review_time(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
     ) -> float:
-        valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
+        from sqlalchemy import or_
+        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
         result = (
             self.db.query(func.sum(MergeRequest.review_time_hours))
             .filter(
@@ -359,7 +400,11 @@ class KpiCalculator:
                 MergeRequest.created_at_gitlab <  end_date,
                 MergeRequest.is_draft.is_(False),
                 MergeRequest.review_time_hours.isnot(None),
-                MergeRequest.developer_id.in_(valid_ids), # ✅ FIX: direct subquery
+                or_(
+                    MergeRequest.developer_id.in_(valid_ids),
+                    MergeRequest.reviewer_id.in_(valid_ids),
+                    MergeRequest.assignee_id.in_(valid_ids)
+                )
             )
             .scalar()
         )
@@ -546,8 +591,15 @@ class KpiCalculator:
 
         # Attribution filtrée si demandée (Site, Groupe ou Dev)
         if site_id or group_id or developer_id:
-            valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
-            q = q.filter(MergeRequest.developer_id.in_(valid_ids)) # ✅ FIX: direct subquery
+            from sqlalchemy import or_
+            valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
+            q = q.filter(
+                or_(
+                    MergeRequest.developer_id.in_(valid_ids),
+                    MergeRequest.reviewer_id.in_(valid_ids),
+                    MergeRequest.assignee_id.in_(valid_ids)
+                )
+            )
         
         return q.scalar() or 0
 
@@ -575,8 +627,15 @@ class KpiCalculator:
 
         # Attribution filtrée si demandée
         if site_id or group_id or developer_id:
-            valid_ids = self._active_dev_ids_query(project_id, site_id, group_id, developer_id).subquery()
-            q = q.filter(MergeRequest.developer_id.in_(valid_ids)) # ✅ FIX: direct subquery
+            from sqlalchemy import or_
+            valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
+            q = q.filter(
+                or_(
+                    MergeRequest.developer_id.in_(valid_ids),
+                    MergeRequest.reviewer_id.in_(valid_ids),
+                    MergeRequest.assignee_id.in_(valid_ids)
+                )
+            )
 
         result = q.scalar()
         return round(float(result or 0.0), 1)

@@ -1,9 +1,6 @@
 """
 schemas/auth.py — CORRIGÉ
-- UserRoleEnum depuis enums.py (découplage schema↔model)
-- Validation password : longueur + complexité
-- LoginRequest : validator explicite
-- TokenResponse : ajout expires_in
+
 """
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional, List

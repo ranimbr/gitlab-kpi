@@ -1,30 +1,7 @@
 """
 models/developer_site.py
 
-Table de jonction Many-to-Many : Developer ↔ Site.
 
-RAISON D'EXISTENCE :
-    Dans l'ancien modèle, Developer avait site_id (FK directe) → 1 dev = 1 site.
-    La remarque de l'encadrant : un développeur peut être affecté à PLUSIEURS sites.
-    Cette table remplace cette FK directe par une relation M2M.
-
-Attributs métier :
-    is_primary  → True = site principal du développeur.
-                  Utilisé pour les agrégations KPI par site quand le dev
-                  est affecté à plusieurs sites.
-                  Contrainte : 1 seul is_primary=True par développeur (via DDL).
-    assigned_at → date d'affectation au site.
-
-Usage KPI :
-    KPI #1 (MR Rate par site) utilise DeveloperSite pour compter
-    le nombre de développeurs d'un site sur le mois en cours.
-
-    Pour les devs multi-sites : le KPI est calculé sur le site primary
-    sauf si l'encadrant précise autrement.
-
-Exemple :
-    Sarah (id=3) → Tunis  (site_id=1, is_primary=True)
-    Sarah (id=3) → Paris  (site_id=2, is_primary=False) ← détachée en mission
 """
 
 from sqlalchemy import (

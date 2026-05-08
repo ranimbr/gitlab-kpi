@@ -1,8 +1,5 @@
 """
 models/comment.py
-
-Modèle pour stocker les interactions (Notes/Commentaires) GitLab.
-Essentiel pour les KPIs de collaboration Senior.
 """
 
 from sqlalchemy import Column, Integer, BigInteger, String, DateTime, Text, ForeignKey, Index

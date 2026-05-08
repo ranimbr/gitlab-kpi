@@ -1,10 +1,6 @@
 """
 repositories/developer_import_log_repository.py
 
-Repository pour le journal des imports en masse de développeurs (CSV / Excel).
-
-Créé par DeveloperImportService lors de chaque import.
-Lecture seule côté API (GET /developers/import-logs).
 """
 from typing import List, Optional
 

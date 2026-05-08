@@ -10,5 +10,6 @@ const extractionLotService = {
   getById: async (lotId) => (await api.get(`/extraction-lots/${lotId}`)).data,
   delete:  async (lotId) => (await api.delete(`/extraction-lots/${lotId}`)).data,
   deleteBulk: async (lotIds) => (await api.post("/extraction-lots/bulk-delete", { lot_ids: lotIds })).data,
+  getGlobalDump: async (periodId) => (await api.get(`/extraction-lots/period/${periodId}/global-dump`)).data,
 };
 export default extractionLotService;

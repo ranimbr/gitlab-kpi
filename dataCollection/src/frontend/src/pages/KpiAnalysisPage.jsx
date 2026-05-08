@@ -27,6 +27,7 @@ import siteService  from "../services/siteService";
 import periodService from "../services/periodService";
 import developerService from "../services/developerService";
 import extractionLotService from "../services/extractionLotService";
+import { extractApiError, toUserError } from "../services/api";
 import {
   generateInsights,
   calculateScore,
@@ -41,7 +42,7 @@ import EmptyState     from "../components/common/EmptyState";
 // ── Helpers d'affichage ───────────────────────────────────────────────────────
 function fmt(val, field) { return fmtKpi(val, field); }
 
-function DeltaBadge({ current, previous, field, higherIsBetter = true }) {
+function DeltaBadge({ current, previous, higherIsBetter = true }) {
   if (current == null || previous == null || previous === 0) return null;
   const pct = ((current - previous) / Math.abs(previous)) * 100;
   if (Math.abs(pct) < 0.5) return <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>stable</span>;
@@ -55,7 +56,7 @@ function DeltaBadge({ current, previous, field, higherIsBetter = true }) {
   );
 }
 
-function KpiCard({ label, value, field, prevValue, higherIsBetter = true, vsAvg = null }) {
+function KpiCard({ label, value, prevValue, higherIsBetter = true, vsAvg = null }) {
   const hasAlert = vsAvg != null && Math.abs(vsAvg) > 20;
   const alertColor = vsAvg > 0
     ? (higherIsBetter ? "var(--color-text-success)" : "var(--color-text-danger)")
@@ -72,7 +73,7 @@ function KpiCard({ label, value, field, prevValue, higherIsBetter = true, vsAvg 
         {value}
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <DeltaBadge current={parseFloat(value)} previous={prevValue} field={field} higherIsBetter={higherIsBetter} />
+        <DeltaBadge current={parseFloat(value)} previous={prevValue} higherIsBetter={higherIsBetter} />
         {vsAvg != null && (
           <span style={{ fontSize: 11, color: hasAlert ? alertColor : "var(--color-text-secondary)" }}>
             {vsAvg > 0 ? "+" : ""}{vsAvg.toFixed(1)}% vs moyenne
@@ -320,7 +321,7 @@ export default function KpiAnalysisPage() {
     const loadDevs = async () => {
       try {
         return toArr(await siteService.getKpiDevelopers(parseInt(projectId)));
-      } catch (_) {
+      } catch {
         return [];
       }
     };
@@ -328,7 +329,7 @@ export default function KpiAnalysisPage() {
     const loadGroups = async () => {
       try {
         return toArr(await developerService.getGroups(null, true));
-      } catch (_) {
+      } catch {
         return [];
       }
     };
@@ -336,7 +337,7 @@ export default function KpiAnalysisPage() {
     const loadLots = async () => {
       try {
         return toArr(await extractionLotService.getAll(parseInt(projectId)));
-      } catch (_) {
+      } catch {
         return [];
       }
     };
@@ -419,25 +420,20 @@ export default function KpiAnalysisPage() {
       }
     } catch (err) {
       // Erreur 404 = pas de snapshot KPI pour ce développeur → message clair
-      const status  = err?.response?.status;
-      const isNoData = status === 404 || status === 422;
+      const parsed = extractApiError(err);
+      const isNoData = parsed.status === 404 || parsed.status === 422;
       if (isNoData && viewMode === "developer") {
         setError(
           `Aucun snapshot KPI disponible pour ce développeur sur ce projet et cette période.\n` +
           `Lancez une extraction « MONTHLY » pour générer les indicateurs individuels.`
         );
       } else {
-        setError(
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "Impossible de charger les données KPI."
-        );
+        setError(toUserError(err, "Impossible de charger les donnees KPI."));
       }
     } finally {
       setLoading(false);
     }
-  }, [projectId, entityId, viewMode, periodId, lotId]);
+  }, [projectId, entityId, viewMode, periodId, lotId, activeKpi]);
 
   useEffect(() => { loadKpis(); }, [loadKpis]);
 
@@ -694,7 +690,6 @@ export default function KpiAnalysisPage() {
                           <KpiCard
                             label={kpi.label}
                             value={fmt(currentSnap[kpi.field], kpi.field)}
-                            field={kpi.field}
                             prevValue={previousSnap ? Number(previousSnap[kpi.field]) : null}
                             higherIsBetter={kpi.higherIsBetter}
                             vsAvg={avgForCurrentSnap(kpi.field)}

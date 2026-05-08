@@ -49,6 +49,7 @@ class SiteService:
             action      = "CREATE_SITE",
             entity_type = "Site",
             entity_id   = site.id,
+            entity_name = site.name,
             new_value   = {"name": site.name, "country": site.country},
             ip_address  = ip_address,
         )
@@ -100,6 +101,7 @@ class SiteService:
             action      = "UPDATE_SITE",
             entity_type = "Site",
             entity_id   = site_id,
+            entity_name = site.name,
             old_value   = old_value,
             new_value   = update_data,
             ip_address  = ip_address,
@@ -125,6 +127,7 @@ class SiteService:
             action      = "DELETE_SITE",
             entity_type = "Site",
             entity_id   = site_id,
+            entity_name = site.name,
             old_value   = {"name": site.name},
             ip_address  = ip_address,
         )

@@ -1,18 +1,7 @@
 """
 models/developer.py
 
-CORRECTIONS APPLIQUÉES :
-──────────────────────────────────────────────────────────────────
-1. AJOUT Index sur gitlab_username → lookup O(log n) au lieu de full scan.
-   get_by_gitlab_username() est appelé à chaque ligne lors des imports CSV
-   et à chaque commit/MR extrait depuis GitLab. Sans index = full scan table.
 
-2. AJOUT Index sur email → même raison (get_by_email() dans import et création).
-
-3. AJOUT Index sur gitlab_user_id → utilisé par get_by_gitlab_user_id()
-   dans le mapper GitLab à chaque extraction.
-
-4. Aucune autre modification — modèle était déjà correct.
 """
 
 from typing import Optional, List
@@ -56,6 +45,7 @@ class Developer(Base):
     )
 
     onboarding_date = Column(Date, nullable=True)
+    offboarding_date = Column(Date, nullable=True, comment="Date de départ ou désactivation")
     last_active_at  = Column(DateTime(timezone=True), nullable=True)
 
     created_by = Column(
@@ -133,7 +123,15 @@ class Developer(Base):
         foreign_keys="Alert.developer_id",
     )
 
-    # ── Propriétés Dynamiques (Senior Compatibility Layer) ────────────────────
+    # ── [ENTERPRISE] Historique des statuts RH ──────────────────────────────
+    status_history = relationship(
+        "DeveloperStatusHistory",
+        back_populates="developer",
+        cascade="all, delete-orphan",
+        order_by="DeveloperStatusHistory.changed_at.desc()",
+        lazy="dynamic",
+    )
+
     
     @property
     def primary_site_id(self) -> Optional[int]:

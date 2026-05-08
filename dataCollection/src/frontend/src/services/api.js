@@ -13,8 +13,7 @@
 
 import axios from "axios";
 
-const BASE_URL =
-  import.meta.env.VITE_API_URL || "/api/v1"; // ✅ FIX: Utilise le proxy Vite par défaut
+const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -22,74 +21,70 @@ const api = axios.create({
   timeout: 15_000,
 });
 
-// ── Déduplication des requêtes GET simultanées identiques ─────────────────────
-// Map<key, Promise<AxiosResponse>>
-const _pending = new Map();
+const API_CODE_RE = /^([A-Z0-9_]+):\s*(.+)$/;
 
-api.interceptors.request.use((config) => {
-  // Injection du token
-  const token = localStorage.getItem("access_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+export function extractApiError(error) {
+  const status = error?.response?.status ?? null;
+  const detail = error?.response?.data?.detail;
+  let code = null;
+  let message = null;
 
-  // Déduplication uniquement sur GET
-  if (config.method?.toLowerCase() === "get") {
-    const key = `${config.url}|${JSON.stringify(config.params ?? {})}`;
-
-    if (_pending.has(key)) {
-      // [FIX-1] On annule cette requête et on retourne la promise existante
-      // en attachant une propriété spéciale que l'intercepteur response lira
-      config._dedupKey      = key;
-      config._isDuplicate   = true;
-      // On attache la promise existante pour qu'on puisse la retourner
-      // Axios ne supporte pas le court-circuit direct dans request interceptor,
-      // donc on laisse la requête partir mais on la résout depuis le cache
+  if (typeof detail === "string") {
+    const match = detail.match(API_CODE_RE);
+    if (match) {
+      code = match[1];
+      message = match[2];
     } else {
-      config._dedupKey = key;
-      // Stocker une promise résoluble
-      let resolveFn, rejectFn;
-      const promise = new Promise((res, rej) => {
-        resolveFn = res;
-        rejectFn  = rej;
-      });
-      promise._resolve = resolveFn;
-      promise._reject  = rejectFn;
-      _pending.set(key, promise);
-      config._isLeader = true;
+      message = detail;
     }
+  } else if (Array.isArray(detail) && detail.length > 0) {
+    message = detail
+      .map((d) => {
+        const field = d.loc?.slice(-1)?.[0] ?? "";
+        return field ? `${field}: ${d.msg}` : d.msg;
+      })
+      .join(" · ");
+  } else if (error?.code === "ECONNABORTED") {
+    message = "La requete a expire. Verifiez votre connexion.";
+  } else if (!error?.response) {
+    message = "Impossible de joindre le serveur. Verifiez que le backend est demarre.";
+  } else {
+    message = error?.message || "Erreur inattendue.";
   }
 
+  return { status, code, message, detail };
+}
+
+export function toUserError(error, fallbackMessage = "Une erreur est survenue.") {
+  const parsed = extractApiError(error);
+  const mapped = {
+    AUTH_TOO_MANY_ATTEMPTS: "Trop de tentatives de connexion. Reessayez plus tard.",
+    AUTH_INVALID_CREDENTIALS: "Identifiants invalides.",
+    AUTH_USER_INACTIVE: "Compte utilisateur inactif.",
+    PROJECT_GITLAB_UNREACHABLE: "GitLab est temporairement indisponible.",
+  };
+
+  return mapped[parsed.code] || parsed.message || fallbackMessage;
+}
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => {
-    const key = response.config._dedupKey;
-    if (key && response.config._isLeader && _pending.has(key)) {
-      const p = _pending.get(key);
-      _pending.delete(key);
-      p._resolve?.(response);
-    }
-    return response;
-  },
+  (response) => response,
   (error) => {
     const config = error.config ?? {};
-    const key    = config._dedupKey;
-
-    // [FIX-4] Nettoyage du cache même en cas d'erreur réseau
-    if (key && config._isLeader && _pending.has(key)) {
-      const p = _pending.get(key);
-      _pending.delete(key);
-      p._reject?.(error);
-    }
-
-    const status      = error.response?.status;
-    const url         = config.url ?? "";
+    const status = error.response?.status;
+    const url = config.url ?? "";
     const isAuthRoute = url.includes("/auth/login") || url.includes("/auth/register");
 
-    // [FIX-2] Session expirée → redirection seulement si on AVAIT un token
-    // (évite la redirect loop quand on arrive sur /login sans token)
     if (status === 401 && !isAuthRoute) {
-      const hadToken = !!localStorage.getItem("access_token");
+      const hadToken = Boolean(localStorage.getItem("access_token"));
       localStorage.removeItem("access_token");
       localStorage.removeItem("token_expires_at");
       if (hadToken) {
@@ -98,24 +93,8 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Extraction du message d'erreur FastAPI { detail: string | ValidationError[] }
-    const detail = error.response?.data?.detail;
-    if (detail) {
-      if (typeof detail === "string") {
-        error.message = detail;
-      } else if (Array.isArray(detail) && detail.length > 0) {
-        error.message = detail
-          .map((d) => {
-            const field = d.loc?.slice(-1)?.[0] ?? "";
-            return field ? `${field}: ${d.msg}` : d.msg;
-          })
-          .join(" · ");
-      }
-    } else if (error.code === "ECONNABORTED") {
-      error.message = "La requête a expiré. Vérifiez votre connexion.";
-    } else if (!error.response) {
-      error.message = "Impossible de joindre le serveur. Vérifiez que le backend est démarré.";
-    }
+    const parsed = extractApiError(error);
+    error.message = parsed.message;
 
     return Promise.reject(error);
   }

@@ -1,29 +1,6 @@
 """
 repositories/kpi_snapshot_repository.py
 
-CORRECTIONS :
-
-    1. AJOUT CRITIQUE — get_for_period() manquant.
-       Appelé par KpiAggregator._upsert_with_deltas() pour récupérer le
-       snapshot du mois précédent et calculer les deltas.
-       Sans cette méthode : AttributeError à l'exécution → deltas jamais calculés.
-
-    2. FIX — get_latest() : incohérence dans le filtrage NULL.
-       AVANT : site_id=None → filtre IS NULL ✅
-               group_id=None → PAS de filtre ❌ (retourne snapshots avec n'importe quel group_id)
-               developer_id=None → PAS de filtre ❌ (idem)
-       APRÈS : tous les champs NULLables appliquent IS NULL quand None est fourni.
-       Logique : si l'appelant ne filtre pas sur group_id → il veut les snapshots
-       sans group (IS NULL), pas tous les snapshots confondus.
-
-    3. FIX — get_project_history() : même incohérence sur group_id et developer_id.
-       Corrigé avec la même logique IS NULL.
-
-    4. AJOUT — get_site_comparison() : requête d'analyse comparative entre sites
-       pour une même période → "top performers" sur le dashboard.
-
-    5. AJOUT — get_developers_ranking() : classement des développeurs par KPI
-       sur une période → "top/bottom developers" pour la prise de décision.
 """
 from datetime import date
 from typing import Optional, List
@@ -94,7 +71,7 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
         developer_id: Optional[int] = None,
     ) -> Optional[KpiSnapshot]:
         """
-        ✅ NOUVEAU — alias de get_by_project_period_site().
+         NOUVEAU — alias de get_by_project_period_site().
         Appelé par KpiAggregator._upsert_with_deltas() pour récupérer
         le snapshot du mois précédent et calculer les deltas (trend indicators).
 
@@ -268,7 +245,7 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
         # Validation pour éviter l'injection SQL via kpi_field
         allowed_fields = {
             "mr_rate_per_site", "approved_mr_rate", "merged_mr_rate",
-            "commit_rate_per_site", "nb_commits_per_project", "avg_review_time_hours",
+            "commit_rate_per_site", "nb_commits_per_project", "total_commits", "avg_review_time_hours",
         }
         if kpi_field not in allowed_fields:
             raise ValueError(f"kpi_field '{kpi_field}' non autorisé. Valeurs: {allowed_fields}")
@@ -394,4 +371,4 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
         snapshot = KpiSnapshot(**data)
         db.add(snapshot)
         db.flush()
-        return snapshot
+        return snapshot

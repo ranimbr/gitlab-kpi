@@ -1,30 +1,29 @@
 /**
  * pages/admin/ExtractionLotsPage.jsx
  *
- * AMÉLIORATIONS SENIOR v2 :
- *   1. Cards de stats CLIQUABLES → filtre automatiquement la table
- *   2. Détail d'erreur visible sur les lots failed (message + bouton relancer)
- *   3. Menu contextuel ⋮ pour les actions (moins de bruit visuel)
- *   4. Tooltip MD5 amélioré avec icône ✅/—
- *   5. Ligne failed mise en évidence (bg-danger-subtle)
- *
- * CORRECTIONS conservées :
- *   - lot.extraction_type (pas lot.type)
- *   - mounted flag anti memory leak
+ * SENIOR++++ ELITE OVERHAUL (v3):
+ *   1. Full visual parity with AuditLogPage (Atlassian/GitLab/Slack style).
+ *   2. Shared UserAvatar logic for 100% consistency.
+ *   3. Modern Dashboard-style Statistics Hub with Trends.
+ *   4. Improved Table layout with high-density information.
  */
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate }     from "react-router-dom";
+import AdminModal      from "../../components/common/AdminModal";
 import projectService       from "../../services/projectService";
-import extractionLotService from "../../services/extractionLotService";
+import { extractionService, extractionLotService } from "../../services";
 import periodService        from "../../services/periodService";
 import developerService     from "../../services/developerService";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EmptyState     from "../../components/common/EmptyState";
 import StatusBadge    from "../../components/common/StatusBadge";
 import Pagination     from "../../components/common/Pagination";
+import api            from "../../services/api";
+import UserAvatar     from "../../components/common/UserAvatar";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
+// ── Formatters ─────────────────────────────────────────────────────────────
 function formatDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleString("fr-FR", {
@@ -33,118 +32,87 @@ function formatDate(d) {
   });
 }
 
-function formatDuration(start, end) {
-  if (!start || !end) return "—";
-  const diff = Math.floor((new Date(end) - new Date(start)) / 1000);
-  if (diff < 60)   return `${diff}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}min ${diff % 60}s`;
-  return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}min`;
+function timeAgo(d) {
+  if (!d) return "";
+  const seconds = Math.floor((new Date() - new Date(d)) / 1000);
+  if (seconds < 60) return "À l'instant";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  return new Date(d).toLocaleDateString("fr-FR");
 }
 
-/**
- * Génère une teinte HSL déterministe à partir d'un nom.
- * Même technique que Slack, GitLab, Linear pour les avatars sans photo.
- */
-function nameToHsl(str = "") {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const h = Math.abs(hash) % 360;
-  return { h, gradient: `linear-gradient(135deg, hsl(${h},65%,52%), hsl(${(h + 40) % 360},70%,40%))` };
-}
+// ── Shared UI Components (Elite Style) ──────────────────────────────────────
 
-/* ── Avatar gradient (style Slack / GitLab) ─────────────────────────────────── */
-function GradientAvatar({ name, size = 32, fontSize }) {
-  const initials = (name || "?").split(/[\s._-]/).map(w => w[0]).join("").toUpperCase().slice(0, 2);
-  const { gradient } = nameToHsl(name || "?");
-  const fs = fontSize || Math.round(size * 0.38);
-  return (
-    <div
-      style={{
-        width: size, height: size,
-        borderRadius: "50%",
-        background: gradient,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#fff",
-        fontWeight: 700,
-        fontSize: fs,
-        flexShrink: 0,
-        boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
-        letterSpacing: "0.02em",
-        userSelect: "none",
-      }}
-      title={name}
-    >
-      {initials}
-    </div>
-  );
-}
-
-/* ── Avatar robot (scheduler) ───────────────────────────────────────────────── */
-function RobotAvatar({ size = 32 }) {
-  return (
-    <div
-      style={{
-        width: size, height: size,
-        borderRadius: "50%",
-        background: "linear-gradient(135deg, #06b6d4, #0284c7)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#fff",
-        fontSize: Math.round(size * 0.48),
-        flexShrink: 0,
-        boxShadow: "0 2px 6px rgba(6,182,212,0.35)",
-      }}
-      title="Scheduler automatique"
-    >
-      <i className="ri-robot-line"></i>
-    </div>
-  );
-}
-
-/* ── Cellule Projet (avec badge ID discret) ──────────────────────────────────── */
+/* ── Cellule Projet ── */
 function ProjectCell({ lot, projectName }) {
   return (
     <div className="d-flex align-items-center gap-2">
-      <span className="fw-semibold fs-13">{projectName}</span>
-      <span
-        className="badge bg-light text-muted fw-normal"
-        style={{ fontSize: 10, border: "1px solid #e2e8f0" }}
-        title={`Lot ID interne : ${lot.id}`}
-      >
-        #{lot.id}
-      </span>
+      <div className="avatar-xs rounded bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style={{ width: 28, height: 28 }}>
+         <i className="ri-gitlab-line fs-14"></i>
+      </div>
+      <div>
+        <div className="fw-bold fs-13 text-dark">{projectName}</div>
+        <div className="fs-10 text-muted text-uppercase fw-bold ls-1">Project ID: #{lot.project_id}</div>
+      </div>
     </div>
   );
 }
 
-/* ── Cellule Développeur (colonne dédiée) ──────────────────────────────────── */
-function DevCell({ lot }) {
+/* ── Cellule Développeur (Elite Facepile Version) ── */
+function DevCell({ lot, allDevelopers }) {
   const dev     = lot.developer;
   const devName = dev?.name || dev?.gitlab_username;
 
+  // Si c'est un lot projet (Mission), on affiche le Facepile
   if (!devName) {
+    const projectMembers = allDevelopers.filter(d => 
+      d.projects?.some(p => 
+        String(p.project_id) === String(lot.project_id) && 
+        (!lot.period_id || p.period_id === lot.period_id)
+      )
+    );
+    
+    const displayMembers = projectMembers.slice(0, 6);
+    const remaining      = projectMembers.length - displayMembers.length;
+
     return (
-      <div className="d-flex align-items-center gap-2">
-        <div
-          style={{
-            width: 30, height: 30, borderRadius: "50%",
-            background: "linear-gradient(135deg, #94a3b8, #64748b)",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            color: "#fff", fontSize: 13, flexShrink: 0,
-            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-          }}
-          title="Extraction sur tous les membres du projet"
-        >
-          <i className="ri-group-line"></i>
+      <div className="d-flex align-items-center gap-3">
+        <div className="avatar-group d-flex align-items-center">
+          {displayMembers.map((m, i) => (
+            <div key={i} className="avatar-group-item" style={{ marginLeft: i === 0 ? 0 : -12, zIndex: 10 - i }}>
+               <UserAvatar 
+                 name={m.name || m.gitlab_username} 
+                 size={28} 
+                 border={true}
+                 title={m.name || m.gitlab_username} // Hover effect
+               />
+            </div>
+          ))}
+          {remaining > 0 && (
+            <div className="avatar-group-item" style={{ marginLeft: -12, zIndex: 0 }}>
+               <div className="avatar-xs rounded-circle bg-light text-muted border border-2 border-white d-flex align-items-center justify-content-center shadow-sm fw-bold" 
+                    style={{ width: 28, height: 28, fontSize: 10 }}>
+                  +{remaining}
+               </div>
+            </div>
+          )}
+          {projectMembers.length === 0 && (
+            <div className="avatar-xs rounded-circle bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center" style={{ width: 28, height: 28 }}>
+               <i className="ri-group-line fs-12"></i>
+            </div>
+          )}
         </div>
+
         <div>
-          <div className="fs-12 fw-medium text-muted">Tous les membres</div>
-          <div className="fs-10 text-muted" style={{ opacity: 0.7 }}>Scope projet</div>
+          <div className="fs-13 fw-bold text-dark ls-sm" style={{ lineHeight: 1.2 }}>Team Mission</div>
+          <div className="d-flex align-items-center gap-1">
+             <span className="badge bg-soft-info text-info border-0 p-0 fs-10 fw-medium">
+               {projectMembers.length} Contributors
+             </span>
+             <i className="ri-checkbox-circle-fill text-success" style={{ fontSize: 10 }}></i>
+          </div>
         </div>
       </div>
     );
@@ -152,213 +120,277 @@ function DevCell({ lot }) {
 
   return (
     <div className="d-flex align-items-center gap-2">
-      <GradientAvatar name={devName} size={30} />
+      <UserAvatar name={devName} size={32} />
       <div>
-        <div className="fs-12 fw-semibold text-dark">{devName}</div>
-        {dev?.gitlab_username && dev?.name && (
-          <div className="fs-10 text-muted">@{dev.gitlab_username}</div>
+        <div className="fs-13 fw-bold text-dark">{devName}</div>
+        {dev?.gitlab_username && (
+          <div className="fs-10 text-muted opacity-75">@{dev.gitlab_username}</div>
         )}
       </div>
     </div>
   );
 }
 
-/* ── Cellule "Déclenché par" ────────────────────────────────────────────────── */
+/* ── Cellule Déclenché par ── */
 function TriggeredByCell({ lot }) {
   const user = lot.triggered_by_user;
-
-  if (!lot.triggered_by && !user) {
-    return (
-      <div className="d-flex align-items-center gap-2">
-        <RobotAvatar size={32} />
-        <div>
-          <div className="fs-12 fw-semibold" style={{ color: "#0284c7" }}>Scheduler</div>
-          <div className="fs-10 text-muted">Automatique</div>
-        </div>
-      </div>
-    );
-  }
-
-  const displayName  = user?.name  || `User #${lot.triggered_by}`;
-  const displayEmail = user?.email || null;
+  const isSystem = !lot.triggered_by && !user;
+  const displayName = isSystem ? "Scheduler" : (user?.name || `Utilisateur #${lot.triggered_by}`);
 
   return (
     <div className="d-flex align-items-center gap-2">
-      <GradientAvatar name={displayName} size={32} />
-      <div>
-        <div className="fs-12 fw-semibold text-dark">{displayName}</div>
-        {displayEmail && <div className="fs-10 text-muted">{displayEmail}</div>}
-      </div>
+      <UserAvatar name={displayName} isSystem={isSystem} size={28} />
+      <span className="fs-13 fw-semibold text-dark">{displayName}</span>
     </div>
   );
 }
 
-/* ── MD5 avec copie et indicateur ── */
+/* ── MD5 Cell ── */
 function Md5Cell({ lot }) {
   const [copied, setCopied] = useState(false);
-  if (!lot.md5sum) return <span className="text-muted fs-12">—</span>;
-  const copy = () => {
+  if (!lot.md5sum) return <span className="text-muted fs-12 opacity-50">—</span>;
+  
+  const copy = (e) => {
+    e.stopPropagation();
     navigator.clipboard.writeText(lot.md5sum);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  
   return (
-    <span
-      title={`MD5 : ${lot.md5sum}\nCliquez pour copier`}
+    <div 
+      className={`d-inline-flex align-items-center gap-1 badge ${copied ? "bg-success" : "bg-light text-muted border"} px-2 py-1 cursor-pointer transition-all`}
       onClick={copy}
-      style={{ cursor: "pointer", fontFamily: "monospace", fontSize: 11 }}
-      className={copied ? "text-success fw-bold" : "text-muted"}
+      title={lot.md5sum}
+      style={{ fontSize: 10, fontFamily: "monospace" }}
     >
-      <i className={`me-1 ${copied ? "ri-check-line text-success" : "ri-shield-check-line text-success"}`}></i>
-      {copied ? "Copié !" : `${lot.md5sum.slice(0, 8)}…`}
-    </span>
+      <i className={copied ? "ri-check-line" : "ri-shield-check-line text-success"}></i>
+      {copied ? "COPIÉ" : lot.md5sum.slice(0, 8)}
+    </div>
   );
 }
 
-/* ── Bouton téléchargement ── */
-function DownloadButton({ lot }) {
-  const [downloading, setDownloading] = useState(false);
-  const [error, setError]             = useState(null);
-  if (!lot.md5sum) return null;
+// ── Modale de Détails Inspecteur ───────────────────────────────────────────
+function LotDetailModal({ lot, onClose, onRetry, retrying }) {
+  if (!lot) return null;
 
-  const handleDownload = async () => {
-    setDownloading(true); setError(null);
-    try {
-      const token    = localStorage.getItem("access_token");
-      const response = await fetch(
-        `${API_BASE}/extraction/lots/${lot.id}/download`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Download failed");
-      }
-      const blob = await response.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = `lot_${lot.id}_project_${lot.project_id}.json`;
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setDownloading(false);
-    }
-  };
+  const isRunning = lot.status === "running";
+  const isFailed  = lot.status === "failed";
+  const progress  = lot.step_progress || 0;
+  const statusColor = isFailed ? "danger" : (isRunning ? "info" : "success");
+  const isLoadingMembers = lot.isLoadingMembers; // Passé via parent
 
+  // ✅ RECHERCHE DE L'ÉQUIPE (SENIOR INSPECTION)
+  const projectMembers = lot.project_id ? (lot.project_members || []) : [];
+  
+  // ✅ SENIOR FALLBACK: Si items_count est à 0, on additionne commits + MRs (calculés par l'API)
+  const totalItems = lot.items_count || ((lot.commit_count || 0) + (lot.mr_count || 0)) || 0;
+  
   return (
-    <span className="d-flex align-items-center gap-1">
-      <button
-        className="btn btn-sm btn-soft-success py-0 px-2"
-        onClick={handleDownload}
-        disabled={downloading}
-        title="Télécharger le dump JSON"
-        style={{ fontSize: 11 }}
-      >
-        {downloading
-          ? <span className="spinner-border spinner-border-sm"></span>
-          : <><i className="ri-download-2-line me-1"></i>DL</>
-        }
-      </button>
-      {error && <span className="text-danger fs-10"><i className="ri-error-warning-line"></i></span>}
-    </span>
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Inspection de Flux"
+      subtitle={`Lot ID: #${lot.id} · Collecte GitLab`}
+      icon="ri-pulse-line"
+      iconBg={`bg-${statusColor}-subtle`}
+      iconColor={`text-${statusColor}`}
+      maxWidth={600}
+      footer={
+        <div className="d-flex gap-2 w-100 justify-content-end">
+          <button className="btn btn-light px-4 border fs-13 fw-bold" onClick={onClose}>Fermer</button>
+          {(isFailed || isRunning) && (
+            <button className="btn btn-primary px-4 shadow-sm fs-13 fw-bold" onClick={() => onRetry(lot)} disabled={retrying}>
+              {retrying ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="ri-refresh-line me-1"></i>}
+              Relancer le Job
+            </button>
+          )}
+        </div>
+      }
+    >
+      <div className="vstack gap-4">
+        {/* Statut Card */}
+        <div className="card border-0 bg-light-subtle rounded-4">
+           <div className="card-body p-4">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                 <div className="d-flex align-items-center gap-2">
+                    <StatusBadge type="lot" value={lot.status} />
+                    <span className="text-muted fs-11 fw-bold text-uppercase ls-1">Initié le {formatDate(lot.created_at)}</span>
+                 </div>
+                 {isRunning && <span className="badge bg-primary rounded-pill px-2">{progress}%</span>}
+              </div>
+              
+              {isRunning && (
+                <div className="progress mb-3" style={{ height: 6, borderRadius: 10 }}>
+                  <div className="progress-bar progress-bar-striped progress-bar-animated bg-primary" style={{ width: `${progress}%` }}></div>
+                </div>
+              )}
+
+              <div className="d-flex align-items-center gap-3 mt-3">
+                 <div className={`avatar-sm rounded-circle d-flex align-items-center justify-content-center bg-${statusColor}-subtle`} style={{ width: 40, height: 40 }}>
+                    <i className={`${isRunning ? 'ri-loader-4-line ri-spin' : 'ri-map-pin-user-line'} fs-18 text-${statusColor}`}></i>
+                 </div>
+                 <div>
+                    <div className="fw-bold text-dark fs-14">{lot.current_action || "Vérification du registre"}</div>
+                    <div className="fs-11 text-muted">Étape active du processus de synchronisation</div>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        {/* ÉQUIPE DE MISSION (NEW SENIOR GALLERY) */}
+        {!lot.developer_id && (
+          <div className="p-4 border rounded-4 bg-white shadow-sm">
+             <div className="d-flex align-items-center justify-content-between mb-3">
+                <div className="d-flex align-items-center gap-2">
+                   <i className="ri-group-line text-primary fs-18"></i>
+                   <span className="fw-bold fs-14 text-dark">Équipe de Mission</span>
+                </div>
+                {isLoadingMembers ? (
+                   <span className="spinner-border spinner-border-sm text-primary"></span>
+                ) : (
+                   <span className="badge bg-primary-subtle text-primary rounded-pill px-3">{projectMembers.length} Membres</span>
+                )}
+             </div>
+             
+             {isLoadingMembers ? (
+               <div className="py-4 text-center">
+                  <div className="spinner-grow text-primary" role="status"></div>
+                  <div className="fs-11 text-muted mt-2">Récupération de la cohorte...</div>
+               </div>
+             ) : projectMembers.length > 0 ? (
+               <div className="row g-3">
+                  {projectMembers.map((m, idx) => (
+                    <div key={idx} className="col-md-6">
+                       <div className="d-flex align-items-center gap-2 p-2 border rounded-3 bg-light-subtle hover-scale transition-all" title={m.name}>
+                          <UserAvatar name={m.name || m.gitlab_username} size={32} />
+                          <div className="overflow-hidden">
+                             <div className="fs-12 fw-bold text-dark text-truncate">{m.name || m.gitlab_username}</div>
+                             <div className="fs-10 text-muted text-truncate">@{m.gitlab_username || "dev"}</div>
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+             ) : (
+               <div className="alert alert-light border text-center fs-12 py-3 mb-0">
+                  Aucun membre de mission détecté pour cette période.
+               </div>
+             )}
+          </div>
+        )}
+
+        {/* Métriques */}
+        <div className="row g-3">
+           {[
+             { label: "Items Extraits", value: totalItems, icon: "ri-database-2-line", color: "primary" },
+             { label: "Appels API",     value: lot.api_calls_count || 0, icon: "ri-global-line", color: "info" },
+             { label: "Tentatives",     value: lot.retry_count || 0, icon: "ri-refresh-line", color: "warning" },
+           ].map((m, i) => (
+             <div className="col-4" key={i}>
+                <div className="p-3 border rounded-4 text-center bg-white shadow-sm h-100">
+                   <div className="avatar-xs mx-auto mb-2 bg-light rounded-circle d-flex align-items-center justify-content-center" style={{ width: 30, height: 30 }}>
+                      <i className={`${m.icon} fs-14 text-${m.color}`}></i>
+                   </div>
+                   <div className="fs-20 fw-bold text-dark">{m.value}</div>
+                   <div className="fs-10 text-uppercase fw-bold text-muted ls-1">{m.label}</div>
+                </div>
+             </div>
+           ))}
+        </div>
+
+        {/* Erreur */}
+        {isFailed && (
+          <div className="alert alert-danger-soft border-0 d-flex gap-3 p-3 rounded-4">
+             <i className="ri-error-warning-fill fs-24 text-danger"></i>
+             <div>
+                <div className="fw-bold fs-14 mb-1">Rapport d'anomalie technique</div>
+                <div className="fs-12 opacity-75">{lot.error_message}</div>
+             </div>
+          </div>
+        )}
+      </div>
+    </AdminModal>
   );
 }
 
-/* ── Menu contextuel ⋮ pour les actions (remplace 4 boutons) ── */
+// ── ActionsMenu (Dropdown Elite) ───────────────────────────────────────────
 function ActionsMenu({ lot, navigate }) {
   const [open, setOpen] = useState(false);
+  const [isDropup, setIsDropup] = useState(false);
   const ref = useRef(null);
   const disabled = lot.status !== "completed";
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    if (open) document.addEventListener("mousedown", handler);
+    if (open) {
+      document.addEventListener("mousedown", handler);
+      // Smart Positioning logic
+      if (ref.current) {
+        const rect = ref.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        setIsDropup(spaceBelow < 250); // Si moins de 250px d'espace en bas, on monte
+      }
+    }
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  const handleDownload = async () => {
+    try {
+      const response = await api.get(`/extraction/lots/${lot.id}/download`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `lot_${lot.id}_dump.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      alert("Erreur: Le fichier dump n'est pas disponible pour ce lot.");
+    }
+  };
+
   const actions = [
-    {
-      label: "Merge Requests", icon: "ri-git-merge-line", color: "primary",
-      count: lot.mr_count,
-      tooltip: `${lot.mr_count} MR(s) extraite(s) dans ce lot`,
-      path: `/merge?project_id=${lot.project_id}&developer_id=${lot.developer_id}&period_id=${lot.period_id}&site_id=${lot.developer?.site_id || ""}&group_id=${lot.developer?.group_id || ""}`,
-    },
-    {
-      label: "Commits", icon: "ri-git-commit-line", color: "info",
-      count: lot.commit_count,
-      tooltip: `${lot.commit_count} commit(s) extrait(s) · les merge commits sont exclus des KPIs`,
-      path: `/commits?project_id=${lot.project_id}&developer_id=${lot.developer_id}&period_id=${lot.period_id}&site_id=${lot.developer?.site_id || ""}&group_id=${lot.developer?.group_id || ""}`,
-    },
-    {
-      label: "Dashboard KPI", icon: "ri-dashboard-2-line", color: "success",
-      path: `/dashboard?project_id=${lot.project_id}&developer_id=${lot.developer_id}&period_id=${lot.period_id}`,
-    },
-    {
-      label: "Hub Talent", icon: "ri-team-line", color: "warning",
-      path: `/developers/${lot.developer_id}`,
-    },
+    { label: "Merge Requests",     icon: "ri-git-merge-line",  color: "primary", count: lot.mr_count,     path: `/merge?project_id=${lot.project_id}&developer_id=${lot.developer_id}&period_id=${lot.period_id}&lot_id=${lot.id}` },
+    { label: "Commits Libres",     icon: "ri-git-commit-line", color: "info",    count: lot.commit_count, path: `/commits?project_id=${lot.project_id}&developer_id=${lot.developer_id}&period_id=${lot.period_id}&lot_id=${lot.id}` },
+    { label: "Dashboard Analytique", icon: "ri-dashboard-line", color: "success", path: `/dashboard?project_id=${lot.project_id}&period_id=${lot.period_id}&lot_id=${lot.id}&developer_id=${lot.developer_id}` },
   ];
 
+  if (lot.generated_file) {
+    actions.push({ label: "Télécharger le Dump", icon: "ri-download-2-line", color: "warning", onClick: handleDownload });
+  }
 
   return (
-    <div ref={ref} className="dropdown" style={{ position: "relative" }}>
-      <button
-        className={`btn btn-sm ${open ? "btn-primary" : (disabled ? "btn-light text-muted" : "btn-soft-secondary")} px-2 py-1`}
-        onClick={() => !disabled && setOpen(o => !o)}
-        title={disabled ? "Lot non complété" : "Explorer les données"}
-        style={{ fontSize: 13, transition: "all 0.2s ease" }}
-      >
-        <i className={open ? "ri-close-line" : "ri-more-2-fill"}></i>
+    <div ref={ref} className="dropdown d-inline-block">
+      <button className={`btn btn-icon btn-sm rounded-circle ${open ? "btn-primary shadow" : "btn-light border"}`} 
+              onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen(!open); }}>
+        <i className={open ? "ri-close-line" : "ri-more-fill"}></i>
       </button>
       {open && (
-        <div
-          className="dropdown-menu show shadow-lg border-0 animate__animated animate__fadeIn"
-          style={{ 
-            position: "absolute", 
-            right: 0, 
-            top: "100%", 
-            zIndex: 9999, 
-            minWidth: 200, 
-            borderRadius: 8,
-            marginTop: 5,
-            padding: "8px 0"
-          }}
-        >
-          <div className="dropdown-header fs-10 text-uppercase fw-bold text-muted border-bottom mb-2 pb-2">Actions disponibles</div>
+        <div className={`dropdown-menu show shadow-lg border-0 animate__animated ${isDropup ? "animate__fadeInUp" : "animate__fadeInDown"}`} 
+             style={{ 
+               position: "absolute", 
+               right: 0, 
+               [isDropup ? "bottom" : "top"]: "100%",
+               marginBottom: isDropup ? "8px" : "0",
+               marginTop: isDropup ? "0" : "8px",
+               zIndex: 1000, 
+               minWidth: 200, 
+               borderRadius: 12 
+             }}>
+          <div className="px-3 py-2 border-bottom bg-light-subtle rounded-top d-flex align-items-center justify-content-between">
+             <span className="fs-10 fw-bold text-uppercase text-muted ls-1">Exploration</span>
+             <span className="badge bg-soft-primary text-primary fs-9"># {lot.id}</span>
+          </div>
           {actions.map((a, i) => (
-            <button
-              key={i}
-              className="dropdown-item d-flex align-items-center gap-2 py-2 px-3"
-              onClick={() => { setOpen(false); navigate(a.path); }}
-              style={{ fontSize: 13 }}
-            >
-              <div className={`avatar-xs rounded-circle bg-${a.color}-subtle text-${a.color} d-flex align-items-center justify-content-center`} style={{ width: 24, height: 24 }}>
-                <i className={a.icon} style={{ fontSize: 12 }}></i>
-              </div>
-              <span className="fw-medium">{a.label}</span>
-              {a.count !== undefined && (
-                <span
-                  className="badge ms-auto"
-                  title={a.tooltip || String(a.count)}
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    background: a.count > 0 ? "rgba(99,102,241,0.12)" : "rgba(148,163,184,0.15)",
-                    color: a.count > 0 ? "#6366f1" : "#94a3b8",
-                    border: `1px solid ${a.count > 0 ? "rgba(99,102,241,0.25)" : "rgba(148,163,184,0.25)"}`,
-                    borderRadius: 20,
-                    padding: "2px 8px",
-                    minWidth: 24,
-                    textAlign: "center",
-                    cursor: "help",
-                  }}
-                >
-                  {a.count}
-                </span>
-              )}
+            <button key={i} className="dropdown-item d-flex align-items-center gap-2 py-2 px-3 fs-13 fw-medium" 
+                    onClick={() => { 
+                      setOpen(false); 
+                      if (a.onClick) a.onClick();
+                      else navigate(a.path); 
+                    }}>
+              <i className={`${a.icon} text-${a.color} fs-16`}></i> {a.label}
+              {a.count !== undefined && <span className="badge bg-light text-muted ms-auto">{a.count}</span>}
             </button>
           ))}
         </div>
@@ -367,501 +399,343 @@ function ActionsMenu({ lot, navigate }) {
   );
 }
 
-/* ── Détail d'erreur inline pour les lots failed ── */
-function ErrorRow({ lot, colSpan }) {
-  if (lot.status !== "failed" || !lot.error_message) return null;
-  return (
-    <tr style={{ background: "rgba(220,38,38,0.04)" }}>
-      <td colSpan={colSpan} className="py-2 px-4">
-        <div className="d-flex align-items-start gap-2">
-          <i className="ri-error-warning-line text-danger fs-15 flex-shrink-0 mt-1"></i>
-          <div>
-            <span className="fw-semibold text-danger fs-12">Erreur : </span>
-            <span className="text-muted fs-12">{lot.error_message}</span>
-          </div>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   Main Page
-══════════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════════
+// Main Page
+// ══════════════════════════════════════════════════════════════
 export default function ExtractionLotsPage() {
   const navigate = useNavigate();
   const [lots,         setLots]         = useState([]);
   const [projects,     setProjects]     = useState([]);
   const [periods,      setPeriods]      = useState([]);
-  const [developers,   setDevelopers]   = useState([]);
+  const [allDevelopers, setAllDevelopers] = useState([]); // ✅ AJOUT SENIOR : Pour l'inspection d'équipe
   const [loading,      setLoading]      = useState(true);
   const [projFilter,   setProjFilter]   = useState("");
   const [periodFilter, setPeriodFilter] = useState("");
-  const [devFilter,    setDevFilter]    = useState("");
-  const [devSearch,    setDevSearch]    = useState(""); // Nouvelle recherche textuelle
-  const [typeFilter,   setTypeFilter]   = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedIds,  setSelectedIds]  = useState([]);
+  const [lotDetail,    setLotDetail]    = useState(null);
+  const [loadingMembers, setLoadingMembers] = useState(false); // ✅ AJOUT SENIOR
+  const [retrying,     setRetrying]     = useState(null);
   const [page,         setPage]         = useState(1);
+  const [refreshTick,  setRefreshTick]  = useState(0);
+  const isQuietRef = useRef(false);
   const perPage = 12;
 
-  const refreshData = () => {
-    // Force un re-fetch en déclenchant l'effet de dépendance (projFilter, periodFilter)
-    // Ici on peut juste appeler la fonction fetchLots si on l'expose, 
-    // mais le plus simple est de ré-exécuter l'effet via un trigger.
-    setLoading(true);
+  const refreshData = () => { setLoading(true); setRefreshTick(r => r + 1); };
+  
+  const handleGlobalDump = async () => {
+    if (!periodFilter) return;
+    try {
+      setLoading(true);
+      const data = await extractionLotService.getGlobalDump(periodFilter);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const p = periods.find(per => String(per.id) === String(periodFilter));
+      const pLabel = p ? `${p.year}-${String(p.month).padStart(2, '0')}` : "global";
+      link.href = url;
+      link.setAttribute("download", `audit-global-${pLabel}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // On pourrait ajouter une notification ici si un système de toast était présent
+    } catch (err) {
+      console.error("Global dump error:", err);
+      alert("Erreur lors de la génération du dump global");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    let mounted = true;
     Promise.all([
       projectService.getAll(),
       periodService.getAll(),
-      developerService.getAll()
+      developerService.getAll(false) // ✅ FALSE pour inclure l'historique (ex: Martin Owens)
     ])
       .then(([projs, pers, devs]) => {
-        if (!mounted) return;
-        setProjects(projs);
-        setPeriods(pers);
-        setDevelopers(devs);
+        setProjects(Array.isArray(projs) ? projs : []);
+        setPeriods(Array.isArray(pers) ? pers : []);
+        setAllDevelopers(Array.isArray(devs) ? devs : []); // ✅ STOCKAGE
       })
-      .catch(() => {});
-    return () => { mounted = false; };
+      .catch((err) => console.error("Error loading registry dependencies:", err));
   }, []);
+
+  // Reset to page 1 when filters change to avoid 'empty page' syndrome
+  useEffect(() => {
+    setPage(1);
+  }, [projFilter, periodFilter, statusFilter]);
 
   useEffect(() => {
     let mounted = true;
     let pollInterval = null;
 
-    const fetchLots = (isInitial = false) => {
-      if (isInitial && mounted) setLoading(true);
-      extractionLotService.getAll(
-        projFilter   ? parseInt(projFilter)   : null,
-        periodFilter ? parseInt(periodFilter) : null,
-      )
+    const fetchLots = () => {
+      if (!isQuietRef.current && mounted) setLoading(true);
+      extractionLotService.getAll(projFilter ? parseInt(projFilter) : null, periodFilter ? parseInt(periodFilter) : null)
         .then(data => {
           if (!mounted) return;
           const newLots = Array.isArray(data) ? data : (data?.items ?? []);
           setLots(newLots);
-          if (isInitial) setPage(1);
+          
           const hasRunning = newLots.some(l => l.status === "running");
-          if (hasRunning && !pollInterval) {
-            pollInterval = setInterval(() => fetchLots(false), 2000);
-          } else if (!hasRunning && pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-          }
+          if (hasRunning && !pollInterval) pollInterval = setInterval(() => { isQuietRef.current = true; setRefreshTick(r => r + 1); }, 3000);
+          else if (!hasRunning && pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         })
-        .catch(() => { if (mounted && isInitial) setLots([]); })
-        .finally(() => { if (mounted && isInitial) setLoading(false); });
+        .finally(() => { if (mounted) setLoading(false); isQuietRef.current = false; });
     };
 
-    fetchLots(true);
+    fetchLots();
     return () => { mounted = false; if (pollInterval) clearInterval(pollInterval); };
-  }, [projFilter, periodFilter]);
+  }, [projFilter, periodFilter, refreshTick]);
 
-  const filtered = lots.filter(l => {
-    if (typeFilter   !== "all" && l.extraction_type !== typeFilter)   return false;
-    if (statusFilter !== "all" && l.status          !== statusFilter) return false;
-    
-    // Filtrage par ID (dropdown)
-    if (devFilter && l.developer_id !== parseInt(devFilter)) return false;
-
-    // Filtrage par texte (search)
-    if (devSearch.trim()) {
-      const q = devSearch.toLowerCase();
-      const name = (l.developer?.name || "").toLowerCase();
-      const user = (l.developer?.gitlab_username || "").toLowerCase();
-      if (!name.includes(q) && !user.includes(q)) return false;
-    }
-
-    return true;
-  });
-
+  const filtered = lots.filter(l => statusFilter === "all" || l.status === statusFilter);
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
 
-  const totalLots     = lots.length;
-  const completedLots = lots.filter(l => l.status === "completed").length;
-  const failedLots    = lots.filter(l => l.status === "failed").length;
-  const runningLots   = lots.filter(l => l.status === "running").length;
-
-  /* ── Filtre rapide au clic sur une card ── */
-  const handleCardClick = (statusValue) => {
-    setStatusFilter(prev => prev === statusValue ? "all" : statusValue);
-    setPage(1);
-  };
-
-  const getProjectName = (lot) =>
-    lot.project?.name ||
-    projects.find(p => p.id === lot.project_id)?.name ||
-    `Projet #${lot.project_id}`;
-
-  const getPeriodLabel = (lot) => {
-    if (lot.period?.year) return `${lot.period.year}/${String(lot.period.month).padStart(2, "0")}`;
-    const found = periods.find(p => p.id === lot.period_id);
-    if (found)            return `${found.year}/${String(found.month).padStart(2, "0")}`;
-    return lot.period_id ? `Période #${lot.period_id}` : "—";
-  };
-
-  /* ── Export CSV Global ────────────────────────────────────────────────── */
-  const handleExportCsv = () => {
-    if (filtered.length === 0) return;
-
-    const headers = ["ID", "Développeur", "Projet", "Période", "Type", "Statut", "Déclenché par", "Date"];
-    const rows = filtered.map(l => [
-      l.id,
-      l.developer?.name || l.developer?.gitlab_username || "Tous",
-      getProjectName(l),
-      getPeriodLabel(l),
-      l.extraction_type,
-      l.status,
-      l.triggered_by_user?.name || "Scheduler",
-      new Date(l.created_at).toLocaleDateString()
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(r => r.map(val => `"${val}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `extraction_lots_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  /* ── Gestion Sélection ────────────────────────────────────────────────── */
-  const toggleSelectAll = () => {
-    if (selectedIds.length === paginated.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(paginated.map(l => l.id));
-    }
-  };
-
-  const toggleSelectOne = (id) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const handleBulkDelete = async () => {
-    if (!window.confirm(`Supprimer définitivement ${selectedIds.length} lots ?`)) return;
-    try {
-      await extractionLotService.deleteBulk(selectedIds);
-      setSelectedIds([]);
-      // On provoque un re-fetch en changeant légèrement un état dépendant ou en rappelant fetchLots
-      window.location.reload(); // Simple pour cet exemple, mais fetchLots(true) serait mieux
-    } catch (err) {
-      alert("Erreur lors de la suppression groupée");
-    }
-  };
-
-  /* Cards stats — définition */
-  const statCards = [
-    { label: "Total Lots",  value: totalLots,     color: "primary", icon: "ri-list-check",           statusVal: "all"       },
-    { label: "Complétés",   value: completedLots, color: "success", icon: "ri-checkbox-circle-line",  statusVal: "completed" },
-    { label: "En erreur",   value: failedLots,    color: "danger",  icon: "ri-close-circle-line",     statusVal: "failed"    },
-    { label: "En cours",    value: runningLots,   color: "info",    icon: "ri-loader-4-line",          statusVal: "running"   },
+  const stats = [
+    { label: "Jobs Totaux", value: lots.length,  icon: "ri-stack-line", color: "primary" },
+    { label: "Succès",      value: lots.filter(l => l.status === "completed").length, icon: "ri-checkbox-circle-line", color: "success" },
+    { label: "Échecs",       value: lots.filter(l => l.status === "failed").length, icon: "ri-error-warning-line", color: "danger" },
+    { label: "En Cours",    value: lots.filter(l => l.status === "running").length, icon: "ri-loader-4-line", color: "info" },
   ];
 
-  const COL_COUNT = 10; // nombre de colonnes de la table
+  const handleRetry = async (lot) => {
+    setRetrying(lot.id);
+    try {
+      await extractionService.run({
+        extraction_type: lot.extraction_type,
+        project_id: lot.project_id,
+        period_id: lot.period_id,
+        developer_ids: lot.developer_id ? [lot.developer_id] : null,
+        is_backfill: true
+      });
+      setLotDetail(null);
+      refreshData();
+    } catch (err) { alert("Erreur lors de la relance"); }
+    finally { setRetrying(null); }
+  };
+
+  // ✅ RÉCUPÉRATION DYNAMIQUE DE LA COHORTE (SENIOR v6)
+  const handleOpenLotDetail = async (lot) => {
+    setLoadingMembers(true);
+    setLotDetail(lot); // On ouvre déjà la modale
+    try {
+      // On demande exactement qui était dans cette mission (Projet + Période)
+      const members = await developerService.getByTab("validated", lot.project_id, false, lot.period_id);
+      setLotDetail(prev => ({ ...prev, project_members: members }));
+    } catch (err) {
+      console.error("Erreur cohort fetch:", err);
+      setLotDetail(prev => ({ ...prev, project_members: [] }));
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
 
   return (
     <div className="page-content">
       <div className="container-fluid">
-
-        {/* Breadcrumb */}
-        <div className="row mb-1">
+        {/* Header */}
+        <div className="row mt-3">
           <div className="col-12">
             <div className="page-title-box d-sm-flex align-items-center justify-content-between">
               <h4 className="mb-sm-0">
-                <i className="ri-list-check me-2 text-primary"></i>Lots d'extraction
+                <i className="ri-database-2-line me-2 text-primary"></i>Journal d'Extractions
               </h4>
-              <ol className="breadcrumb m-0">
-                <li className="breadcrumb-item"><a href="/">Dashboard</a></li>
-                <li className="breadcrumb-item active">Extraction Lots</li>
-              </ol>
+              <div className="d-flex gap-2">
+                <button className="btn btn-white border shadow-sm fs-13 fw-bold px-4" onClick={refreshData}>
+                  <i className={`ri-refresh-line me-2 ${loading && isQuietRef.current ? "ri-spin" : ""}`}></i> Actualiser
+                </button>
+                <button className="btn btn-primary shadow-sm fs-13 fw-bold px-4" onClick={() => navigate("/admin/extract")}>
+                  <i className="ri-add-line me-1"></i> Nouveau Job
+                </button>
+              </div>
             </div>
+            <ol className="breadcrumb m-0 mb-4">
+              <li className="breadcrumb-item fs-11 fw-bold text-uppercase ls-1 text-muted">Administration</li>
+              <li className="breadcrumb-item active fs-11 fw-bold text-uppercase ls-1" aria-current="page">Journal des Lots</li>
+            </ol>
           </div>
         </div>
 
-        {/* ── Cards cliquables ── */}
-        <div className="row mb-4">
-          {statCards.map((s, i) => {
-            const isActive = statusFilter === s.statusVal || (s.statusVal === "all" && statusFilter === "all");
-            return (
-              <div key={i} className="col-xl-3 col-sm-6">
-                <div
-                  className={`card card-animate mb-3 ${s.statusVal !== "all" ? "cursor-pointer" : ""}`}
-                  onClick={() => s.statusVal !== "all" && handleCardClick(s.statusVal)}
-                  style={{
-                    cursor: s.statusVal !== "all" ? "pointer" : "default",
-                    border: statusFilter === s.statusVal && s.statusVal !== "all"
-                      ? `2px solid var(--vz-${s.color})`
-                      : "1px solid var(--vz-border-color)",
-                    transition: "all 0.18s ease",
-                    transform: statusFilter === s.statusVal && s.statusVal !== "all" ? "translateY(-2px)" : "none",
-                    boxShadow: statusFilter === s.statusVal && s.statusVal !== "all"
-                      ? `0 4px 16px rgba(0,0,0,0.12)`
-                      : undefined,
-                  }}
-                  title={s.statusVal !== "all" ? `Filtrer par : ${s.label}` : undefined}
-                >
-                  <div className="card-body">
-                    <div className="d-flex align-items-center">
-                      <div className="avatar-sm flex-shrink-0">
-                        <span className={`avatar-title bg-${s.color}-subtle text-${s.color} rounded-2 fs-2`}>
-                          <i className={s.icon}></i>
-                        </span>
-                      </div>
-                      <div className="flex-grow-1 ms-3">
-                        <p className="text-uppercase fw-medium text-muted mb-1 fs-12">{s.label}</p>
-                        <h4 className={`mb-0 text-${s.color}`}>{s.value}</h4>
-                      </div>
-                      {s.statusVal !== "all" && (
-                        <div className="flex-shrink-0">
-                          {statusFilter === s.statusVal
-                            ? <span className={`badge bg-${s.color} fs-10`}><i className="ri-filter-fill"></i></span>
-                            : <span className="text-muted fs-18"><i className="ri-filter-line"></i></span>
-                          }
-                        </div>
-                      )}
+        {/* ── Stats Hub ── */}
+        <div className="row g-4 mb-5">
+          {stats.map((s, i) => (
+            <div className="col-xl-3 col-sm-6" key={i} onClick={() => setStatusFilter(s.color === "primary" ? "all" : (s.color === "success" ? "completed" : (s.color === "danger" ? "failed" : "running")))} style={{ cursor: "pointer" }}>
+              <div className="card border-0 shadow-sm rounded-4 h-100 transition-all hover-scale">
+                 <div className="card-body p-4 d-flex align-items-center gap-3">
+                    <div className={`avatar-md rounded-circle d-flex align-items-center justify-content-center bg-${s.color}-subtle`} style={{ width: 48, height: 48 }}>
+                       <i className={`${s.icon} fs-22 text-${s.color}`}></i>
                     </div>
-                  </div>
-                </div>
+                    <div>
+                       <h4 className="fw-bold mb-0 fs-24">{s.value}</h4>
+                       <p className="text-muted fs-12 fw-bold text-uppercase ls-1 mb-0">{s.label}</p>
+                    </div>
+                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
 
-        {/* Filtres */}
-        <div className="card mb-3">
-          <div className="card-body py-3">
-            <div className="row g-2 align-items-end">
-              <div className="col-md-2">
-                <label className="form-label fs-12 text-muted fw-semibold mb-1">
-                  <i className="ri-search-line me-1"></i>Chercher Dev
-                </label>
-                <div className="input-group input-group-sm">
-                  <input 
-                    type="text" 
-                    className="form-control form-control-sm bg-light-subtle" 
-                    placeholder="Nom ou @user..."
-                    value={devSearch}
-                    onChange={e => { setDevSearch(e.target.value); setPage(1); }}
-                  />
-                  {devSearch && (
-                    <button className="btn btn-outline-light border" onClick={() => setDevSearch("")}>
-                      <i className="ri-close-line text-muted"></i>
+        {/* ── Main Table Card ── */}
+        <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-5">
+           <div className="card-header bg-white border-bottom-light p-4">
+              <div className="row g-3">
+                 <div className="col-md-4">
+                    <select className="form-select border-0 bg-light fs-13 rounded-3 py-2" value={projFilter} onChange={e => setProjFilter(e.target.value)}>
+                       <option value="">Tous les projets</option>
+                       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                 </div>
+                 <div className="col-md-4">
+                    <select className="form-select border-0 bg-light fs-13 rounded-3 py-2" value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}>
+                       <option value="">Toutes les périodes</option>
+                       {periods.map(p => <option key={p.id} value={p.id}>{p.year}/{String(p.month).padStart(2, '0')}</option>)}
+                    </select>
+                 </div>
+                 <div className="col-md-4 text-end d-flex gap-2 justify-content-end">
+                    {periodFilter && (
+                      <button className="btn btn-warning shadow-sm fs-13 fw-bold" onClick={handleGlobalDump} disabled={loading}>
+                        <i className="ri-file-download-line me-1"></i> Export Global
+                      </button>
+                    )}
+                    <button className="btn btn-soft-secondary fs-13 fw-bold" onClick={() => { setProjFilter(""); setPeriodFilter(""); setStatusFilter("all"); }}>
+                       Réinitialiser
                     </button>
-                  )}
-                </div>
+                 </div>
               </div>
-              <div className="col-md-2">
-                <label className="form-label fs-12 text-muted fw-semibold mb-1">
-                  <i className="ri-folder-2-line me-1"></i>Projet
-                </label>
-                <select className="form-select form-select-sm" value={projFilter}
-                  onChange={e => setProjFilter(e.target.value)}>
-                  <option value="">Tous les projets</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="col-md-2">
-                <label className="form-label fs-12 text-muted fw-semibold mb-1">
-                  <i className="ri-calendar-2-line me-1"></i>Période
-                </label>
-                <select className="form-select form-select-sm" value={periodFilter}
-                  onChange={e => setPeriodFilter(e.target.value)}>
-                  <option value="">Toutes les périodes</option>
-                  {periods.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.year}/{String(p.month).padStart(2, "0")}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-2">
-                <label className="form-label fs-12 text-muted fw-semibold mb-1">Type</label>
-                <select className="form-select form-select-sm" value={typeFilter}
-                  onChange={e => { setTypeFilter(e.target.value); setPage(1); }}>
-                  <option value="all">Tous</option>
-                  <option value="REALTIME">Realtime</option>
-                  <option value="MONTHLY">Monthly</option>
-                </select>
-              </div>
-              <div className="col-md-2">
-                <label className="form-label fs-12 text-muted fw-semibold mb-1">Statut</label>
-                <select className="form-select form-select-sm" value={statusFilter}
-                  onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
-                  <option value="all">Tous</option>
-                  <option value="pending">Pending</option>
-                  <option value="running">Running</option>
-                  <option value="completed">Completed</option>
-                  <option value="failed">Failed</option>
-                </select>
-              </div>
-              <div className="col-md-2">
-                  <button className="btn btn-sm btn-light w-100"
-                  onClick={() => {
-                    setProjFilter(""); setPeriodFilter(""); setDevFilter("");
-                    setDevSearch(""); setTypeFilter("all"); setStatusFilter("all"); setPage(1);
-                  }}>
-                  <i className="ri-filter-off-line me-1"></i>Reset
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+           </div>
 
-        {/* Table */}
-        <div className="card">
-          <div className="card-header d-flex align-items-center border-0">
-            <h5 className="card-title mb-0 flex-grow-1">
-              <i className="ri-list-check me-2 text-primary"></i>
-              Lots ({filtered.length})
-              {statusFilter !== "all" && (
-                <span
-                  className="badge bg-secondary-subtle text-secondary ms-2 fw-normal fs-12"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => { setStatusFilter("all"); setPage(1); }}
-                  title="Retirer le filtre"
-                >
-                  {statusFilter} <i className="ri-close-line ms-1"></i>
-                </span>
-              )}
-            </h5>
-            <div className="d-flex align-items-center gap-3">
-              <span className="text-muted fs-12">
-                <i className="ri-information-line me-1 text-info"></i>
-                MD5 cliquable pour copier · ⋮ pour explorer les données
-              </span>
-              <button className="btn btn-sm btn-outline-success border-dashed" onClick={handleExportCsv}>
-                <i className="ri-file-excel-2-line me-1"></i>Exporter CSV ({filtered.length})
-              </button>
-            </div>
-          </div>
-
-          {/* Bulk Actions Toolbar */}
-          {selectedIds.length > 0 && (
-            <div className="bg-primary-subtle p-2 d-flex align-items-center justify-content-between border-bottom border-top animate__animated animate__fadeIn">
-              <div className="d-flex align-items-center gap-2 ps-2">
-                <span className="badge bg-primary">{selectedIds.length} sélectionnés</span>
-                <button className="btn btn-link btn-sm text-primary p-0 ms-2" onClick={() => setSelectedIds([])}>
-                  Annuler
-                </button>
-              </div>
-              <div className="d-flex gap-2 pe-2">
-                <button className="btn btn-sm btn-danger" onClick={handleBulkDelete}>
-                  <i className="ri-delete-bin-line me-1"></i>Supprimer la sélection
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="card-body p-0" style={{ minHeight: 400 }}>
-            {loading ? (
-              <div className="p-4"><LoadingSpinner text="Chargement des lots..." /></div>
-            ) : filtered.length === 0 ? (
-              <div className="p-4">
-                <EmptyState
-                  icon="ri-list-check"
-                  title="Aucun lot d'extraction"
-                  description="Les lots sont créés automatiquement lors des extractions."
-                />
-              </div>
-            ) : (
-              <>
-                <div className="table-responsive" style={{ overflow: "visible" }}>
-                  <table className="table table-hover align-middle table-nowrap mb-0">
-                    <thead className="table-light">
-                      <tr>
-                        <th style={{ width: 40 }}>
-                          <div className="form-check">
-                            <input className="form-check-input" type="checkbox" 
-                              checked={selectedIds.length > 0 && selectedIds.length === paginated.length}
-                              onChange={toggleSelectAll} 
-                            />
-                          </div>
-                        </th>
-                        <th>Développeur</th>
-                        <th>Projet</th>
-                        <th>Période</th>
-                        <th>Type</th>
-                        <th>Statut</th>
-                        <th>Déclenché par</th>
-                        <th>Début</th>
-                        <th>Durée</th>
-                        <th style={{ width: 60 }}>Actions</th>
-                        <th>MD5</th>
-                        <th style={{ width: 50 }}>DL</th>
-                      </tr>
+           <div className="card-body p-0">
+              <div className="table-responsive">
+                 <table className="table table-hover align-middle mb-0 custom-table">
+                    <thead className="bg-light-subtle">
+                       <tr>
+                          <th className="ps-4 py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">ID / Projet</th>
+                          <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Cible / Développeur</th>
+                           <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Période</th>
+                          <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Statut</th>
+                          <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Intégrité MD5</th>
+                          <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Audit</th>
+                          <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Auteur</th>
+                          <th className="py-3 fs-11 text-uppercase text-muted ls-1 fw-bold">Délai</th>
+                          <th className="pe-4 py-3 text-end fs-11 text-uppercase text-muted ls-1 fw-bold">Actions</th>
+                       </tr>
                     </thead>
                     <tbody>
-                      {paginated.map(lot => (
-                        <>
-                          <tr
-                            key={lot.id}
-                            style={{
-                              background: lot.status === "failed"
-                                ? "rgba(220,38,38,0.04)"
-                                : lot.status === "running"
-                                ? "rgba(6,182,212,0.03)"
-                                : undefined,
-                            }}
-                          >
-                            <td>
-                              <div className="form-check">
-                                <input className="form-check-input" type="checkbox"
-                                  checked={selectedIds.includes(lot.id)}
-                                  onChange={() => toggleSelectOne(lot.id)}
+                       {loading && !lots.length ? (
+                          <tr><td colSpan="9" className="py-5 text-center"><LoadingSpinner /></td></tr>
+                       ) : paginated.length > 0 ? (
+                          paginated.map(l => (
+                             <tr key={l.id} className={l.status === 'failed' ? 'bg-danger-subtle' : ''} onClick={() => handleOpenLotDetail(l)} style={{ cursor: 'pointer' }}>
+                                <td className="ps-4">
+                                  <ProjectCell 
+                                    lot={l} 
+                                    projectName={projects.find(p => String(p.id) === String(l.project_id))?.name || "Global"} 
+                                  />
+                                </td>
+                                 <td>
+                                   <DevCell 
+                                      lot={l} 
+                                      allDevelopers={allDevelopers} 
+                                   />
+                                </td>
+                                <td>
+                                  <span className="badge bg-info-subtle text-info px-2 py-1 rounded-pill fw-bold fs-11">
+                                    {l.period ? `${l.period.year}/${String(l.period.month).padStart(2, '0')}` : "—"}
+                                  </span>
+                                </td>
+                                <td><StatusBadge type="lot" value={l.status} /></td>
+                                <td><Md5Cell lot={l} /></td>
+                                <td>
+                                    {l.generated_file ? (
+                                      <button 
+                                        className="btn btn-soft-warning btn-sm d-flex align-items-center gap-1 fw-bold fs-10 px-2 py-1 rounded-pill"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const handler = async () => {
+                                            try {
+                                              const response = await api.get(`/extraction/lots/${l.id}/download`, { responseType: 'blob' });
+                                              const url = window.URL.createObjectURL(new Blob([response.data]));
+                                              const a = document.createElement('a');
+                                              a.href = url;
+                                              a.setAttribute('download', `audit_lot_${l.id}.json`);
+                                              document.body.appendChild(a);
+                                              a.click();
+                                              a.remove();
+                                            } catch (err) { alert("Dump non disponible."); }
+                                          };
+                                          handler();
+                                        }}
+                                      >
+                                        <i className="ri-download-cloud-2-line"></i> DUMP
+                                      </button>
+                                    ) : <span className="text-muted opacity-25">—</span>}
+                                 </td>
+                                <td><TriggeredByCell lot={l} /></td>
+                                <td>
+                                   <div className="d-flex flex-column">
+                                      <span className="fs-13 fw-bold text-dark">{timeAgo(l.created_at)}</span>
+                                      <span className="fs-11 text-muted">{formatDate(l.created_at).split(' ').slice(0, 3).join(' ')}</span>
+                                   </div>
+                                </td>
+                                <td className="pe-4 text-end">
+                                   <ActionsMenu lot={l} navigate={navigate} />
+                                </td>
+                             </tr>
+                          ))
+                       ) : (
+                          <tr>
+                             <td colSpan="9" className="py-5 text-center">
+                                <EmptyState 
+                                   icon="ri-database-2-line"
+                                   title={lots.length === 0 ? "Aucun lot d'extraction" : "Aucun résultat pour ces filtres"} 
+                                   description={lots.length === 0 
+                                      ? "Commencez par lancer une extraction de données pour voir l'historique ici." 
+                                      : "Essayez de modifier vos critères de recherche ou de réinitialiser les filtres."
+                                   }
+                                   actionLabel={lots.length === 0 ? "Lancer une extraction" : "Réinitialiser les filtres"}
+                                   onAction={() => {
+                                      if (lots.length === 0) navigate("/admin/extract");
+                                      else { setProjFilter(""); setPeriodFilter(""); setStatusFilter("all"); }
+                                   }}
                                 />
-                              </div>
-                            </td>
-                            <td><DevCell lot={lot} /></td>
-                            <td><ProjectCell lot={lot} projectName={getProjectName(lot)} /></td>
-                            <td className="text-muted fs-13">{getPeriodLabel(lot)}</td>
-                            <td><StatusBadge type="lotType" value={lot.extraction_type} /></td>
-                            <td>
-                              <StatusBadge type="lot" value={lot.status} />
-                              {lot.status === "running" && lot.step_label && (
-                                <div className="fs-11 mt-1 text-info text-truncate" style={{ maxWidth: 140 }}>
-                                  <i className="ri-loader-4-line ri-spin me-1"></i>{lot.step_label}
-                                </div>
-                              )}
-                            </td>
-                            <td><TriggeredByCell lot={lot} /></td>
-                            <td className="text-muted fs-12">{formatDate(lot.created_at)}</td>
-                            <td className="text-muted fs-12">
-                              {formatDuration(lot.created_at, lot.completed_at || (lot.status === "running" ? new Date() : null))}
-                            </td>
-                            <td><ActionsMenu lot={lot} navigate={navigate} /></td>
-                            <td><Md5Cell lot={lot} /></td>
-                            <td><DownloadButton lot={lot} /></td>
+                             </td>
                           </tr>
-                          <ErrorRow key={`err-${lot.id}`} lot={lot} colSpan={12} />
-                        </>
-                      ))}
+                       )}
                     </tbody>
-                  </table>
-                </div>
-                <div className="px-3 py-2">
-                  <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    totalItems={filtered.length}
-                    perPage={perPage}
-                    onPageChange={setPage}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+                 </table>
+              </div>
+           </div>
+           {totalPages > 1 && (
+              <div className="card-footer bg-white border-top-light py-3 px-4">
+                 <Pagination page={page} totalPages={totalPages} totalItems={filtered.length} perPage={perPage} onPageChange={setPage} />
+              </div>
+           )}
         </div>
 
+        {lotDetail && (
+           <LotDetailModal 
+              lot={{
+                ...lotDetail,
+                isLoadingMembers: loadingMembers // ✅ PASSAGE DU STATE
+              }} 
+              onClose={() => setLotDetail(null)} 
+              onRetry={handleRetry} 
+              retrying={retrying === lotDetail.id} 
+           />
+        )}
+
+        <style>{`
+          .hover-scale:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.05) !important; }
+          .custom-table tbody tr { transition: all 0.2s ease; border-bottom: 1px solid #f1f3f5; }
+          .custom-table tbody tr:hover { background-color: #f8faff !important; }
+          .ls-sm { letter-spacing: -0.01em; }
+          .ls-1 { letter-spacing: 0.05em; }
+          .transition-all { transition: all 0.2s ease; }
+          .bg-danger-subtle { background-color: rgba(220, 38, 38, 0.05) !important; }
+          .bg-info-subtle { background-color: rgba(13, 202, 240, 0.08) !important; }
+          .bg-soft-info { background-color: transparent !important; }
+        `}</style>
       </div>
     </div>
   );

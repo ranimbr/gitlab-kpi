@@ -1,7 +1,6 @@
 """
 repositories/dashboard_repository.py — .
-DashboardAccessRepository supprimé (table DashboardAccess supprimée).
-get_accessible_by_user() utilise AppUser.dashboard_access[].
+
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session, joinedload

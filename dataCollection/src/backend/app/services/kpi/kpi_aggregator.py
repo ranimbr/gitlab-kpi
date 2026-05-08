@@ -1,15 +1,6 @@
 """
 services/kpi/kpi_aggregator.py
 
-CORRECTIONS APPLIQUÉES :
-──────────────────────────────────────────────────────────────────
-1. delta_nb_commits : float() supprimé → type entier cohérent avec le modèle.
-2. Log structuré JSON ajouté après generate_monthly_snapshots().
-3. Toutes les corrections précédentes conservées :
-   - Sites via ProjectSite (M2M)
-   - Devs via DeveloperProject (M2M)
-   - Site primaire dev via DeveloperSite (M2M)
-   - score_rank_in_site calculé par site
 """
 import logging
 from datetime import datetime, date
@@ -22,6 +13,7 @@ from app.models.developer_project import DeveloperProject
 from app.models.developer_site import DeveloperSite
 from app.models.kpi_snapshot import KpiSnapshot
 from app.models.project_site import ProjectSite
+from app.models.extraction_lot import ExtractionLot
 from app.repositories.kpi_snapshot_repository import KpiSnapshotRepository
 from app.repositories.period_repository import PeriodRepository
 from app.services.kpi.kpi_calculator import KpiCalculator
@@ -69,8 +61,9 @@ class KpiAggregator:
 
         snapshots: List[KpiSnapshot] = []
 
-        # Sites du projet via ProjectSite (M2M)
-        project_site_ids = self._get_project_site_ids(project_id)
+
+        # Sites du projet via ProjectSite (M2M) — Filtrés par présence réelle ce mois-ci
+        project_site_ids = self._get_project_site_ids(project_id, period.id)
 
         # ── 1. Snapshot par site du projet ────────────────────────────────────
         if project_site_ids:
@@ -109,7 +102,7 @@ class KpiAggregator:
         snapshots.append(global_snapshot)
 
         # ── 2.5 Snapshot par groupe ───────────────────────────────────────────
-        project_group_ids = self._get_project_group_ids(project_id)
+        project_group_ids = self._get_project_group_ids(project_id, period.id)
         if project_group_ids:
             for group_id in project_group_ids:
                 kpis = self.calculator.calculate_for_group(
@@ -128,15 +121,39 @@ class KpiAggregator:
                     kpis.get("nb_developers", 0),
                 )
 
-        # ── 3. Snapshots par développeur individuel ───────────────────────────
-        developers = (
-            self.db.query(Developer)
-            .join(
-                DeveloperProject,
-                (DeveloperProject.developer_id == Developer.id) &
-                (DeveloperProject.project_id   == project_id)   &
-                (DeveloperProject.is_active.is_(True)),
+        # On filtre strictement par les lots d'extraction du mois (Registre RH)
+        # S'il n'y a pas de lots individuels, on prend tous les développeurs assignés au projet pour ce mois.
+        has_individual_lots = self.db.query(ExtractionLot).filter(
+            ExtractionLot.period_id == period.id,
+            ExtractionLot.project_id == project_id,
+            ExtractionLot.developer_id.isnot(None)
+        ).first() is not None
+
+        if has_individual_lots:
+            valid_dev_ids_subquery = (
+                self.db.query(ExtractionLot.developer_id)
+                .filter(
+                    ExtractionLot.period_id == period.id,
+                    ExtractionLot.project_id == project_id,
+                    ExtractionLot.developer_id.isnot(None)
+                )
+                .subquery()
             )
+            developers_query = self.db.query(Developer).filter(Developer.id.in_(valid_dev_ids_subquery))
+        else:
+            # Fallback : Cohorte définie dans DeveloperProject pour ce mois
+            developers_query = (
+                self.db.query(Developer)
+                .join(DeveloperProject, Developer.id == DeveloperProject.developer_id)
+                .filter(
+                    DeveloperProject.project_id == project_id,
+                    DeveloperProject.period_id  == period.id,
+                    DeveloperProject.is_active.is_(True)
+                )
+            )
+
+        developers = (
+            developers_query
             .filter(
                 Developer.is_validated.is_(True),
                 Developer.is_bot.is_(False),
@@ -144,6 +161,20 @@ class KpiAggregator:
             )
             .all()
         )
+
+        # Diagnostic logs pour le Senior Engineer
+        all_active_project_devs = (
+            self.db.query(Developer.name)
+            .join(DeveloperProject, DeveloperProject.developer_id == Developer.id)
+            .filter(DeveloperProject.project_id == project_id, DeveloperProject.is_active == True)
+            .all()
+        )
+        if len(all_active_project_devs) > len(developers):
+            ghosts = len(all_active_project_devs) - len(developers)
+            logger.warning(
+                "GHOST_DEVS_DETECTED: %d devs are active in DB but missing from RH lots for %d/%02d. They will be ignored.",
+                ghosts, year, month
+            )
 
         # Collecter les snapshots individuels pour le classement par site
         dev_snapshots_by_site: dict = {}  # site_id → [(score, snapshot)]
@@ -202,36 +233,61 @@ class KpiAggregator:
     # HELPERS PRIVÉS
     # =========================================================================
 
-    def _get_project_site_ids(self, project_id: int) -> List[int]:
+    def _get_project_site_ids(self, project_id: int, period_id: int) -> List[int]:
         """
-        ✅ [SENIOR ARCHITECTURE] Résolution dynamique des sites.
-        Un projet est rattaché à un site si au moins un développeur du site 
-        est rattaché au projet via DeveloperProject.
+        ✅ [SENIOR ARCHITECTURE] Résolution dynamique des sites filtrés par période.
+        Supporte les extractions par lots (individuels) et les extractions globales.
+        """
+        # 1. Tenter via les lots d'extraction (Précision maximale)
+        site_ids = (
+            self.db.query(DeveloperSite.site_id)
+            .join(ExtractionLot, ExtractionLot.developer_id == DeveloperSite.developer_id)
+            .filter(ExtractionLot.period_id == period_id)
+            .filter(ExtractionLot.project_id == project_id)
+            .distinct()
+            .all()
+        )
         
-        Plus besoin de maintenance manuelle dans ProjectSite ! 
-        Cela garantit que le Dashboard de Pilotage est toujours synchronisé 
-        avec la réalité de l'équipe.
-        """
-        # On cherche les sites distincts des développeurs affectés à ce projet
+        if site_ids:
+            return [row[0] for row in site_ids]
+            
+        # 2. Fallback : Tous les sites des développeurs actifs sur le projet ce mois-ci
+        # (Cas des extractions globales sans lots individuels)
         site_ids = (
             self.db.query(DeveloperSite.site_id)
             .join(DeveloperProject, DeveloperSite.developer_id == DeveloperProject.developer_id)
             .filter(DeveloperProject.project_id == project_id)
+            .filter(DeveloperProject.period_id  == period_id)
             .filter(DeveloperProject.is_active.is_(True))
             .distinct()
             .all()
         )
         return [row[0] for row in site_ids]
 
-    def _get_project_group_ids(self, project_id: int) -> List[int]:
+    def _get_project_group_ids(self, project_id: int, period_id: int) -> List[int]:
         """
-        Trouve tous les groupes impliqués dans ce projet (via M2M developer_group_link)
+        Trouve tous les groupes impliqués dans ce projet ce mois-ci.
         """
         from app.models.developer_group import developer_group_link
+        
+        # 1. Via les lots
+        group_ids = (
+            self.db.query(developer_group_link.c.group_id)
+            .join(ExtractionLot, ExtractionLot.developer_id == developer_group_link.c.developer_id)
+            .filter(ExtractionLot.period_id == period_id)
+            .filter(ExtractionLot.project_id == project_id)
+            .distinct()
+            .all()
+        )
+        if group_ids:
+            return [row[0] for row in group_ids]
+            
+        # 2. Fallback
         group_ids = (
             self.db.query(developer_group_link.c.group_id)
             .join(DeveloperProject, developer_group_link.c.developer_id == DeveloperProject.developer_id)
             .filter(DeveloperProject.project_id == project_id)
+            .filter(DeveloperProject.period_id  == period_id)
             .filter(DeveloperProject.is_active.is_(True))
             .distinct()
             .all()
@@ -297,7 +353,7 @@ class KpiAggregator:
                     snapshot.merged_mr_rate       - prev_snapshot.merged_mr_rate,       4)
                 snapshot.delta_commit_rate      = round(
                     snapshot.commit_rate_per_site - prev_snapshot.commit_rate_per_site, 4)
-                # ✅ FIX : suppression du float() inutile — nb_commits_per_project est Integer
+                #  FIX : suppression du float() inutile — nb_commits_per_project est Integer
                 snapshot.delta_nb_commits       = (
                     snapshot.nb_commits_per_project - prev_snapshot.nb_commits_per_project
                 )

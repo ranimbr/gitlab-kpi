@@ -1,16 +1,6 @@
 """
 repositories/__init__.py
 
-NOUVEAUX REPOSITORIES (remarques encadrant + modèles mis à jour) :
-────────────────────────────────────────────────────────────────────
-  + DeveloperProjectRepository  → M2M Developer ↔ Project
-  + DeveloperSiteRepository     → M2M Developer ↔ Site
-  + ProjectSiteRepository       → M2M Project ↔ Site
-  + DeveloperImportLogRepository → Imports CSV/Excel
-
-CORRECTIONS noms de fichiers conservées :
-  audit_log_repository.py      (singulier)
-  kpi_definition_repository.py (typo corrigée)
 """
 from app.repositories.base                          import BaseRepository
 from app.repositories.user_repository               import AppUserRepository

@@ -1,26 +1,7 @@
 """
 models/developer_project.py
 
-Table de jonction Many-to-Many : Developer ↔ Project.
 
-RAISON D'EXISTENCE :
-    Dans l'ancien modèle, Developer avait project_id (FK directe) → 1 dev = 1 projet.
-    La remarque de l'encadrant : un développeur peut travailler sur PLUSIEURS projets.
-    Cette table remplace cette FK directe par une relation M2M.
-
-Attributs métier :
-    joined_at → date à laquelle le développeur a rejoint le projet.
-    is_active → False = dev a quitté le projet, mais l'historique est conservé
-                (ne pas supprimer l'association, conserver les KPIs passés).
-
-Usage KPI :
-    KpiCalculator filtre DeveloperProject.is_active=True pour obtenir
-    le nombre de développeurs actifs par projet pour le mois en cours.
-
-Exemple :
-    Ahmed (id=1) → API-Gateway (project_id=2, is_active=True)
-    Ahmed (id=1) → Middleware  (project_id=5, is_active=True)
-    Ahmed (id=1) → Legacy-App  (project_id=8, is_active=False) ← a quitté ce projet
 """
 
 from sqlalchemy import Column, Integer, ForeignKey, Boolean, DateTime, Index, func
@@ -46,6 +27,14 @@ class DeveloperProject(Base):
         primary_key=True,
         nullable=False,
     )
+    #  AJOUT SENIOR : Scoping temporel des missions
+    # Permet de gérer les changements d'équipes mois par mois sans pollution.
+    period_id = Column(
+        Integer,
+        ForeignKey("period.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
 
     # ── Attributs métier ─────────────────────────────────────────────────────
     # Date à laquelle le développeur a commencé à travailler sur ce projet
@@ -60,11 +49,12 @@ class DeveloperProject(Base):
     # ── Relations ────────────────────────────────────────────────────────────
     developer = relationship("Developer", back_populates="project_associations")
     project   = relationship("Project",   back_populates="developer_associations")
+    period    = relationship("Period")
 
     # ── Index ────────────────────────────────────────────────────────────────
     __table_args__ = (
-        # Retrouver tous les projets actifs d'un développeur
-        Index("idx_dev_project_developer", "developer_id", "is_active"),
-        # Retrouver tous les développeurs actifs d'un projet
-        Index("idx_dev_project_project",   "project_id",   "is_active"),
+        # Retrouver tous les projets actifs d'un développeur pour une période
+        Index("idx_dev_project_dev_period", "developer_id", "period_id", "is_active"),
+        # Retrouver tous les développeurs d'un projet pour une période
+        Index("idx_dev_project_proj_period", "project_id", "period_id", "is_active"),
     )

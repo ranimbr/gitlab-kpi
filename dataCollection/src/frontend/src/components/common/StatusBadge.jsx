@@ -116,11 +116,11 @@ export default function StatusBadge({ type, value, size = "sm" }) {
   const typeConfig = CONFIG[type];
   if (!typeConfig) return null;
 
-  const key = String(value);
+  const key = value === null || value === undefined || value === "" ? "empty" : String(value);
 
   // ✅ FIX : fallback neutre — pas de badge trompeur
-  const cfg = typeConfig[key] ?? {
-    label: String(value),
+  const cfg = typeConfig[key] ?? typeConfig["empty"] ?? {
+    label: key === "empty" ? "N/A" : key,
     color: "secondary",
     icon:  "ri-question-line",
   };

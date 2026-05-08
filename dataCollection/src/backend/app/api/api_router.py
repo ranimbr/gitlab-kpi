@@ -1,10 +1,5 @@
 """
 api/api_router.py
-
-AJOUTS :
-    - export router (GET /export/kpis/excel et GET /export/kpis/pdf)
-    - import_logs (developers) exposé via le router developers existant
-    - Ordre des routes optimisé (routes fixes AVANT les routes paramétrées)
 """
 from fastapi import APIRouter
 
@@ -36,6 +31,7 @@ api_router.include_router(gitlab_configs.router)
 api_router.include_router(sites.router)
 api_router.include_router(projects.router)
 api_router.include_router(developers.router)
+api_router.include_router(developers.group_router)
 api_router.include_router(periods.router)
 api_router.include_router(extraction.router)
 api_router.include_router(extraction_lots.router)
