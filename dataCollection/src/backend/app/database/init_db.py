@@ -131,6 +131,12 @@ def init_db() -> None:
         dashboard → period_filter
         audit_log
     """
+    from app.core.config import get_settings
+    settings = get_settings()
+    if settings.USE_SCHEMAS:
+        logger.info("ℹ️ Mode schémas activé (Supabase) : l'initialisation des tables se fait dynamiquement. Ignorer init_db().")
+        return
+
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Toutes les tables créées / vérifiées avec succès.")
