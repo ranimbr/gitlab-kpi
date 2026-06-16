@@ -9,11 +9,13 @@ from enum import Enum
 # ── Utilisateurs ──────────────────────────────────────────────────────────────
 
 class UserRoleEnum(str, Enum):
-    #  4 rôles granulaires (remplace admin/user)
-    super_admin  = "super_admin"   # Accès total — gestion sites, devs, KPIs, extractions
-    site_manager = "site_manager"  # Accès limité à son site (filtré par site_id)
-    team_lead    = "team_lead"     # Accès limité à son groupe (filtré par group_id)
-    developer    = "developer"     # Lecture seule de ses propres KPIs
+    #  6 rôles granulaires (remplace admin/user)
+    super_admin     = "super_admin"    # Accès total — gestion sites, devs, KPIs, extractions
+    site_manager    = "site_manager"   # Accès limité à son site (filtré par site_id)
+    project_manager = "project_manager" # Accès limité à ses projets assignés
+    team_lead       = "team_lead"      # Accès limité à son groupe (filtré par group_id)
+    developer       = "developer"      # Lecture seule de ses propres KPIs
+    viewer          = "viewer"        # Lecture seule avec accès flexible selon assignations
 
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────

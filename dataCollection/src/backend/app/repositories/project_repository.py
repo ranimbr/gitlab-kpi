@@ -38,7 +38,8 @@ def _build_enrichment_maps(db: Session, project_ids: List[int], period_id: Optio
     )
 
     if period_id is not None:
-        query = query.filter(Commit.period_id == period_id)
+        from app.models.extraction_lot import ExtractionLot
+        query = query.join(ExtractionLot).filter(ExtractionLot.period_id == period_id)
 
     rows = query.group_by(Commit.project_id).all()
     

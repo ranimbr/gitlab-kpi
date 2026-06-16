@@ -350,6 +350,22 @@ class GitLabClient:
             logger.warning(f"approval_state unavailable MR={mr_iid}: {e}")
             return None
 
+    async def get_merge_request_resource_state_events(
+        self, project_id: int, mr_iid: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch resource state events for an MR to get exact approval timestamps.
+        This provides the precise approved_at date for review time calculation.
+        """
+        try:
+            return await self._get_paginated(
+                f"/projects/{project_id}/merge_requests/{mr_iid}/resource_state_events",
+                params={"per_page": 100}
+            )
+        except GitLabAPIError as e:
+            logger.warning(f"resource_state_events unavailable MR={mr_iid}: {e}")
+            return []
+
     async def get_merge_request_notes(
         self, project_id: int, mr_iid: int
     ) -> List[Dict[str, Any]]:

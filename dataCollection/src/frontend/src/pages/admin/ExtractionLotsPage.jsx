@@ -55,24 +55,28 @@ function ProjectCell({ lot, projectName }) {
       <div>
         <div className="fw-bold fs-13 text-dark">{projectName}</div>
         <div className="fs-10 text-muted text-uppercase fw-bold ls-1">Project ID: #{lot.project_id}</div>
+        {lot.source_filename && (
+          <div className="d-flex align-items-center gap-1 mt-1">
+            <i className="ri-file-zip-line text-warning" style={{ fontSize: 10 }}></i>
+            <span className="badge bg-warning-subtle text-warning border-0 px-1 py-0" style={{ fontSize: 9, fontFamily: 'monospace', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }} title={lot.source_filename}>
+              {lot.source_filename}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/* ── Cellule Développeur (Elite Facepile Version) ── */
-function DevCell({ lot, allDevelopers }) {
+function DevCell({ lot }) {
   const dev     = lot.developer;
   const devName = dev?.name || dev?.gitlab_username;
 
   // Si c'est un lot projet (Mission), on affiche le Facepile
   if (!devName) {
-    const projectMembers = allDevelopers.filter(d => 
-      d.projects?.some(p => 
-        String(p.project_id) === String(lot.project_id) && 
-        (!lot.period_id || p.period_id === lot.period_id)
-      )
-    );
+    // ✅ SENIOR: La liste est désormais fournie directement par le backend !
+    const rawMembers = lot.project_members || [];
+    const projectMembers = Array.isArray(rawMembers) ? rawMembers : (rawMembers?.items || []);
     
     const displayMembers = projectMembers.slice(0, 6);
     const remaining      = projectMembers.length - displayMembers.length;
@@ -135,7 +139,14 @@ function DevCell({ lot, allDevelopers }) {
 function TriggeredByCell({ lot }) {
   const user = lot.triggered_by_user;
   const isSystem = !lot.triggered_by && !user;
-  const displayName = isSystem ? "Scheduler" : (user?.name || `Utilisateur #${lot.triggered_by}`);
+  
+  // Amélioration: essayer name, puis email, puis login, puis ID
+  let displayName = isSystem ? "Scheduler" : (
+    user?.name || 
+    user?.email || 
+    user?.login || 
+    `Utilisateur #${lot.triggered_by}`
+  );
 
   return (
     <div className="d-flex align-items-center gap-2">
@@ -181,7 +192,8 @@ function LotDetailModal({ lot, onClose, onRetry, retrying }) {
   const isLoadingMembers = lot.isLoadingMembers; // Passé via parent
 
   // ✅ RECHERCHE DE L'ÉQUIPE (SENIOR INSPECTION)
-  const projectMembers = lot.project_id ? (lot.project_members || []) : [];
+  const rawMembers = lot.project_id ? (lot.project_members || []) : [];
+  const projectMembers = Array.isArray(rawMembers) ? rawMembers : (rawMembers?.items || []);
   
   // ✅ SENIOR FALLBACK: Si items_count est à 0, on additionne commits + MRs (calculés par l'API)
   const totalItems = lot.items_count || ((lot.commit_count || 0) + (lot.mr_count || 0)) || 0;
@@ -235,6 +247,15 @@ function LotDetailModal({ lot, onClose, onRetry, retrying }) {
                     <div className="fs-11 text-muted">Étape active du processus de synchronisation</div>
                  </div>
               </div>
+              {lot.source_filename && (
+                <div className="d-flex align-items-center gap-2 mt-3 p-2 rounded-3 bg-warning-subtle border border-warning-subtle">
+                  <i className="ri-file-zip-line text-warning fs-16"></i>
+                  <div>
+                    <div className="fs-10 text-uppercase fw-bold text-muted ls-1">Fichier source importé</div>
+                    <div className="fs-12 fw-bold text-dark" style={{ fontFamily: 'monospace' }}>{lot.source_filename}</div>
+                  </div>
+                </div>
+              )}
            </div>
         </div>
 
@@ -636,7 +657,6 @@ export default function ExtractionLotsPage() {
                                  <td>
                                    <DevCell 
                                       lot={l} 
-                                      allDevelopers={allDevelopers} 
                                    />
                                 </td>
                                 <td>

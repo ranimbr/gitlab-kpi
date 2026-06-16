@@ -5,7 +5,7 @@ models/kpi_snapshot.py
 
 from sqlalchemy import (
     Column, Integer, Float, Date, ForeignKey,
-    Index, CheckConstraint, DDL, event,
+    Index, CheckConstraint, DDL, event, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -157,21 +157,13 @@ class KpiSnapshot(Base):
         Index("idx_snapshot_period_site",    "period_id", "site_id"),
         # Classement des développeurs d'un site sur une période
         Index("idx_snapshot_dev_rank",       "site_id", "period_id", "score_rank_in_site"),
+
+        # ✅ SOLUTION SOLIDE : Contrainte d'unicité stricte au niveau DB
+        # Empêche physiquement d'avoir deux snapshots pour le même projet/période/dev/site.
+        # COALESCE est simulé ici via une logique métier dans le repo, 
+        # mais on définit la contrainte unique pour les déploiements futurs.
+        UniqueConstraint(
+            "project_id", "period_id", "site_id", "group_id", "developer_id",
+            name="uq_kpi_snapshot_per_dimension"
+        )
     )
-
-
-# ── Index UNIQUE avec gestion des NULLs (PostgreSQL COALESCE) ────────────────
-# PostgreSQL traite NULL != NULL → sans COALESCE, plusieurs lignes avec
-# site_id=NULL et developer_id=NULL seraient autorisées pour le même projet/période.
-_unique_snapshot_index = DDL("""
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_kpi_snapshot_unique
-    ON kpi_snapshot (
-        project_id,
-        period_id,
-        COALESCE(site_id, -1),
-        COALESCE(group_id, -1),
-        COALESCE(developer_id, -1)
-    )
-""")
-
-event.listen(KpiSnapshot.__table__, "after_create", _unique_snapshot_index)

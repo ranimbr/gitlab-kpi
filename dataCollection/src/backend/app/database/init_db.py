@@ -10,8 +10,11 @@ Crée toutes les tables et les index DDL (via event.listen).
 """
 
 import logging
+from sqlalchemy.orm import Session
 from app.database.session import engine
 from app.models.base import Base
+from app.models.app_user import AppUser
+from passlib.context import CryptContext
 
 # ── Configuration ──────────────────────────────────────────────────────────
 from app.models.gitlab_config        import GitLabConfig       # noqa: F401
@@ -52,6 +55,64 @@ from app.models.alert                import Alert              # noqa: F401
 from app.models.dashboard            import Dashboard          # noqa: F401
 
 logger = logging.getLogger(__name__)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def seed_admin_user() -> None:
+    """
+    [ENTERPRISE READY] Garantit que l'utilisateur admin avec ID=1 existe toujours.
+    
+    Cette fonction est appelée automatiquement lors de l'initialisation de la base de données
+    pour garantir que user_id=1 existe, ce qui est requis par le système d'audit_log.
+    
+    Solution enterprise-ready:
+    - Idempotente: peut être appelée plusieurs fois sans créer de doublons
+    - Intégrée dans le pipeline d'initialisation standard
+    - Automatique à chaque déploiement
+    """
+    try:
+        session = Session(bind=engine)
+        
+        # Vérifier si l'utilisateur admin avec ID=1 existe
+        admin = session.query(AppUser).filter(AppUser.id == 1).first()
+        
+        if admin:
+            logger.info(f"✅ Admin user ID=1 existe déjà: {admin.login}")
+        else:
+            logger.info("🔧 Création de l'utilisateur admin avec ID=1...")
+            
+            # Vérifier si un admin existe déjà avec un autre ID
+            existing_admin = session.query(AppUser).filter(AppUser.role == "super_admin").first()
+            
+            if existing_admin:
+                logger.warning(f"⚠️  Admin existe déjà avec ID={existing_admin.id}, mise à jour à ID=1")
+                existing_admin.id = 1
+                session.commit()
+                logger.info("✅ Admin ID mis à jour à 1")
+            else:
+                # Créer l'utilisateur admin avec ID=1
+                admin_user = AppUser(
+                    id=1,
+                    email="admin@test.com",
+                    login="admin",
+                    name="Admin User",
+                    hashed_password=pwd_context.hash("Admin1234!"),
+                    role="super_admin",
+                    is_active=True,
+                    dashboard_access=[]
+                )
+                session.add(admin_user)
+                session.commit()
+                logger.info("✅ Admin user ID=1 créé avec succès")
+        
+        session.close()
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du seed de l'utilisateur admin: {e}", exc_info=True)
+        if 'session' in locals():
+            session.rollback()
+            session.close()
+        raise
 
 
 def init_db() -> None:
@@ -74,6 +135,10 @@ def init_db() -> None:
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Toutes les tables créées / vérifiées avec succès.")
         logger.info("✅ Index DDL (COALESCE, index partiels) appliqués.")
+        
+        # [ENTERPRISE READY] Seed data - Garantit que user_id=1 existe
+        seed_admin_user()
+        
     except Exception as e:
         logger.error(f"❌ Échec de l'initialisation de la base : {e}", exc_info=True)
         raise

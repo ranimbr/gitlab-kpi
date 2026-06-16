@@ -16,6 +16,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth, ROLES } from "../../context/AuthContext";
+import profileService from "../../services/profileService";
 
 // ─── CSS injecté une seule fois ───────────────────────────────────────────────
 const SIDEBAR_CSS = `
@@ -232,6 +233,88 @@ const SIDEBAR_CSS = `
     .sb-shell.is-open { transform: translateX(0); }
   }
 
+  /* Collapsed mode (icon-only) */
+  .sb-shell.is-collapsed {
+    width: 64px;
+  }
+  .sb-shell.is-collapsed .sb-brand {
+    padding: 0;
+    justify-content: center;
+  }
+  .sb-shell.is-collapsed .sb-brand-name {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-logo-box {
+    gap: 0;
+  }
+  .sb-shell.is-collapsed .sb-scroll {
+    padding: 10px 8px 30px;
+  }
+  .sb-shell.is-collapsed .sb-section-hd {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-item {
+    padding: 10px;
+    justify-content: center;
+  }
+  .sb-shell.is-collapsed .sb-item span:not([class*="sb-icon"]) {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-item .sb-badge {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-item .sb-chevron {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-item i.sb-icon {
+    margin: 0;
+  }
+  .sb-shell.is-collapsed .sb-sub {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-divider {
+    margin: 6px 12px;
+  }
+  .sb-shell.is-collapsed .sb-footer {
+    padding: 12px 8px;
+    justify-content: center;
+  }
+  .sb-shell.is-collapsed .sb-footer-txt,
+  .sb-shell.is-collapsed .sb-footer-ver {
+    display: none;
+  }
+  .sb-shell.is-collapsed .sb-footer-dot {
+    margin: 0;
+  }
+
+  /* Toggle button */
+  .sb-toggle-btn {
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    background: var(--sb-bg);
+    border: 1px solid var(--sb-border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--sb-text);
+    transition: all .15s var(--sb-ease);
+    z-index: 10;
+  }
+  .sb-toggle-btn:hover {
+    background: rgba(255,255,255,.1);
+    color: #fff;
+    border-color: rgba(255,255,255,.15);
+  }
+  .sb-shell.is-collapsed .sb-toggle-btn {
+    right: -12px;
+  }
+
   /* Divider */
   .sb-divider {
     height: 1px;
@@ -323,12 +406,14 @@ function SubItem({ to, label }) {
   );
 }
 
-// ─── Nav Item ─────────────────────────────────────────────────────────────────
-function NavItem({ icon, label, to, badge, children }) {
+// ── Nav Item ─────────────────────────────────────────────────────────────────
+function NavItem({ icon, label, to, badge, children, accessible = true, isCollapsed = false }) {
   const { pathname } = useLocation();
-  const isActive = to
-    ? pathname === to || pathname.startsWith(to + "/")
-    : children?.some(c => pathname === c.to || pathname.startsWith(c.to + "/"));
+  const isActive =
+    accessible &&
+    (to
+      ? pathname === to || pathname.startsWith(to + "/")
+      : children?.some((c) => pathname === c.to || pathname.startsWith(c.to + "/")));
 
   const [open, setOpen] = useState(isActive && !!children);
 
@@ -338,7 +423,12 @@ function NavItem({ icon, label, to, badge, children }) {
 
   if (!children) {
     return (
-      <Link to={to || "#"} className={`sb-item ${isActive ? "is-active" : ""}`}>
+      <Link
+        to={to || "#"}
+        className={`sb-item ${isActive ? "is-active" : ""}`}
+        style={{ opacity: accessible ? 1 : 0.5, pointerEvents: accessible ? "auto" : "none" }}
+        title={isCollapsed ? label : undefined}
+      >
         <i className={`${icon} sb-icon`} />
         <span style={{ flex: 1 }}>{label}</span>
         {badge && <span className="sb-badge">{badge}</span>}
@@ -348,27 +438,34 @@ function NavItem({ icon, label, to, badge, children }) {
 
   return (
     <>
-      <button className={`sb-item ${isActive ? "is-active" : ""}`} onClick={() => setOpen(v => !v)}>
+      <button
+        className={`sb-item ${isActive ? "is-active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        style={{ opacity: accessible ? 1 : 0.5 }}
+        title={isCollapsed ? label : undefined}
+      >
         <i className={`${icon} sb-icon`} />
         <span style={{ flex: 1 }}>{label}</span>
         <i className={`ri-arrow-right-s-line sb-chevron ${open ? "is-open" : ""}`} />
       </button>
       {open && (
         <div className="sb-sub">
-          {children.map((c, i) => <SubItem key={i} {...c} />)}
+          {children.map((c, i) => (
+            <SubItem key={i} {...c} accessible={accessible} />
+          ))}
         </div>
       )}
     </>
   );
 }
 
-// ─── Section ──────────────────────────────────────────────────────────────────
-function Section({ title, children }) {
+// ── Section ──────────────────────────────────────────────────────────────────
+function Section({ title, children, accessible = true, isCollapsed = false }) {
   return (
-    <div className="sb-section">
+    <div className="sb-section" style={{ display: accessible ? "block" : "none" }}>
       <span className="sb-section-hd">{title}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        {children}
+        {typeof children === 'function' ? children(isCollapsed) : children}
       </div>
     </div>
   );
@@ -380,9 +477,58 @@ export default function Sidebar() {
   const { user } = useAuth();
   const isAdmin = user?.role === ROLES.SUPER_ADMIN || user?.role === ROLES.SITE_MANAGER;
   const isLead  = user?.role === ROLES.TEAM_LEAD;
+  const isProjectManager = user?.role === ROLES.PROJECT_MANAGER;
+  const isViewer = user?.role === ROLES.VIEWER;
+  const [menuItems, setMenuItems] = useState([]);
+  const [loadingMenus, setLoadingMenus] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    return saved === 'true';
+  });
+
+  const toggleCollapse = () => {
+    setIsCollapsed(prev => {
+      const newValue = !prev;
+      localStorage.setItem('sidebar-collapsed', String(newValue));
+      // Dispatch custom event for AppLayout
+      window.dispatchEvent(new CustomEvent('sidebar-toggle', { detail: newValue }));
+      return newValue;
+    });
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadAccessibleMenus();
+    }
+  }, [user]);
+
+  const loadAccessibleMenus = async () => {
+    try {
+      setLoadingMenus(true);
+      // Récupérer les menus accessibles selon le profil de l'utilisateur
+      const data = await profileService.getActiveMenuItems();
+      console.log("Menus chargés:", data);
+      setMenuItems(data);
+    } catch (err) {
+      console.error("Erreur chargement menus:", err);
+      setMenuItems([]);
+    } finally {
+      setLoadingMenus(false);
+    }
+  };
+
+  const isMenuAccessible = (route) => {
+    if (!route) return false;
+    return menuItems.some(menu => menu.route === route);
+  };
 
   return (
-    <aside className="sb-shell">
+    <aside className={`sb-shell ${isCollapsed ? 'is-collapsed' : ''}`}>
+      {/* Toggle Button */}
+      <button className="sb-toggle-btn" onClick={toggleCollapse} title={isCollapsed ? "Déplier la sidebar" : "Replier la sidebar"}>
+        <i className={`ri-arrow-${isCollapsed ? 'right' : 'left'}-s-line`} />
+      </button>
+
       {/* Brand Header — Elite Corner (Monolith) */}
       <div className="sb-brand">
         <div className="sb-logo-box" style={{display:'flex', alignItems:'center', gap:'12px'}}>
@@ -399,55 +545,51 @@ export default function Sidebar() {
       {/* Navigation Layer — Pro Scroll */}
       <div className="sb-nav-container">
         <div className="sb-scroll">
-          <Section title="Pilotage">
-            <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" />
-            {isAdmin && (
-              <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} />
-            )}
-            <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" />
+          <Section title="Pilotage" isCollapsed={isCollapsed}>
+            {/* ✅ [REMOVED] Dashboard Global - Page principale supprimée */}
+            {/* <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" accessible={isMenuAccessible("/dashboard")} isCollapsed={isCollapsed} /> */}
+            <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={true} isCollapsed={isCollapsed} />
+            {/* ✅ [REMOVED] Diagnostic Avancé - Non fonctionnelle */}
+            {/* <NavItem icon="ri-stethoscope-line" label="Diagnostic Avancé" to={`/analytics/diagnostic${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/analytics/diagnostic")} isCollapsed={isCollapsed} /> */}
+            <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" accessible={isMenuAccessible("/developers")} isCollapsed={isCollapsed} />
           </Section>
 
           <div className="sb-divider" />
 
-          <Section title="Activité Code">
-            <NavItem icon="ri-git-merge-line"        label="Merge Requests"      to={`/merge${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} />
-            <NavItem icon="ri-git-commit-line"       label="Commits GitLab"      to={`/commits${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} />
-            <NavItem icon="ri-line-chart-line"       label="Analyses KPI"        to="/kpi-analysis" />
-            <NavItem icon="ri-notification-3-line"   label="Alertes KPI"         to="/alerts" />
+          <Section title="Activité Code" isCollapsed={isCollapsed}>
+            <NavItem icon="ri-git-merge-line"        label="Merge Requests"      to={`/merge${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/merge")} isCollapsed={isCollapsed} />
+            <NavItem icon="ri-git-commit-line"       label="Commits GitLab"      to={`/commits${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/commits")} isCollapsed={isCollapsed} />
+            {/* ✅ [REMOVED] Analyses KPI - Non fonctionnelle */}
+            {/* <NavItem icon="ri-line-chart-line"       label="Analyses KPI"        to="/kpi-analysis" accessible={isMenuAccessible("/kpi-analysis")} isCollapsed={isCollapsed} /> */}
+            {/* ✅ [REMOVED] Alerts KPI - Non fonctionnelle */}
+            {/* <NavItem icon="ri-notification-3-line"   label="Alertes KPI"         to="/alerts" accessible={isMenuAccessible("/alerts")} isCollapsed={isCollapsed} /> */}
           </Section>
 
           <div className="sb-divider" />
 
-          <Section title="Extraction">
-            <NavItem icon="ri-database-2-line"       label="Registre des Lots"   to="/extraction-lots" />
-            <NavItem icon="ri-rocket-2-line"         label="Moteur d'Extraction" to="/extraction" />
+          <Section title="Extraction" isCollapsed={isCollapsed}>
+            <NavItem icon="ri-database-2-line"       label="Registre des Lots"   to="/extraction-lots" accessible={isMenuAccessible("/extraction-lots")} isCollapsed={isCollapsed} />
+            <NavItem icon="ri-rocket-2-line"         label="Moteur d'Extraction" to="/extraction" accessible={isMenuAccessible("/extraction")} isCollapsed={isCollapsed} />
           </Section>
 
-          {(isAdmin || isLead) && (
-            <>
-              <div className="sb-divider" />
-              <Section title="Administration">
-                {isAdmin && (
-                  <NavItem icon="ri-settings-3-line" label="Configuration" children={[
-                    { to: "/admin/sites",          label: "Sites Telnet"         },
-                    { to: "/admin/projects",       label: "Projets GitLab"       },
-                    { to: "/admin/gitlab-configs", label: "Configs GitLab"       },
-                    { to: "/admin/users",          label: "Utilisateurs"         },
-                    { to: "/admin/developers",     label: "Validation Profils"   },
-                    { to: "/admin/periods",        label: "Périodes"             },
-                    { to: "/admin/kpi-definitions",label: "Définitions KPI"      },
-                    { to: "/admin/kpi-thresholds", label: "Seuils KPI"           },
-                    { to: "/admin/dashboards",     label: "Dashboards"           },
-                  ]} />
-                )}
-                <NavItem icon="ri-building-2-line"   label="Business Units"    to="/team" />
-                <NavItem icon="ri-upload-2-line"     label="Import Développeurs" to="/admin/developers/import" />
-                {isAdmin && (
-                  <NavItem icon="ri-shield-check-line" label="Audit Log"         to="/admin/audit-log" />
-                )}
-              </Section>
-            </>
-          )}
+          <Section title="Administration" accessible={isAdmin || isLead || isProjectManager || isViewer} isCollapsed={isCollapsed}>
+            <NavItem icon="ri-settings-3-line" label="Configuration" accessible={isMenuAccessible("/admin/sites")} isCollapsed={isCollapsed} children={[
+              { to: "/admin/sites",          label: "Sites Telnet",         accessible: isMenuAccessible("/admin/sites") },
+              { to: "/admin/projects",       label: "Projets GitLab",       accessible: isMenuAccessible("/admin/projects") },
+              { to: "/admin/gitlab-configs", label: "Configs GitLab",       accessible: isMenuAccessible("/admin/gitlab-configs") },
+              { to: "/admin/users",          label: "Utilisateurs",         accessible: isMenuAccessible("/admin/users") },
+              { to: "/admin/developers",     label: "Validation Profils",   accessible: isMenuAccessible("/admin/developers") },
+              { to: "/admin/periods",        label: "Périodes",             accessible: isMenuAccessible("/admin/periods") },
+              { to: "/admin/kpi-definitions",label: "Définitions KPI",      accessible: isMenuAccessible("/admin/kpi-definitions") },
+              {/* { to: "/admin/kpi-thresholds", label: "Seuils KPI",           accessible={isMenuAccessible("/admin/kpi-thresholds") }, */}
+            ]} />
+            <NavItem icon="ri-user-settings-line" label="Profils & Menu"      to="/admin/profiles" accessible={isMenuAccessible("/admin/profiles")} isCollapsed={isCollapsed} />
+            <NavItem icon="ri-time-line"         label="Scheduler Admin"    to="/admin/scheduler" accessible={isMenuAccessible("/admin/scheduler")} isCollapsed={isCollapsed} />
+            {/* ✅ [REMOVED] Business Units - Page supprimée */}
+            {/* <NavItem icon="ri-building-2-line"   label="Business Units"    to="/team" accessible={isMenuAccessible("/team")} isCollapsed={isCollapsed} /> */}
+            <NavItem icon="ri-upload-2-line"     label="Import Développeurs" to="/admin/developers/import" accessible={isMenuAccessible("/admin/developers/import")} isCollapsed={isCollapsed} />
+            <NavItem icon="ri-shield-check-line" label="Audit Log"         to="/admin/audit-log" accessible={isMenuAccessible("/admin/audit-log")} isCollapsed={isCollapsed} />
+          </Section>
         </div>
       </div>
 

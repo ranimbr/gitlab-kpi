@@ -1,0 +1,47 @@
+=== HISTORIQUE DES MUTATIONS DE SITES ===
+Nom du Dev,Site Affecté,Mission Active ?,Date de Début,Date de Fin
+Elliot Forbes,Paris,NON (Terminé),2026-01-01,2026-02-28
+Elliot Forbes,Tunis,OUI,2026-03-01,En cours
+Igor Drozdov,Paris,OUI,2026-01-01,En cours
+Kārlis Seņko,Sfax,OUI,2026-01-01,En cours
+Martin Owens,Sfax,OUI,2026-01-01,En cours
+Michael Pöhn,Sfax,OUI,2026-01-01,En cours
+Mike Kowalski,Tunis,OUI,2026-01-01,En cours
+Pablo Gil Fernández,Paris,OUI,2026-01-01,En cours
+Peter Serwylo,Paris,OUI,2026-01-01,En cours
+Torsten Grote,Tunis,OUI,2026-01-01,En cours
+Vaibhav Malik,Paris,OUI,2026-01-01,En cours
+Vasilii Iakliushin,Sfax,OUI,2026-01-01,En cours
+Wen-Wei Kao,Tunis,OUI,2026-01-01,En cours
+
+=== HISTORIQUE DES MUTATIONS D'ÉQUIPES (GROUPES) ===
+Nom du Dev,Équipe Affectée,Mission Active ?,Date de Début,Date de Fin
+Elliot Forbes,Équipe Backend,NON (Terminé),2026-01-01,2026-02-28
+Elliot Forbes,Équipe Frontend,OUI,2026-03-01,En cours
+Igor Drozdov,Équipe DevOps,NON (Terminé),2026-01-01,2026-05-01
+Kārlis Seņko,Équipe Backend,OUI,2026-01-01,En cours
+Martin Owens,Équipe Frontend,OUI,2026-01-01,En cours
+Michael Pöhn,Équipe Mobile,OUI,2026-01-01,En cours
+Mike Kowalski,Équipe Frontend,OUI,2026-01-01,En cours
+Pablo Gil Fernández,Équipe DevOps,OUI,2026-01-01,En cours
+Peter Serwylo,Équipe Mobile,OUI,2026-01-01,En cours
+Torsten Grote,Équipe Mobile,OUI,2026-01-01,En cours
+Vaibhav Malik,Équipe QA,NON (Terminé),2026-01-01,2026-01-31
+Vasilii Iakliushin,Équipe Backend,OUI,2026-01-01,En cours
+Wen-Wei Kao,Équipe Frontend,OUI,2026-06-15,En cours
+
+=== HISTORIQUE DES MUTATIONS DE PROJETS ===
+Nom du Dev,Projet Affecté,Mission Active ?,Date de Début,Date de Fin
+Elliot Forbes,gitlab-shell,NON (Terminé),2026-01-01,2026-02-28
+Elliot Forbes,inkscape,OUI,2026-03-01,En cours
+Igor Drozdov,gitlab-shell,OUI,2026-01-01,2026-05-01
+Kārlis Seņko,inkscape,OUI,2026-01-01,En cours
+Martin Owens,inkscape,OUI,2026-01-01,En cours
+Michael Pöhn,fdroid-client,OUI,2026-01-01,En cours
+Mike Kowalski,inkscape,OUI,2026-01-01,En cours
+Pablo Gil Fernández,inkscape,OUI,2026-01-01,En cours
+Peter Serwylo,fdroid-client,OUI,2026-01-01,En cours
+Torsten Grote,fdroid-client,OUI,2026-01-01,En cours
+Vaibhav Malik,gitlab-shell,OUI,2026-01-01,2026-01-31
+Vasilii Iakliushin,gitlab-shell,OUI,2026-01-01,En cours
+Wen-Wei Kao,inkscape,OUI,2026-01-01,En cours

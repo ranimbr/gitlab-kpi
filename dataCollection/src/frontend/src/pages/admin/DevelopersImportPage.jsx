@@ -664,19 +664,17 @@ export default function DevelopersImportPage() {
                   </div>
 
                   <div className="col-md-12">
-                    <div className="p-3 rounded-3 mb-2" style={{ background: "#F0F9FF", border: "1px solid #B9E6FE" }}>
-                      <label className="form-label fw-bold fs-13 text-primary mb-2">
-                        <i className="ri-calendar-event-line me-1"></i> Période de Mission (Obligatoire)
+                    <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                      <label className="form-label fw-bold fs-13 mb-2">
+                        <i className="ri-calendar-event-line me-1"></i> Période de Mission (Optionnel)
                       </label>
                       <div className="d-flex align-items-center gap-3">
                         <select 
                           className="form-select flex-grow-1" 
                           value={periodId} 
                           onChange={e => setPeriodId(e.target.value)}
-                          style={{ border: "2px solid #0EA5E9" }}
-                          required
                         >
-                          <option value="">-- Sélectionner la période cible --</option>
+                          <option value="">-- Optionnel (pour Full Sync uniquement) --</option>
                           {periods.map(p => (
                             <option key={p.id} value={p.id}>
                               {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
@@ -684,13 +682,13 @@ export default function DevelopersImportPage() {
                           ))}
                         </select>
                         <div className="flex-shrink-0">
-                          <span className="badge bg-primary px-3 py-2">Scope Temporel</span>
+                          <span className="badge bg-secondary px-3 py-2">Scope Temporel</span>
                         </div>
                       </div>
                       <p className="text-muted fs-11 mt-2 mb-0">
                         <i className="ri-information-line me-1"></i>
-                        Les associations développeurs-projets (missions) seront isolées pour ce mois uniquement. 
-                        <strong>Mirroring :</strong> les affectations précédentes pour ce mois seront remplacées par le contenu du CSV.
+                        <strong>Optionnel</strong> : Laissez vide pour l'import initial ou les corrections. 
+                        Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
                       </p>
                     </div>
                   </div>
@@ -1092,6 +1090,10 @@ export default function DevelopersImportPage() {
                             <p className="fw-semibold mb-1 fs-12 text-truncate">{log.file_name || "fichier"}</p>
                             <div className="d-flex flex-wrap gap-1 mb-1">
                               <StatusBadge status={log.status} />
+                              <span className="badge fs-10"
+                                style={{ background: "#E0E7FF", color: "#3730A3" }}>
+                                {log.target_database || "unknown"}
+                              </span>
                               {log.success_count > 0 && (
                                 <span className="badge fs-10"
                                   style={{ background: "#ECFDF5", color: "#059669" }}>

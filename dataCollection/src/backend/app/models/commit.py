@@ -25,7 +25,7 @@ class Commit(Base):
     # authored_date  : date à laquelle l'auteur a créé le commit (git author date)
     # committed_date : date à laquelle le commit a été intégré au dépôt (git commit date)
     # Les deux diffèrent en cas de cherry-pick ou rebase.
-    authored_date  = Column(DateTime(timezone=True), nullable=False)
+    authored_date  = Column(DateTime(timezone=True), primary_key=True, nullable=False)
     committed_date = Column(DateTime(timezone=True), nullable=False)
 
     # ── Statistiques de code ─────────────────────────────────────────────────
@@ -106,6 +106,10 @@ class Commit(Base):
 
         # Commits par branche (filtrage dashboard)
         Index("idx_commit_branch",            "project_id", "branch_name"),
+
+        # ✅ [ENTERPRISE] Index composite haute performance pour les KPIs mensuels
+        # Couvre project_id + date + dev_id en une seule passe d'index
+        Index("idx_commit_analytics_perf",    "project_id", "authored_date", "developer_id", "is_merge_commit"),
 
         # ✅ AJOUT : contrainte métier — total_changes doit être cohérent
         # additions + deletions = total_changes (toujours vrai dans l'API GitLab)

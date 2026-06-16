@@ -6,7 +6,7 @@ from datetime import date
 from typing import Optional, List
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.kpi_snapshot import KpiSnapshot
 from app.repositories.base import BaseRepository
@@ -252,6 +252,7 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
 
         return (
             db.query(KpiSnapshot)
+            .options(joinedload(KpiSnapshot.site), joinedload(KpiSnapshot.group))
             .filter(
                 KpiSnapshot.project_id    == project_id,
                 KpiSnapshot.period_id     == period_id,
@@ -262,6 +263,171 @@ class KpiSnapshotRepository(BaseRepository[KpiSnapshot]):
             .order_by(getattr(KpiSnapshot, kpi_field).desc())
             .all()
         )
+
+    def get_latest_per_site(
+        self,
+        db:         Session,
+        project_id: int,
+    ) -> List[KpiSnapshot]:
+        """
+        Retourne le dernier snapshot (par date) pour chaque site d'un projet.
+        Utilisé par IntelligenceService pour l'analyse inter-sites.
+        Seuls les snapshots de niveau site (site_id IS NOT NULL, developer_id IS NULL,
+        group_id IS NULL) sont inclus.
+        """
+        # Sous-requête : max snapshot_date par site
+        subq = (
+            db.query(
+                KpiSnapshot.site_id,
+                func.max(KpiSnapshot.snapshot_date).label("max_date")
+            )
+            .filter(
+                KpiSnapshot.project_id == project_id,
+                KpiSnapshot.site_id.isnot(None),
+                KpiSnapshot.developer_id.is_(None),
+                KpiSnapshot.group_id.is_(None),
+            )
+            .group_by(KpiSnapshot.site_id)
+            .subquery()
+        )
+
+        return (
+            db.query(KpiSnapshot)
+            .options(joinedload(KpiSnapshot.site))
+            .join(
+                subq,
+                (KpiSnapshot.site_id == subq.c.site_id)
+                & (KpiSnapshot.snapshot_date == subq.c.max_date)
+            )
+            .filter(
+                KpiSnapshot.project_id == project_id,
+                KpiSnapshot.developer_id.is_(None),
+                KpiSnapshot.group_id.is_(None),
+            )
+            .all()
+        )
+
+    def get_history_per_site_multi(
+        self,
+        db:         Session,
+        project_id: int,
+        n_periods:  int = 3,
+    ) -> dict:
+        """
+        Retourne l'historique des N dernières périodes pour chaque site.
+        Utilisé par IntelligenceService pour l'analyse multi-périodes (tendances).
+
+        Returns:
+            Dict[site_id -> List[KpiSnapshot]] trié du plus ancien au plus récent.
+            Seuls les snapshots de niveau site (site_id NOT NULL, developer_id NULL,
+            group_id NULL) sont inclus.
+        """
+        # Récupérer tous les snapshots de niveau site avec eager loading du site relationship
+        rows = (
+            db.query(KpiSnapshot)
+            .options(joinedload(KpiSnapshot.site))
+            .filter(
+                KpiSnapshot.project_id   == project_id,
+                KpiSnapshot.site_id.isnot(None),
+                KpiSnapshot.developer_id.is_(None),
+                KpiSnapshot.group_id.is_(None),
+            )
+            .order_by(KpiSnapshot.site_id, KpiSnapshot.snapshot_date.desc())
+            .all()
+        )
+
+        # Grouper par site et garder uniquement les N derniers
+        from collections import defaultdict
+        site_histories: dict = defaultdict(list)
+        for snap in rows:
+            history = site_histories[snap.site_id]
+            if len(history) < n_periods:
+                history.append(snap)
+
+        # Remettre dans l'ordre chronologique (plus ancien → plus récent)
+        for site_id in site_histories:
+            site_histories[site_id] = list(reversed(site_histories[site_id]))
+
+        return dict(site_histories)
+
+    def get_latest_per_group(
+        self,
+        db:         Session,
+        project_id: int,
+    ) -> List[KpiSnapshot]:
+        """
+        Retourne le dernier snapshot (par date) pour chaque équipe (group) d'un projet.
+        Utilisé par IntelligenceService pour l'analyse inter-équipes.
+        Seuls les snapshots de niveau group (group_id IS NOT NULL, developer_id IS NULL) sont inclus.
+        """
+        # Sous-requête : max snapshot_date par group
+        subq = (
+            db.query(
+                KpiSnapshot.group_id,
+                func.max(KpiSnapshot.snapshot_date).label("max_date")
+            )
+            .filter(
+                KpiSnapshot.project_id == project_id,
+                KpiSnapshot.group_id.isnot(None),
+                KpiSnapshot.developer_id.is_(None),
+            )
+            .group_by(KpiSnapshot.group_id)
+            .subquery()
+        )
+
+        return (
+            db.query(KpiSnapshot)
+            .options(joinedload(KpiSnapshot.group))
+            .filter(
+                KpiSnapshot.project_id == project_id,
+                KpiSnapshot.group_id.isnot(None),
+                KpiSnapshot.developer_id.is_(None),
+                KpiSnapshot.snapshot_date == subq.c.max_date,
+                KpiSnapshot.group_id == subq.c.group_id
+            )
+            .all()
+        )
+
+    def get_history_per_group_multi(
+        self,
+        db:         Session,
+        project_id: int,
+        n_periods:  int = 3,
+    ) -> dict:
+        """
+        Retourne l'historique des N dernières périodes pour chaque équipe (group).
+        Utilisé par IntelligenceService pour l'analyse multi-périodes inter-équipes.
+
+        Returns:
+            Dict[group_id -> List[KpiSnapshot]] trié du plus ancien au plus récent.
+            Seuls les snapshots de niveau group (group_id NOT NULL, developer_id NULL) sont inclus.
+        """
+        # Récupérer tous les snapshots de niveau group avec eager loading du group relationship
+        rows = (
+            db.query(KpiSnapshot)
+            .options(joinedload(KpiSnapshot.group))
+            .filter(
+                KpiSnapshot.project_id   == project_id,
+                KpiSnapshot.group_id.isnot(None),
+                KpiSnapshot.developer_id.is_(None),
+            )
+            .order_by(KpiSnapshot.group_id, KpiSnapshot.snapshot_date.desc())
+            .all()
+        )
+
+        # Grouper par group et garder uniquement les N derniers
+        from collections import defaultdict
+        group_histories: dict = defaultdict(list)
+        for snap in rows:
+            history = group_histories[snap.group_id]
+            if len(history) < n_periods:
+                history.append(snap)
+
+        # Remettre dans l'ordre chronologique (plus ancien → plus récent)
+        for group_id in group_histories:
+            group_histories[group_id] = list(reversed(group_histories[group_id]))
+
+        return dict(group_histories)
 
     def get_developers_ranking(
         self,

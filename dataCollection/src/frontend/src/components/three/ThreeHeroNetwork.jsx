@@ -21,11 +21,11 @@ export default function ThreeHeroNetwork() {
     const mount = mountRef.current;
     if (!mount) return;
 
-    const w = mount.clientWidth  || window.innerWidth;
+    const w = mount.clientWidth || window.innerWidth;
     const h = mount.clientHeight || window.innerHeight;
 
     // ── Scene, Camera, Renderer ────────────────────────────────────
-    const scene  = new THREE.Scene();
+    const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(52, w / h, 0.1, 200);
     camera.position.set(0, 3.5, 16);
 
@@ -41,13 +41,13 @@ export default function ThreeHeroNetwork() {
 
     // ── Fine particle field (background texture only) ──────────────
     const STAR_COUNT = 400;
-    const starPos    = new Float32Array(STAR_COUNT * 3);
+    const starPos = new Float32Array(STAR_COUNT * 3);
     for (let i = 0; i < STAR_COUNT; i++) {
-      starPos[i * 3]     = (Math.random() - 0.5) * 70;
+      starPos[i * 3] = (Math.random() - 0.5) * 70;
       starPos[i * 3 + 1] = (Math.random() - 0.5) * 35;
       starPos[i * 3 + 2] = (Math.random() - 0.5) * 50 - 5;
     }
-    const starGeo  = new THREE.BufferGeometry();
+    const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
     const starMesh = new THREE.Points(
       starGeo,
@@ -62,9 +62,9 @@ export default function ThreeHeroNetwork() {
 
     // ── Network Nodes — small, monochrome, elegant ─────────────────
     const NODE_COUNT = 38;
-    const SPREAD     = 10;
-    const nodeData   = [];
-    const nodeGeo    = new THREE.SphereGeometry(0.055, 8, 6); // small
+    const SPREAD = 10;
+    const nodeData = [];
+    const nodeGeo = new THREE.SphereGeometry(0.055, 8, 6); // small
 
     for (let i = 0; i < NODE_COUNT; i++) {
       const mat = new THREE.MeshBasicMaterial({
@@ -76,7 +76,7 @@ export default function ThreeHeroNetwork() {
 
       // Disc-like spread with variance
       const angle = Math.random() * Math.PI * 2;
-      const rad   = Math.pow(Math.random(), 0.6) * SPREAD;
+      const rad = Math.pow(Math.random(), 0.6) * SPREAD;
       mesh.position.set(
         Math.cos(angle) * rad,
         (Math.random() - 0.5) * 4,
@@ -86,18 +86,18 @@ export default function ThreeHeroNetwork() {
       scene.add(mesh);
       nodeData.push({
         mesh,
-        baseY:     mesh.position.y,
+        baseY: mesh.position.y,
         driftFreq: 0.25 + Math.random() * 0.3,
-        driftAmp:  0.12 + Math.random() * 0.2,
-        phase:     Math.random() * Math.PI * 2,
+        driftAmp: 0.12 + Math.random() * 0.2,
+        phase: Math.random() * Math.PI * 2,
         pulseFreq: 0.5 + Math.random() * 0.7,
       });
     }
 
     // ── Edge system — minimal lines, barely-there ──────────────────
-    const MAX_EDGES  = 120;
-    const edgePos    = new Float32Array(MAX_EDGES * 2 * 3);
-    const edgeGeo    = new THREE.BufferGeometry();
+    const MAX_EDGES = 120;
+    const edgePos = new Float32Array(MAX_EDGES * 2 * 3);
+    const edgeGeo = new THREE.BufferGeometry();
     const edgePosBuf = new THREE.BufferAttribute(edgePos, 3);
     edgePosBuf.setUsage(THREE.DynamicDrawUsage);
     edgeGeo.setAttribute("position", edgePosBuf);
@@ -119,13 +119,13 @@ export default function ThreeHeroNetwork() {
 
     const onMouse = (e) => {
       // Minimal parallax — 10% of original. Barely moves.
-      mouseX = (e.clientX / window.innerWidth  - 0.5) * 0.8;
+      mouseX = (e.clientX / window.innerWidth - 0.5) * 0.8;
       mouseY = (e.clientY / window.innerHeight - 0.5) * 0.5;
     };
     window.addEventListener("mousemove", onMouse);
 
     const onResize = () => {
-      const nw = mount.clientWidth  || window.innerWidth;
+      const nw = mount.clientWidth || window.innerWidth;
       const nh = mount.clientHeight || window.innerHeight;
       camera.aspect = nw / nh;
       camera.updateProjectionMatrix();
@@ -136,7 +136,7 @@ export default function ThreeHeroNetwork() {
     // ── Animation Loop ─────────────────────────────────────────────
     const clock = new THREE.Clock();
     const CONN_DIST = 2.6;  // shorter = fewer edges = cleaner
-    const tmpVec    = new THREE.Vector3();
+    const tmpVec = new THREE.Vector3();
     let animId;
 
     const animate = () => {
@@ -172,7 +172,7 @@ export default function ThreeHeroNetwork() {
           tmpVec.subVectors(pa, pb);
           if (tmpVec.length() < CONN_DIST) {
             const base = edgeIdx * 2 * 3;
-            edgePos[base]     = pa.x; edgePos[base + 1] = pa.y; edgePos[base + 2] = pa.z;
+            edgePos[base] = pa.x; edgePos[base + 1] = pa.y; edgePos[base + 2] = pa.z;
             edgePos[base + 3] = pb.x; edgePos[base + 4] = pb.y; edgePos[base + 5] = pb.z;
             edgeIdx++;
           }

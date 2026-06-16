@@ -463,9 +463,16 @@ export default function DeveloperPerformancePage() {
       setProjects(projList);
 
       const isAll = selectedPid === "all";
-      const pid = isAll ? null : (parseInt(selectedPid) || projList[0]?.id);
+      // ✅ [FIX] Si selectedPid est vide, utiliser le premier projet disponible
+      const pid = isAll ? null : (parseInt(selectedPid) || (projList.length > 0 ? projList[0].id : null));
       
       // If no valid PID and not "all", we can't load project-specific stats
+      if (!pid && !isAll && projList.length > 0) { 
+        // Auto-select first project instead of returning early
+        setSelectedPid(String(projList[0].id));
+        setLoading(false); 
+        return; 
+      }
       if (!pid && !isAll) { setLoading(false); return; }
 
       // 2. Fetch snapshot + heatmap + all-team stats in parallel
@@ -477,7 +484,7 @@ export default function DeveloperPerformancePage() {
           periodId: selectedPeriodId 
         }).catch(() => null),
         developerService.getHeatmap(id, 6).catch(() => null),
-        analyticsService.getDeveloperSummary(pid, parseInt(id), { lot_id: selectedLotId }).catch(() => null),
+        analyticsService.getDeveloperSummary(pid, parseInt(id), { lot_id: selectedLotId, periodId: selectedPeriodId }).catch(() => null),
       ]);
 
       setSnapshot(snapData);
@@ -494,7 +501,7 @@ export default function DeveloperPerformancePage() {
               allDevs
                 .filter(d => d.id !== parseInt(id))
                 .slice(0, 15)
-                .map(d => analyticsService.getLatest(pid, { developerId: d.id, lotId: selectedLotId }))
+                .map(d => analyticsService.getLatest(pid, { developerId: d.id, lotId: selectedLotId, periodId: selectedPeriodId }))
             );
             const scores = allSnapshots
               .filter(r => r.status === "fulfilled" && r.value?.developer_score != null)
@@ -516,7 +523,7 @@ export default function DeveloperPerformancePage() {
     } finally {
       setLoading(false);
     }
-  }, [id, selectedPid, selectedLotId]);
+  }, [id, selectedPid, selectedLotId, selectedPeriodId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

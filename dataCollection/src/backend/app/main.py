@@ -1,9 +1,12 @@
 """FastAPI application entrypoint."""
+import json
 import logging
+import math
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.api_router import api_router
 from app.core.config import get_settings
@@ -11,10 +14,43 @@ from app.core.logging_config import setup_logging
 from app.database.init_db import init_db
 from app.schemas.kpi import SimpleMessageResponse
 
+# INDICATEUR DE VERSION - MODIFIÉ POUR DÉBOGGER
+print("[MAIN] Module loaded - VERSION 2026-06-09-00:14")
+
 settings = get_settings()
 
 setup_logging(debug=settings.DEBUG, log_file=settings.LOG_FILE)
 logger = logging.getLogger(__name__)
+
+
+class SafeJSONResponse(JSONResponse):
+    """Custom JSON response that handles infinity and NaN values."""
+    def render(self, content) -> bytes:
+        def sanitize(obj):
+            if isinstance(obj, float):
+                if math.isinf(obj) or math.isnan(obj):
+                    return None
+            return obj
+        
+        # Recursively sanitize the content
+        def sanitize_dict(d):
+            if isinstance(d, dict):
+                return {k: sanitize_dict(v) for k, v in d.items()}
+            elif isinstance(d, list):
+                return [sanitize_dict(item) for item in d]
+            elif isinstance(d, float):
+                if math.isinf(d) or math.isnan(d):
+                    return None
+            return d
+        
+        sanitized_content = sanitize_dict(content)
+        return json.dumps(
+            sanitized_content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+        ).encode("utf-8")
 
 
 @asynccontextmanager
@@ -39,7 +75,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database tables initialized")
 
     from app.database.session import SessionLocal
-    from app.core.seed_data import seed_kpi_definitions, seed_admin_user
+    from app.core.seed_data import seed_kpi_definitions, seed_admin_user, seed_menu_items, seed_profiles
 
     # 2. Seed KPI definitions required by threshold configuration.
     try:
@@ -49,6 +85,17 @@ async def lifespan(app: FastAPI):
                 logger.info(f"KpiDefinitions seeded — {nb_created} created")
     except Exception as e:
         logger.error(f"KpiDefinitions seed failed: {e}", exc_info=True)
+        # Non-blocking: app can start without seed data.
+
+    # 3. Seed menu items and profiles (new system)
+    try:
+        with SessionLocal() as db:
+            nb_menus = seed_menu_items(db)
+            nb_profiles = seed_profiles(db)
+            if nb_menus > 0 or nb_profiles > 0:
+                logger.info(f"Menu items and profiles seeded — {nb_menus} menus, {nb_profiles} profiles")
+    except Exception as e:
+        logger.error(f"Menu items/profiles seed failed: {e}", exc_info=True)
         # Non-blocking: app can start without seed data.
 
     # 3. Optional admin seed (ADMIN_EMAIL + ADMIN_PASSWORD in env).
@@ -104,6 +151,7 @@ app = FastAPI(
     ),
     lifespan       = lifespan,
     strict_slashes = False,
+    default_response_class = SafeJSONResponse,
 )
 
 # ── CORS (TOLERANT POLICY FOR PFE DEFENSE) ─────────────────────────────────────
@@ -115,6 +163,10 @@ app.add_middleware(
     allow_headers      = ["*"],
     expose_headers     = ["*"],
 )
+
+# ── Dynamic DB Selector ───────────────────────────────────────────────────────
+from app.api.middleware import DatabaseSelectorMiddleware
+app.add_middleware(DatabaseSelectorMiddleware)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(api_router, prefix="/api/v1")

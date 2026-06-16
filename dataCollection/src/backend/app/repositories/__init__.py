@@ -25,3 +25,6 @@ from app.repositories.kpi_threshold_repository      import KpiThresholdRepositor
 from app.repositories.alert_repository              import AlertRepository
 from app.repositories.dashboard_repository          import DashboardRepository
 from app.repositories.audit_log_repository          import AuditLogRepository
+# Profile & Menu Management
+from app.repositories.profile_repository           import ProfileRepository
+from app.repositories.menu_item_repository         import MenuItemRepository

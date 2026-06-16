@@ -23,11 +23,24 @@ import api from "../services/api";
 // ─── [SENIOR] Lifecycle Status Config (Binary & Deduced) ──────────────────────
 const STATUS_CONFIG = {
   ACTIVE:     { label: 'ACTIF',    color: '#10b981', bg: 'rgba(16,185,129,0.1)',  icon: 'ri-checkbox-circle-fill' },
-  OFFBOARDED: { label: 'PARTI',    color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', icon: 'ri-logout-box-r-line'    },
+  OFFBOARDED: { label: 'SORTIE',   color: '#ef4444', bg: 'rgba(239,68,68,0.1)',   icon: 'ri-logout-box-r-line'    },
+  FUTURE_JOINER: { label: 'FUTUR',  color: '#4361ee', bg: 'rgba(67,97,238,0.1)',   icon: 'ri-time-line'           },
+  OUT:        { label: 'SORTIE',   color: '#ef4444', bg: 'rgba(239,68,68,0.1)',   icon: 'ri-logout-box-r-line'    },
+  FUTURE:     { label: 'FUTUR',    color: '#4361ee', bg: 'rgba(67,97,238,0.1)',   icon: 'ri-time-line'           },
+  INACTIVE:   { label: 'INACTIF', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', icon: 'ri-user-unfollow-line' },
 };
 
 function getRhStatus(dev) {
-  return dev.is_active ? 'ACTIVE' : 'OFFBOARDED';
+  // ✅ [MISSION-AWARE] Priorité au statut RH calculé par le backend (SCD Type 2)
+  // Le backend calcule le statut en fonction des dates et des missions actives
+  if (dev.rh_status) return dev.rh_status;
+  
+  // Fallback pour compatibilité (si backend ne renvoie pas rh_status)
+  if (!dev.is_active) return 'OFFBOARDED';
+  if (dev.onboarding_date && new Date(dev.onboarding_date) > new Date()) return 'FUTURE';
+  if (dev.offboarding_date && new Date(dev.offboarding_date) < new Date()) return 'OUT';
+  
+  return 'ACTIVE';
 }
 
 // ─── [SENIOR] Modal Statut supprimé au profit de l'automatisation CSV ────────
@@ -114,9 +127,13 @@ const MiniRadar = ({ kpis }) => {
 };
 
 // ─── Component: Developer Card (Premium Grid Pattern) ─────────────────────────
-function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport, loading, projectFilter, selectedPeriodId, periods, onStatusChanged }) {
+function DeveloperCard({ dev, sites, latestKpis, alertCount, index, loading, projectFilter, selectedPeriodId, periods, onStatusChanged }) {
   const { isTeamLead } = useAuth();
   const [currentStatus, setCurrentStatus]     = useState(() => getRhStatus(dev));
+
+  useEffect(() => {
+    setCurrentStatus(getRhStatus(dev));
+  }, [dev]);
 
   const statusCfg = STATUS_CONFIG[currentStatus] || STATUS_CONFIG.ACTIVE;
   
@@ -149,9 +166,15 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
   const scoreColor = score == null ? '#94a3b8' : score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444';
   const persona = getPersona(devKpis);
 
+  const isGhost = currentStatus === 'OFFBOARDED' || currentStatus === 'OUT' || !dev.is_active;
+
   return (
     <div className="col-xl-4 col-sm-6">
-      <div className="card hover-lift h-100" style={{ overflow: 'hidden' }}>
+      <div className={`card hover-lift h-100 ${isGhost ? 'opacity-75' : ''}`} style={{ 
+        overflow: 'hidden',
+        filter: isGhost ? 'grayscale(0.6)' : 'none',
+        transition: 'all 0.3s ease'
+      }}>
         {/* Top accent bar */}
         <div style={{ height: 4, background: gradient }} />
         <div className="card-body" style={{ padding: '18px 20px' }}>
@@ -231,6 +254,12 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
             ) : (
               <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: '#f1f5f9', color: '#94a3b8' }}>EN ATTENTE</span>
             )}
+            {/* ✅ [MISSION-AWARE] Indicateur pour développeurs sans mission active */}
+            {currentStatus === 'INACTIVE' && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(245,158,11,0.1)', color: '#d97706' }}>
+                <i className="ri-user-unfollow-line me-1" />SANS MISSION
+              </span>
+            )}
             {siteName && (
               <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'rgba(67,97,238,0.1)', color: '#4361ee' }}>
                 <i className="ri-map-pin-line me-1" />{siteName}
@@ -278,13 +307,8 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
           {/* ✅ [SENIOR] No-data state removed: KPIs are now always aggregated globally if no project selected */}
         </div>
 
-        {/* Footer CTA */}
-        <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', padding: '10px 20px', background: '#fafbfc' }}>
-          <Link to={`/developers/${dev.id}/performance?project_id=${projectFilter}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ''}`}
-            style={{ fontSize: 12, fontWeight: 600, color: '#4361ee', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            Analyse détaillée <i className="ri-arrow-right-line" style={{ fontSize: 13 }} />
-          </Link>
-        </div>
+        {/* ✅ [REMOVED] Analyse détaillée - Non fonctionnelle */}
+        {/* Footer CTA removed as requested */}
 
         {/* [SENIOR] Lifecycle Information (Deduced from CSV/Sync) */}
         <div style={{ padding: '0 20px 15px 20px', background: '#fafbfc', display:'flex', flexDirection:'column', gap:6 }}>
@@ -302,12 +326,12 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
 
           <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', border: '1px solid #edf2f7' }}>
             <div className="d-flex justify-content-between mb-1">
-              <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8' }}>ENTRÉE</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8' }}>{currentStatus === 'FUTURE' || currentStatus === 'FUTURE_JOINER' ? 'ARRIVÉE PRÉVUE' : 'ENTRÉE'}</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#475569' }}>
                 {dev.onboarding_date ? new Date(dev.onboarding_date).toLocaleDateString('fr-FR') : 'Non renseignée'}
               </span>
             </div>
-            {!dev.is_active && (
+            {(dev.offboarding_date || currentStatus === 'OUT' || currentStatus === 'OFFBOARDED') && (
               <div className="d-flex justify-content-between">
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#ef4444' }}>SORTIE</span>
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444' }}>
@@ -317,15 +341,16 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, onShowReport
             )}
           </div>
 
-          {/* Bouton Timeline & Bilan */}
+          {/* Bouton Timeline */}
           <div className="d-flex gap-2 mt-1">
-            <button
+            {/* ✅ [REMOVED] BILAN - Non fonctionnelle */}
+            {/* <button
               onClick={() => onShowReport(dev.id)}
               className="btn btn-soft-primary btn-sm flex-grow-1 d-flex align-items-center justify-content-center gap-1"
               style={{ fontSize:10, fontWeight:700 }}
             >
               <i className="ri-file-chart-line" /> BILAN
-            </button>
+            </button> */}
             <Link 
               to={`/developers/${dev.id}#timeline`}
               className="btn btn-soft-info btn-sm flex-grow-1 d-flex align-items-center justify-content-center gap-1"
@@ -456,7 +481,7 @@ export default function DevelopersHubPage() {
   const [selectedDevId,    setSelectedDevId]    = useState(null);
   const [showImportModal,  setShowImportModal]  = useState(false);
 
-  // [SENIOR] Unified Data Loader
+  // [SENIOR] Unified Data Loader with Auto-Refresh
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -472,9 +497,6 @@ export default function DevelopersHubPage() {
       setSites(Array.isArray(sitesData) ? sitesData : []);
       const periodList = Array.isArray(periodsData) ? periodsData : [];
       setPeriods(periodList);
-      if (!selectedPeriodId && periodList.length > 0) {
-        setSelectedPeriodId(periodList[0].id);
-      }
       
       setGroups(Array.isArray(groupsData) ? groupsData : []);
 
@@ -490,7 +512,7 @@ export default function DevelopersHubPage() {
           developerService.getByTab("all", activeProjId, false, selectedPeriodId),
           developerService.getSummary(activeProjId, null, false, selectedPeriodId)
         ]);
-        setDevelopers(Array.isArray(devsData) ? devsData : []);
+        setDevelopers(devsData?.items || devsData || []);
         setSummary(summData || { total: 0, validated: 0, pending: 0, bots: 0 });
       }
     } catch (err) {
@@ -502,12 +524,28 @@ export default function DevelopersHubPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ✅ [MISSION-AWARE] Auto-refresh mechanism for developer mutations
+  // Recharge les données quand les filtres critiques changent (période, projet)
+  useEffect(() => {
+    if (projectFilter && projectFilter !== "all") {
+      const timer = setTimeout(() => {
+        loadData();
+      }, 2000); // Délai de 2s pour éviter les recharges excessives
+      return () => clearTimeout(timer);
+    }
+  }, [selectedPeriodId, projectFilter, loadData]);
+
   // Lots effect removed as requested by USER
 
   
   useEffect(() => {
     // [SENIOR] Now loading KPIs even in "all" mode to track developers globally
-    if (!projectFilter) return; 
+    if (!projectFilter || projectFilter === "all") {
+      setLeaderboard([]);
+      setLatestKpis({});
+      setLoadingLeaderboard(false);
+      return;
+    }
     setLoadingLeaderboard(true);
 
     developerService.getLeaderboard(projectFilter, { 
@@ -557,7 +595,7 @@ export default function DevelopersHubPage() {
       .finally(() => setLoadingLeaderboard(false));
 
     developerService.getByTab("validated").then(devs => {
-      const allDevs = Array.isArray(devs) ? devs : [];
+      const allDevs = devs?.items || devs || [];
       Promise.all(allDevs.slice(0, 30).map(d => 
         developerService.getDeveloperAlerts(d.id).then(alerts => ({ id: d.id, count: (alerts || []).length })).catch(() => ({ id: d.id, count: 0 }))
       )).then(results => {
@@ -597,12 +635,26 @@ export default function DevelopersHubPage() {
     let result = developers.filter(dev => {
       if (dev.is_bot) return false;
       if (validatedOnly && !dev.is_validated) return false;
-      // [SENIOR] Si une période est sélectionnée, on montre tout le monde (Cohorte), sinon on filtre les inactifs
-      if (!selectedPeriodId && !showInactive && !dev.is_active) return false;
+      
+      // ✅ [MISSION-AWARE] Filtrage intelligent basé sur le statut RH calculé par le backend
+      const currentStatus = getRhStatus(dev);
+      
+      // Si une période est sélectionnée, on utilise le statut RH contextuel (cohorte historique)
+      if (selectedPeriodId) {
+        // On cache les devs qui étaient FUTURE (pas encore arrivés) pendant cette période
+        if (currentStatus === 'FUTURE' || currentStatus === 'FUTURE_JOINER') return false;
+        // Les INACTIVE (sans mission active) et OUT sont montrés seulement si showInactive est activé
+        if (!showInactive && (currentStatus === 'INACTIVE' || currentStatus === 'OUT' || currentStatus === 'OFFBOARDED')) return false;
+      } else {
+        // Sans période: filtre par statut actuel (vue temps réel)
+        // On cache les devs inactifs/sortis sauf si showInactive est activé
+        if (!showInactive && (currentStatus === 'OFFBOARDED' || currentStatus === 'OUT' || currentStatus === 'INACTIVE')) return false;
+      }
+      
       const q = search.toLowerCase();
       if (q && !(dev.name || "").toLowerCase().includes(q) && !(dev.gitlab_username || "").toLowerCase().includes(q)) return false;
       if (siteFilter  !== "all" && String(dev.primary_site_id) !== String(siteFilter)) return false;
-      if (groupFilter !== "all" && String(dev.group_id)        !== String(groupFilter)) return false;
+      if (groupFilter !== "all" && !(dev.group_ids || []).map(String).includes(String(groupFilter))) return false;
       return true;
     });
 
@@ -627,7 +679,7 @@ export default function DevelopersHubPage() {
       return (b.id || 0) - (a.id || 0);
     });
     return result;
-  }, [developers, search, siteFilter, groupFilter, validatedOnly, sortBy, latestKpis]);
+  }, [developers, search, siteFilter, groupFilter, validatedOnly, sortBy, latestKpis, selectedPeriodId, showInactive]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
@@ -720,9 +772,10 @@ export default function DevelopersHubPage() {
                 
                 {isTeamLead && isTeamLead() && (
                   <>
-                    <Link to="/developers/compare" className="btn btn-soft-info btn-sm d-flex align-items-center gap-1" style={{ fontWeight: 600 }}>
+                    {/* ✅ [REMOVED] Comparer - Non fonctionnelle */}
+                    {/* <Link to="/developers/compare" className="btn btn-soft-info btn-sm d-flex align-items-center gap-1" style={{ fontWeight: 600 }}>
                       <i className="ri-scales-3-line"></i> Comparer
-                    </Link>
+                    </Link> */}
                     <button className="btn btn-primary btn-sm ms-1 d-flex align-items-center gap-1 shadow-sm" onClick={() => setShowImportModal(true)} style={{ fontWeight: 600 }}>
                       <i className="ri-upload-cloud-2-line"></i> Importer
                     </button>
@@ -765,7 +818,6 @@ export default function DevelopersHubPage() {
                         latestKpis={latestKpis}
                         alertCount={alertCounts[dev.id] || 0}
                         index={idx} 
-                        onShowReport={setSelectedDevId}
                         loading={false}
                         projectFilter={projectFilter}
                         selectedPeriodId={selectedPeriodId}

@@ -8,12 +8,13 @@ import calendar
 from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_admin, get_current_manager, get_current_team_lead_or_above, get_current_user
 from app.database.session import get_db
+from app.repositories.user_repository import AppUserRepository
 from app.models.app_user import AppUser
 from app.models.project import Project
 from app.models.site import Site
@@ -30,6 +31,7 @@ from app.schemas.developer import (
     DeveloperImportResponse,
     DeveloperResponse,
     DeveloperSummary,
+    PaginatedDeveloperSummary,
     DeveloperUpdate,
     DeveloperValidate,
     TimelineEvent,
@@ -41,9 +43,60 @@ from app.services.admin.developer_service import DeveloperService
 logger          = logging.getLogger(__name__)
 router          = APIRouter(prefix="/developers", tags=["Developers"])
 group_router    = APIRouter(tags=["Developer Groups"])
+
+# ──────────────────────────────────────────────────────────────────────────────────
+# HELPER : DÉTECTION DES CHANGEMENTS D'AFFECTATION
+# ──────────────────────────────────────────────────────────────────────────────────
+
+def _detect_changes(old_val: dict, new_val: dict, field_name: str, id_field: str) -> list:
+    """
+    Détecte les changements dans un tableau d'affectation (sites, group_ids, projects).
+    Retourne une liste de descriptions des changements.
+    """
+    old_items = old_val.get(field_name, [])
+    new_items = new_val.get(field_name, [])
+    
+    if not old_items and not new_items:
+        return []
+    
+    # Convertir en listes si ce sont des objets
+    if old_items and isinstance(old_items[0], dict):
+        old_ids = [item.get(id_field) for item in old_items if item.get(id_field)]
+    else:
+        old_ids = old_items if old_items else []
+    
+    if new_items and isinstance(new_items[0], dict):
+        new_ids = [item.get(id_field) for item in new_items if item.get(id_field)]
+    else:
+        new_ids = new_items if new_items else []
+    
+    changes = []
+    
+    # Ajouts
+    for new_id in new_ids:
+        if new_id not in old_ids:
+            changes.append(f"Ajouté {id_field}={new_id}")
+    
+    # Suppressions
+    for old_id in old_ids:
+        if old_id not in new_ids:
+            changes.append(f"Supprimé {id_field}={old_id}")
+    
+    return changes
 dev_repo        = DeveloperRepository()
 group_repo      = DeveloperGroupRepository()
 import_log_repo = DeveloperImportLogRepository()
+user_repo       = AppUserRepository()
+
+
+def _get_tenant_user_id(db: Session, current_user: AppUser) -> int:
+    """Récupère l'ID du tenant_user correspondant à l'utilisateur courant."""
+    tenant_user = user_repo.get_by_email(db, current_user.email)
+    if not tenant_user:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND_IN_TENANT: Utilisateur non trouvé dans la base tenant")
+    return tenant_user.id
+
+from pydantic import BaseModel as PydanticModel
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -55,11 +108,124 @@ def list_groups(
     db:           Session       = Depends(get_db),
     current_user: AppUser       = Depends(get_current_user),
     site_id:      Optional[int] = Query(default=None),
+    group_id:     Optional[int] = Query(default=None),
     active_only:  bool          = Query(default=False),
+    period_id:    Optional[int] = Query(default=None), # ✅ AJOUT SENIOR
 ):
+    # DEBUG: Log parameters
+    print(f"DEBUG /developer-groups - current_user.role: {current_user.role}, current_user.site_id: {current_user.site_id}, current_user.group_id: {current_user.group_id}")
+    print(f"DEBUG /developer-groups - site_id param: {site_id}, group_id param: {group_id}, active_only: {active_only}, period_id: {period_id}")
+    
+    # Enforce site-based access control for site_manager
+    if current_user.is_site_manager:
+        if site_id is None:
+            site_id = current_user.site_id
+            print(f"DEBUG /developer-groups - site_manager: using current_user.site_id: {site_id}")
+        elif site_id != current_user.site_id:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=403,
+                detail=f"Accès aux groupes du site {site_id} refusé. Vous gérez uniquement le site {current_user.site_id}."
+            )
+    
+    # Enforce group-based access control for team_lead
+    if current_user.is_team_lead:
+        # ✅ ARCHITECTURE MULTI-TENANT: Charger les assignations multi-équipes depuis tenant
+        from app.repositories.user_group_access_repository import UserGroupAccessRepository
+        group_access_repo = UserGroupAccessRepository()
+        
+        # Charger les assignations d'équipes depuis tenant
+        accessible_group_ids = [access.group_id for access in group_access_repo.get_by_user_id(db, _get_tenant_user_id(db, current_user))]
+        
+        # Fallback vers l'ancien système single group
+        if current_user.group_id:
+            accessible_group_ids.append(current_user.group_id)
+        
+        print(f"DEBUG /developer-groups - team_lead accessible_group_ids: {accessible_group_ids}")
+        
+        if not accessible_group_ids:
+            # Team lead without group assignments - return empty list
+            print(f"DEBUG /developer-groups - team_lead has no group assignments, returning empty list")
+            return []
+        
+        if group_id is None:
+            # Retourner tous les groupes accessibles
+            all_groups = group_repo.get_all(db, active_only=active_only, period_id=period_id)
+            accessible_groups = [g for g in all_groups if g.id in accessible_group_ids]
+            print(f"DEBUG /developer-groups - team_lead returning {len(accessible_groups)} accessible groups")
+            return accessible_groups
+        elif group_id not in accessible_group_ids:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=403,
+                detail=f"Accès au groupe {group_id} refusé. Vous gérez uniquement les groupes {accessible_group_ids}."
+            )
+        # For team_lead with specific group_id, return that group
+        group = group_repo.get_by_id(db, group_id)
+        print(f"DEBUG /developer-groups - team_lead: group by id returned: {group.name if group else 'None'}")
+        return [group] if group else []
+    
+    # Enforce project-based access control for project_manager
+    if current_user.is_project_manager:
+        # ✅ ARCHITECTURE MULTI-TENANT: Charger les assignations multi-projets depuis tenant
+        from app.repositories.user_project_access_repository import UserProjectAccessRepository
+        project_access_repo = UserProjectAccessRepository()
+        
+        accessible_project_ids = [access.project_id for access in project_access_repo.get_by_user_id(db, _get_tenant_user_id(db, current_user))]
+        
+        # Fallback vers l'ancien système single project
+        if current_user.project_ids:
+            accessible_project_ids.extend(current_user.project_ids)
+        
+        if not accessible_project_ids:
+            # Project manager without projects assigned - return empty list
+            print(f"DEBUG /developer-groups - project_manager has no projects assigned, returning empty list")
+            return []
+        
+        # Filter groups by user's assigned projects
+        # Get all groups, then filter by project associations
+        all_groups = group_repo.get_all(db, active_only=active_only, period_id=period_id)
+        # Filter groups that belong to the user's projects
+        # This requires checking group-project associations
+        # For now, return all groups and let frontend filter by project
+        # TODO: Implement proper project-based group filtering
+        print(f"DEBUG /developer-groups - project_manager: returning all groups (frontend will filter by project)")
+        return all_groups
+    
+    # ✅ FIX: Filter groups for viewer - only show their assigned groups (same logic as sites)
+    if current_user.role == 'viewer':
+        from app.repositories.user_group_access_repository import UserGroupAccessRepository
+        group_access_repo = UserGroupAccessRepository()
+        
+        # Charger les assignations de groupes depuis tenant
+        accessible_group_ids = [access.group_id for access in group_access_repo.get_by_user_id(db, _get_tenant_user_id(db, current_user))]
+        
+        print(f"DEBUG /developer-groups - viewer accessible_group_ids: {accessible_group_ids}")
+        
+        # Filtrer pour ne garder que les groupes accessibles
+        if accessible_group_ids:
+            all_groups = group_repo.get_all(db, active_only=active_only, period_id=period_id)
+            filtered_groups = [g for g in all_groups if g.id in accessible_group_ids]
+            print(f"DEBUG /developer-groups - viewer returning {len(filtered_groups)} assigned groups")
+            return filtered_groups
+        else:
+            # Si aucun groupe assigné, retourner une liste vide
+            print(f"DEBUG /developer-groups - viewer has no group assignments, returning empty list")
+            return []
+    
     if site_id:
-        return group_repo.get_by_site_id(db, site_id, active_only=active_only)
-    return group_repo.get_all(db, active_only=active_only)
+        groups = group_repo.get_by_site_id(db, site_id, active_only=active_only, period_id=period_id)
+        print(f"DEBUG /developer-groups - groups by site_id returned: {len(groups)}")
+        for g in groups:
+            print(f"DEBUG /developer-groups - group: {g.name} (id={g.id})")
+        return groups
+    if group_id:
+        group = group_repo.get_by_id(db, group_id)
+        print(f"DEBUG /developer-groups - group by id returned: {group.name if group else 'None'}")
+        return [group] if group else []
+    groups = group_repo.get_all(db, active_only=active_only, period_id=period_id)
+    print(f"DEBUG /developer-groups - all groups returned: {len(groups)}")
+    return groups
 
 
 @group_router.post("/developer-groups", response_model=DeveloperGroupResponse, status_code=201)
@@ -153,16 +319,16 @@ def delete_group(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/summary")
-def developers_summary(
+def get_developer_summary(
     db:               Session       = Depends(get_db),
     current_user:     AppUser       = Depends(get_current_user),
     project_id:       Optional[int] = Query(default=None),
     site_id:          Optional[int] = Query(default=None),
-    gitlab_config_id: Optional[int] = Query(default=None),
+    group_id:         Optional[int] = Query(default=None),
     period_id:        Optional[int] = Query(default=None),
 ):
     return dev_repo.get_summary(
-        db, project_id=project_id, site_id=site_id, gitlab_config_id=gitlab_config_id, period_id=period_id
+        db=db, project_id=project_id, site_id=site_id, group_id=group_id, period_id=period_id
     )
 
 
@@ -228,87 +394,236 @@ def download_import_template():
     )
 
 
-@router.get("", response_model=List[DeveloperSummary])
+@router.get("", response_model=PaginatedDeveloperSummary)
 def list_developers(
     db:               Session       = Depends(get_db),
     current_user:     AppUser       = Depends(get_current_user),
     project_id:       Optional[int] = Query(default=None),
     site_id:          Optional[int] = Query(default=None),
+    group_id:         Optional[int] = Query(default=None),
     gitlab_config_id: Optional[int] = Query(default=None),
     tab:              str           = Query(default="validated"),
     active_only:      bool          = Query(default=False),
-    period_id:        Optional[int] = Query(default=None), # AJOUT SENIOR
+    period_id:        Optional[int] = Query(default=None),
+    page:             int           = Query(default=1, ge=1),
+    size:             int           = Query(default=20, ge=1, le=100),
 ):
     # SENIOR : active_only force le tab 'validated' pour les KPIs
     effective_tab = "validated" if active_only else tab
     
-    devs = dev_repo.get_by_tab(
-        db=db, tab=effective_tab, project_id=project_id, site_id=site_id, gitlab_config_id=gitlab_config_id,
-        period_id=period_id, active_only=active_only
+    skip = (page - 1) * size
+    devs, total = dev_repo.get_by_tab(
+        db=db, tab=effective_tab, 
+        project_id=project_id, site_id=site_id, group_id=group_id,
+        gitlab_config_id=gitlab_config_id,
+        period_id=period_id, active_only=active_only,
+        skip=skip, limit=size
     )
+
+    # ✅ SENIOR : Intelligence post-filtrage pour l'extraction
+    # On nettoie les associations pour ne garder que ce qui est UNIQUE
+    if tab == "extraction":
+        for dev in devs:
+            # 1. Si period_id est fourni, on ne fait pas de dé-duplication hâtive qui détruit l'historique SCD Type 2.
+            # On laisse le filtrage temporel par période s'occuper de sélectionner la bonne association.
+            if period_id is None:
+                all_pas = dev.project_associations
+                seen_projects = set()
+                unique_pas = []
+                for pa in all_pas:
+                    if pa.project_id not in seen_projects:
+                        unique_pas.append(pa)
+                        seen_projects.add(pa.project_id)
+                dev.project_associations = unique_pas
+            
+            # 3. On garde les missions sites (on ne filtre plus par is_active ici)
+            dev.site_associations = dev.site_associations
+
+            # 4. ✅ [SENIOR] FIX : Override rh_status pour le frontend
+            # Puisque le repository nous a renvoyé ce dev pour l'extraction,
+            # on le force en "ACTIVE" pour que les cases à cocher ne soient pas grisées
+            # même si le dev est OFFBOARDED aujourd'hui.
+            dev._rh_status_override = "ACTIVE"
 
     # AJOUT SENIOR : Résolution de la période pour le calcul du statut RH
     start_period, end_period = None, None
     if period_id:
-        from app.repositories.period_repository import PeriodRepository
-        period = PeriodRepository().get_by_id(db, period_id)
-        if period:
-            start_period = date(period.year, period.month, 1)
-            last_day = calendar.monthrange(period.year, period.month)[1]
-            end_period = date(period.year, period.month, last_day)
+        try:
+            from app.repositories.period_repository import PeriodRepository
+            period = PeriodRepository().get_by_id(db, period_id)
+            if period:
+                start_period = date(period.year, period.month, 1)
+                last_day = calendar.monthrange(period.year, period.month)[1]
+                end_period = date(period.year, period.month, last_day)
+        except Exception as e:
+            logger.error(f"Error resolving period dates: {e}")
+
+    # ✅ [SENIOR] FIX 2 : Batch pre-fetching ultra-sécurisé
+    site_ids = set()
+    project_ids = set()
+    try:
+        for d in devs:
+            if hasattr(d, 'site_associations') and d.site_associations:
+                for sa in d.site_associations: 
+                    if sa.site_id: site_ids.add(sa.site_id)
+            if hasattr(d, 'project_associations') and d.project_associations:
+                for pa in d.project_associations: 
+                    if pa.project_id: project_ids.add(pa.project_id)
+        
+        site_names = {}
+        if site_ids:
+            s_rows = db.query(Site.id, Site.name).filter(Site.id.in_(list(site_ids))).all()
+            site_names = {r.id: r.name for r in s_rows}
+            
+        project_names = {}
+        project_gitlab_ids = {}
+        if project_ids:
+            p_rows = db.query(Project.id, Project.name, Project.gitlab_project_id).filter(Project.id.in_(list(project_ids))).all()
+            project_names = {r.id: r.name for r in p_rows}
+            project_gitlab_ids = {r.id: r.gitlab_project_id for r in p_rows}
+    except Exception as e:
+        logger.error(f"CRITICAL: Error in batch pre-fetching: {e}")
+        site_names, project_names, project_gitlab_ids = {}, {}, {}
 
     results = []
     for d in devs:
-        # Calcul du statut RH dynamique pour l'affichage (badge)
-        rh_status = "ACTIVE"
-        if start_period and end_period:
-            if d.onboarding_date and d.onboarding_date > end_period:
-                rh_status = "FUTURE_JOINER"
-            elif d.offboarding_date and d.offboarding_date < start_period:
-                rh_status = "OFFBOARDED"
-            elif d.onboarding_date and start_period <= d.onboarding_date <= end_period:
-                rh_status = "ONBOARDING"
-
+        # ✅ SENIOR : Filtrage temporel intelligent des SITES (SCD Type 2)
+        visible_sites = []
         primary_site_id = None
         for sa in d.site_associations:
-            if sa.is_primary:
-                primary_site_id = sa.site_id
-                break
+            is_visible = True
+            if start_period and end_period:
+                if sa.end_date and sa.end_date < start_period:
+                    is_visible = False
+                if sa.start_date and sa.start_date > end_period:
+                    is_visible = False
+            
+            if is_visible:
+                # ✅ [SENIOR] FIX : Guard against null site relationship
+                sname = site_names.get(sa.site_id)
+                if not sname and sa.site:
+                    sname = sa.site.name
+                if not sname:
+                    sname = f"Site #{sa.site_id}"
+                
+                visible_sites.append(SiteAssociationResponse(
+                    site_id=sa.site_id, 
+                    site_name=sname, 
+                    is_primary=sa.is_primary or False
+                ))
+                if sa.is_primary:
+                    primary_site_id = sa.site_id
+
+        # ✅ SENIOR : Filtrage temporel intelligent des GROUPES (SCD Type 2)
+        visible_group_ids = []
+        for gl in d.group_links:
+            is_visible = True
+            if start_period and end_period:
+                if gl.end_date and gl.end_date < start_period:
+                    is_visible = False
+                if gl.start_date and gl.start_date > end_period:
+                    is_visible = False
+            
+            if is_visible:
+                visible_group_ids.append(gl.group_id)
 
         official_projects = []
+        seen_serialized_projects = set()
         for pa in d.project_associations:
-            # On ne montre que les projets associés à cette période spécifique si demandée
-            if period_id is not None and pa.period_id != period_id:
+            # On ne montre que les projets actifs durant cette période spécifique si demandée
+            if period_id is not None:
+                if pa.period_id != period_id:
+                    if pa.period_id is not None:
+                        # Lié à une AUTRE période explicite
+                        continue
+                    
+                    # SCD Type 2 (period_id is None) : vérifier le chevauchement des dates
+                    if end_period and pa.start_date and pa.start_date > end_period:
+                        continue # Projet commencé APRES la fin de cette période
+                    if start_period and pa.end_date and pa.end_date < start_period:
+                        continue # Projet terminé AVANT le début de cette période
+            
+            # Dé-duplication post-filtrage
+            if pa.project_id in seen_serialized_projects:
                 continue
-
-            p = pa.project
+            seen_serialized_projects.add(pa.project_id)
+            
+            # ✅ [SENIOR] FIX : Guard against null project relationship
+            pname = project_names.get(pa.project_id)
+            if not pname and pa.project:
+                pname = pa.project.name
+            if not pname:
+                pname = f"Projet #{pa.project_id}"
+                
+            pgitid = project_gitlab_ids.get(pa.project_id)
+            if not pgitid and pa.project:
+                pgitid = pa.project.gitlab_project_id
+            
             official_projects.append({
                 "project_id": pa.project_id,
-                "project_name": p.name if p else None,
-                "gitlab_project_id": p.gitlab_project_id if p else None,
-                "is_active": pa.is_active,
+                "project_name": pname,
+                "gitlab_project_id": pgitid,
+                "is_active": pa.is_active or False,
                 "period_id": pa.period_id,
             })
 
+        # ✅ [ENTERPRISE] Statut RH contextuel selon la période sélectionnée
+        # FUTURE : le dev n'a pas encore commencé pendant cette période (onboarding > fin_période)
+        # OUT    : le dev était déjà parti avant le début de cette période (offboarding < début_période)
+        # ACTIVE : le dev était présent pendant cette période
+        current_status = d.rh_status  # fallback = statut calculé aujourd'hui
+        if start_period and end_period:
+            if d.onboarding_date and d.onboarding_date > end_period:
+                current_status = "FUTURE"
+            elif d.offboarding_date and d.offboarding_date < start_period:
+                current_status = "OUT"
+            else:
+                # Vérifier s'ils ont une mission site + groupe active durant cette période
+                has_site = any(
+                    sa.start_date and sa.start_date <= end_period and (sa.end_date is None or sa.end_date >= start_period)
+                    for sa in d.site_associations
+                )
+                has_group = any(
+                    gl.start_date and gl.start_date <= end_period and (gl.end_date is None or gl.end_date >= start_period)
+                    for gl in d.group_links
+                )
+                
+                if not has_site or not has_group:
+                    current_status = "INACTIVE"
+                else:
+                    current_status = "ACTIVE"
+        
+        # ✅ [SENIOR] Override rh_status si explicitement défini (ex: pour l'onglet d'extraction)
+        if hasattr(d, '_rh_status_override') and d._rh_status_override:
+            current_status = d._rh_status_override
+        
         results.append(DeveloperSummary(
-            id               = d.id,
-            gitlab_username  = d.gitlab_username,
-            name             = d.name,
-            email            = d.email,
-            avatar_url       = d.avatar_url,
-            is_external      = d.is_external,
-            is_active        = d.is_active,
-            is_validated     = d.is_validated,
-            is_bot           = d.is_bot,
-            group_ids        = [g.id for g in d.groups],
-            primary_site_id  = primary_site_id,
-            sites            = [SiteAssociationResponse(site_id=sa.site_id, site_name=sa.site.name if sa.site else None, is_primary=sa.is_primary) for sa in d.site_associations],
-            projects         = official_projects,
-            onboarding_date  = d.onboarding_date,
-            offboarding_date = d.offboarding_date,
-            rh_status        = rh_status,
+            id=d.id,
+            gitlab_username=d.gitlab_username,
+            name=d.name,
+            email=d.email,
+            is_external=d.is_external,
+            is_active=d.is_active,
+            is_validated=d.is_validated,
+            is_bot=d.is_bot,
+            group_ids=visible_group_ids,
+            primary_site_id=primary_site_id,
+            onboarding_date=d.onboarding_date,
+            offboarding_date=d.offboarding_date,
+            rh_status=current_status,
+            sites=visible_sites,
+            projects=official_projects
         ))
-    return results
+
+    import math
+    return {
+        "items": results,
+        "total": total,
+        "page":  page,
+        "size":  size,
+        "pages": math.ceil(total / size) if size > 0 else 1
+    }
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -333,8 +648,9 @@ def create_developer(
 
 @router.post("/import", response_model=DeveloperImportResponse, status_code=201)
 async def import_developers(
+    background_tasks:        BackgroundTasks,
     file:                    UploadFile    = File(..., description="Fichier CSV ou Excel"),
-    period_id:               int           = Form(..., description="Période cible pour cet import"),
+    period_id:               Optional[int] = Form(default=None, description="Période cible pour cet import (Laisser vide pour mission permanente)"),
     default_site_id:         Optional[int] = Form(default=None),
     default_group_id:        Optional[int] = Form(default=None),
     default_gitlab_config_id: Optional[int] = Form(default=None),
@@ -396,7 +712,7 @@ async def import_developers(
             default_gitlab_config_id = first_config.id
             logger.info("Import: Aucun domaine spécifié, utilisation automatique du Domaine ID %d", default_gitlab_config_id)
 
-    return service.import_from_file(
+    result = service.import_from_file(
         db                      = db,
         file_content            = content,
         file_name               = file.filename,
@@ -411,6 +727,23 @@ async def import_developers(
         create_missing_groups   = create_missing_groups,
         full_sync               = full_sync,
     )
+
+    # ✅ [SOLUTION SOLIDE] : Recalcul automatique après import
+    processed_ids = result.get("processed_ids", [])
+    if not dry_run and processed_ids:
+        from app.services.kpi.kpi_service import KpiService
+        kpi_service = KpiService()
+        logger.info(f"[ENTERPRISE] Import finished. Triggering background recalculation for {len(processed_ids)} developers.")
+        
+        # On regroupe les recalculs (un appel par dev suffit, il traitera toutes ses périodes impactées)
+        for d_id in processed_ids:
+            background_tasks.add_task(
+                kpi_service.recalculate_developer_history,
+                developer_id=d_id,
+                changed_fields=["import_sync"]
+            )
+            
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -444,6 +777,79 @@ def validate_all_developers(
     return {"validated": count, "message": f"{count} développeurs validés avec succès."}
 
 
+@router.patch("/{developer_id}/validate")
+def validate_developer(
+    developer_id: int,
+    payload:       dict = Body(...),
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_team_lead_or_above),
+):
+    """
+    Valide ou rejette un développeur spécifique.
+    """
+    from app.models.developer import Developer
+    developer = db.query(Developer).filter(Developer.id == developer_id).first()
+    if not developer:
+        raise HTTPException(status_code=404, detail="Développeur introuvable.")
+    
+    is_validated = payload.get("is_validated", True)
+    developer.is_validated = is_validated
+    if is_validated:
+        developer.is_active = True
+        
+    db.commit()
+    logger.info(f"[validate] Développeur id={developer_id} {'validé' if is_validated else 'rejeté'} par admin id={current_admin.id}")
+    return {"success": True, "is_validated": is_validated}
+
+
+class BulkValidateRequest(PydanticModel):
+    ids: List[int]
+
+
+@router.post("/validate-selected")
+def validate_selected_developers(
+    payload:       BulkValidateRequest,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_team_lead_or_above),
+):
+    """
+    Valide une liste spécifique d'IDs de développeurs.
+    """
+    from app.models.developer import Developer
+    count = 0
+    for dev_id in payload.ids:
+        dev = db.query(Developer).filter(Developer.id == dev_id).first()
+        if dev:
+            dev.is_validated = True
+            dev.is_active = True
+            count += 1
+            
+    db.commit()
+    logger.info(f"[validate-selected] {count} développeurs validés par admin id={current_admin.id}")
+    return {"count": count, "message": f"{count} développeurs validés avec succès."}
+
+
+@router.post("/{developer_id}/merge/{duplicate_id}")
+def merge_developers(
+    developer_id: int,
+    duplicate_id: int,
+    db:           Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """
+    Fusionne un doublon vers un profil canonique.
+    """
+    service = DeveloperService()
+    try:
+        service.merge(db, developer_id, duplicate_id)
+        db.commit()
+        logger.info(f"[merge] Doublon id={duplicate_id} fusionné vers id={developer_id} par admin id={current_admin.id}")
+        return {"success": True, "message": "Fusion réussie."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  DEVELOPERS — Routes paramétrées (APRÈS les routes statiques)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -451,233 +857,387 @@ def validate_all_developers(
 @router.get("/{developer_id}", response_model=DeveloperResponse)
 def get_developer(
     developer_id: int,
+    period_id:    Optional[int] = None,
     db:           Session = Depends(get_db),
     _:            AppUser = Depends(get_current_user),
 ):
+    """
+    [ENTERPRISE] Retourne le profil du développeur.
+    Si period_id est fourni, tente de retourner le snapshot historique (CASE B).
+    Si le snapshot est vide (Future Joiner), bascule automatiquement sur la Master View.
+    """
     developer = dev_repo.get_by_id(db, developer_id)
     if not developer:
         raise HTTPException(status_code=404, detail="Développeur introuvable.")
-    return _build_developer_response(db, developer)
+
+    if period_id:
+        from app.models.period import Period
+        period = db.query(Period).filter(Period.id == period_id).first()
+        if period:
+            from app.models.developer import DeveloperContext
+            # 1. Tentative de snapshot à la période demandée
+            with DeveloperContext(db, period.start_date):
+                response = _build_developer_response(db, developer)
+            
+            # 2. Logique de repli (Fallback) pour les Future Joiners
+            # Si aucune affectation n'est trouvée ET que le dev commence plus tard
+            has_assignments = (len(response.group_ids) > 0 or len(response.projects) > 0)
+            is_future_joiner = (developer.onboarding_date and developer.onboarding_date > period.start_date)
+            
+            if not has_assignments and is_future_joiner:
+                # Retourne la Master View (données futures)
+                return _build_developer_response(db, developer)
+            
+            return response
+
+    # Par défaut ou si pas de période : Master View
+    return _build_developer_response(db, developer, is_master_view=True)
 
 
-@router.get("/{developer_id}/kpis")
-def get_developer_kpis(
-    developer_id: int,
-    project_id:   int     = Query(...),
-    db:           Session = Depends(get_db),
-    current_user: AppUser = Depends(get_current_user),
-):
-    from app.services.kpi.analytics_service import AnalyticsService
-    developer = dev_repo.get_by_id(db, developer_id)
-    if not developer:
-        raise HTTPException(status_code=404, detail="Développeur introuvable.")
-    service = AnalyticsService(db)
-    return service.get_developer_kpi_summary(developer_id=developer_id, project_id=project_id)
+# ✅ [REMOVED] Analyse de Performance 360° - Non fonctionnelle
+# Endpoint désactivé car la fonctionnalité n'est pas fonctionnelle
+
+# @router.get("/{developer_id}/kpis")
+# def get_developer_kpis(
+#     developer_id: int,
+#     project_id:   int     = Query(...),
+#     db:           Session = Depends(get_db),
+#     current_user: AppUser = Depends(get_current_user),
+# ):
+#     from app.services.kpi.analytics_service import AnalyticsService
+#     developer = dev_repo.get_by_id(db, developer_id)
+#     if not developer:
+#         raise HTTPException(status_code=404, detail="Développeur introuvable.")
+#     service = AnalyticsService(db)
+#     return service.get_developer_kpi_summary(developer_id=developer_id, project_id=project_id)
 
 
 @router.get("/{developer_id}/timeline", response_model=List[TimelineEvent])
 def get_developer_timeline(
     developer_id: int,
+    period_id: Optional[int] = Query(None, description="Filter timeline by period"),
     db:           Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
-    from app.models.audit_log import AuditLog
-    developer = dev_repo.get_by_id(db, developer_id)
-    if not developer:
-        raise HTTPException(status_code=404, detail="Développeur introuvable.")
+    try:
+        from app.models.audit_log import AuditLog
+        developer = dev_repo.get_by_id(db, developer_id)
+        if not developer:
+            raise HTTPException(status_code=404, detail="Développeur introuvable.")
 
-    events = []
+        events = []
     
-    # 1. Onboarding Event (always the first historically)
-    # Use onboarding_date if available, otherwise created_at
-    onboarding_date = developer.onboarding_date or developer.created_at.date()
-    # Convert date to datetime if necessary for proper sorting
-    from datetime import datetime, time
-    import pytz
-    
-    if isinstance(onboarding_date, datetime):
-        onboard_dt = onboarding_date
-    else:
-        onboard_dt = datetime.combine(onboarding_date, time.min).replace(tzinfo=pytz.UTC)
-
-    events.append(TimelineEvent(
-        date=onboard_dt,
-        title="Onboarding",
-        description="Création du profil ou intégration dans l'entreprise",
-        icon="ri-user-add-line",
-        color="success"
-    ))
-
-    # 2. Fetch Monthly Activity (Commits + Extraction Presence + Project Assignments)
-    # ─────────────────────────────────────────────────────────────────────────
-    from sqlalchemy import extract, func
-    from app.models.period import Period
-    from app.models.extraction_lot import ExtractionLot, ExtractionTypeEnum
-    from app.models.commit import Commit
-    from app.models.developer_project import DeveloperProject
-    from app.models.project import Project
-    
-    # Get commits per month
-    commit_stats = db.query(
-        extract('year', Commit.authored_date).label("year"),
-        extract('month', Commit.authored_date).label("month"),
-        func.count(Commit.id).label("count")
-    ).filter(
-        Commit.developer_id == developer_id,
-        Commit.is_merge_commit == False
-    )\
-     .group_by("year", "month")\
-     .all()
-    
-    commits_map = {(int(r.year), int(r.month)): r.count for r in commit_stats}
-    
-    # Get project assignments per month
-    project_assignments = db.query(
-        Period.year,
-        Period.month,
-        func.string_agg(Project.name, ', ').label("project_names")
-    ).join(DeveloperProject, DeveloperProject.period_id == Period.id)\
-     .join(Project, Project.id == DeveloperProject.project_id)\
-     .filter(
-         DeveloperProject.developer_id == developer_id,
-         DeveloperProject.is_active == True
-     )\
-     .group_by(Period.year, Period.month).all()
-    
-    projects_map = {(int(r.year), int(r.month)): r.project_names for r in project_assignments}
-    
-    # Get administrative presence (Extraction Lots)
-    lot_stats = db.query(
-        Period.year,
-        Period.month
-    ).join(ExtractionLot, ExtractionLot.period_id == Period.id)\
-     .filter(
-         ExtractionLot.extraction_type == ExtractionTypeEnum.MONTHLY
-     ).distinct().all()
-
-    lots_map = {(int(r.year), int(r.month)) for r in lot_stats}
-    
-    # Generate Monthly Events
-    all_active_periods = sorted(list(set(commits_map.keys()) | lots_map | projects_map.keys()), reverse=True)
-    
-    for y, m in all_active_periods:
-        commit_count = commits_map.get((y, m), 0)
-        project_names = projects_map.get((y, m))
-        has_lot      = (y, m) in lots_map
+        # 1. Onboarding Event (always the first historically)
+        # Use onboarding_date if available, otherwise created_at
+        onboarding_date = developer.onboarding_date or developer.created_at.date()
+        # Convert date to datetime if necessary for proper sorting
+        from datetime import datetime, time
+        import pytz
         
-        # Traduction manuelle
+        if isinstance(onboarding_date, datetime):
+            onboard_dt = onboarding_date
+        else:
+            onboard_dt = datetime.combine(onboarding_date, time.min).replace(tzinfo=pytz.UTC)
+
+        events.append(TimelineEvent(
+            date=onboard_dt,
+            title="Onboarding",
+            description="Création du profil ou intégration dans l'entreprise",
+            icon="ri-user-add-line",
+            color="success"
+        ))
+
+        # 2. Fetch Mission Assignments (RH Presence - Focus on Mission Presence)
+        # ─────────────────────────────────────────────────────────────────────────
+        from sqlalchemy import or_
+        from app.models.period import Period
+        from app.models.developer_project import DeveloperProject
+        from app.models.project import Project
+        
+        # Get the selected period if provided
+        selected_period = None
+        if period_id:
+            selected_period = db.query(Period).filter(Period.id == period_id).first()
+        
+        # Get all mission assignments for this developer
+        try:
+            # Get ALL active project assignments regardless of period
+            project_assignments = db.query(
+                DeveloperProject,
+                Project.name
+            ).join(Project, Project.id == DeveloperProject.project_id)\
+             .filter(
+                 DeveloperProject.developer_id == developer_id,
+                 DeveloperProject.is_active == True
+             ).all()
+            
+            # Build projects_map: (year, month) -> list of project names
+            projects_map = {}
+            for dp, proj_name in project_assignments:
+                # Determine which months this assignment covers
+                start_date = dp.start_date or developer.created_at.date()
+                end_date = dp.end_date or date.today()
+                
+                # Get all periods this assignment covers
+                period_query = db.query(Period).filter(
+                    Period.year >= start_date.year,
+                    (Period.year < end_date.year) | ((Period.year == end_date.year) & (Period.month <= end_date.month))
+                )
+                
+                periods = period_query.all()
+                
+                for period in periods:
+                    key = (period.year, period.month)
+                    if key not in projects_map:
+                        projects_map[key] = []
+                    projects_map[key].append(proj_name)
+        except Exception as e:
+            print(f"Error fetching project assignments: {e}")
+            projects_map = {}
+        
+        # Collect deactivation/reactivation events from AuditLog for suspension filtering
+        deactivation_events = []
+        reactivation_events = []
+        
+        logs = db.query(AuditLog).filter(
+            AuditLog.entity_type == "Developer",
+            AuditLog.entity_id == developer_id
+        ).order_by(AuditLog.created_at.asc()).all()
+        
+        for log in logs:
+            old_val = log.old_value or {}
+            new_val = log.new_value or {}
+            
+            # Track deactivation events
+            if log.action == "DEV_DEACTIVATED_VIA_SYNC":
+                deactivation_events.append(log.created_at)
+            elif log.action == "UPDATE_DEVELOPER":
+                if old_val.get("is_active") is True and new_val.get("is_active") is False:
+                    deactivation_events.append(log.created_at)
+                elif old_val.get("is_active") is False and new_val.get("is_active") is True:
+                    reactivation_events.append(log.created_at)
+        
+        # Build active periods: [(start_date, end_date), ...]
+        # Start with onboarding date as first active period
+        active_periods = []
+        current_active_start = developer.onboarding_date or developer.created_at.date()
+        
+        for deactivation_date in sorted(deactivation_events):
+            active_periods.append((current_active_start, deactivation_date.date()))
+            # Find next reactivation
+            next_reactivation = None
+            for reactivation_date in sorted(reactivation_events):
+                if reactivation_date.date() > deactivation_date.date():
+                    next_reactivation = reactivation_date.date()
+                    break
+            if next_reactivation:
+                current_active_start = next_reactivation
+            else:
+                # No reactivation, end of active period
+                current_active_start = None
+                break
+        
+        if current_active_start:
+            active_periods.append((current_active_start, None))  # Still active
+        
+        # Generate Monthly Mission Events (Focus on RH Presence)
+        # ─────────────────────────────────────────────────────────────────────────
         MOIS_FR = {
             1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril", 
             5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août", 
             9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
         }
         
-        dt = datetime(y, m, 1, tzinfo=pytz.UTC)
-        month_name = f"{MOIS_FR.get(m, 'Mois')} {y}"
+        # Sort periods in descending order
+        all_periods = sorted(projects_map.keys(), key=lambda x: (x[0], x[1]), reverse=True)
         
-        if project_names:
-            desc = f"Affectation : {project_names}."
-            if commit_count > 0:
-                desc += f" Production de {commit_count} commits."
+        for y, m in all_periods:
+            project_names = projects_map.get((y, m), [])
+            if project_names:
+                # Use DeveloperContext to check if developer was active during this month
+                month_date = date(y, m, 15)  # Use mid-month for status check
+                
+                # Save current context state
+                original_context = getattr(developer, "_context_period_date", None)
+                
+                from app.models.developer import DeveloperContext
+                with DeveloperContext(db, month_date):
+                    # Reload developer with context date
+                    db.refresh(developer)
+                    status = developer.rh_status
+                
+                # Restore original context state to avoid affecting KPI queries
+                developer._context_period_date = original_context
+                db.expire(developer)  # Clear session cache to restore original state
+                
+                # Only show mission if developer was ACTIVE during this month
+                if status == "ACTIVE":
+                    dt = datetime(y, m, 1, tzinfo=pytz.UTC)
+                    month_name = f"{MOIS_FR.get(m, 'Mois')} {y}"
+                    proj_list = ", ".join(project_names)
+                    
+                    events.append(TimelineEvent(
+                        date=dt,
+                        title=f"Mission : {month_name}",
+                        description=f"Affectation RH : {proj_list}",
+                        icon="ri-briefcase-line",
+                        color="primary",
+                        is_mission=True
+                    ))
+                elif status == "INACTIVE":
+                    # Developer was inactive (suspended/sabbatical) during this month
+                    dt = datetime(y, m, 1, tzinfo=pytz.UTC)
+                    month_name = f"{MOIS_FR.get(m, 'Mois')} {y}"
+                    
+                    events.append(TimelineEvent(
+                        date=dt,
+                        title=f"Inactivité : {month_name}",
+                        description="Développeur sans affectation active (Sabbat/Suspension)",
+                        icon="ri-user-unfollow-line",
+                        color="warning"
+                    ))
+
+        # 3. Process AuditLog for other events (mutations, corrections, etc.)
+        # Note: logs already fetched above for suspension detection
+
+        for log in logs:
+            old_val = log.old_value or {}
+            new_val = log.new_value or {}
             
-            events.append(TimelineEvent(
-                date=dt,
-                title=f"Mission : {month_name}",
-                description=desc,
-                icon="ri-briefcase-line" if commit_count > 0 else "ri-clipboard-line",
-                color="primary" if commit_count > 0 else "info"
-            ))
-        elif commit_count > 0:
-            events.append(TimelineEvent(
-                date=dt,
-                title=f"Activité : {month_name}",
-                description=f"Activité hors mission officielle — {commit_count} commits détectés.",
-                icon="ri-history-line",
-                color="warning"
-            ))
-
-    # 3. Fetch AuditLog for this developer
-    logs = db.query(AuditLog).filter(
-        AuditLog.entity_type == "Developer",
-        AuditLog.entity_id == developer_id
-    ).order_by(AuditLog.created_at.asc()).all()
-
-    for log in logs:
-        old_val = log.old_value or {}
-        new_val = log.new_value or {}
-        
-        # Determine human readable titles based on Senior Enterprise patterns
-        if log.action == "DEV_DEACTIVATED_VIA_SYNC":
-            reason = new_val.get("reason", "Absent du fichier de synchronisation RH")
-            events.append(TimelineEvent(
-                date=log.created_at,
-                title="Désactivation automatique (Sync)",
-                description=f"Profil désactivé : {reason}",
-                icon="ri-user-unfollow-line",
-                color="danger",
-                details=new_val
-            ))
-        elif log.action == "UPDATE_DEVELOPER":
-            # Reactivation
-            if old_val.get("is_active") is False and new_val.get("is_active") is True:
+            # Determine human readable titles based on Senior Enterprise patterns
+            if log.action == "DEV_DEACTIVATED_VIA_SYNC":
+                reason = new_val.get("reason", "Absent du fichier de synchronisation RH")
                 events.append(TimelineEvent(
                     date=log.created_at,
-                    title="Réactivation du profil",
-                    description="Retour dans l'effectif actif détecté (Synchronisation).",
-                    icon="ri-user-follow-line",
-                    color="success",
-                    details=new_val
-                ))
-            
-            # Deactivation
-            elif old_val.get("is_active") is True and new_val.get("is_active") is False:
-                reason = new_val.get("reason") or "Désactivation manuelle ou administrative"
-                events.append(TimelineEvent(
-                    date=log.created_at,
-                    title="Désactivation (Offboarding)",
+                    title="Désactivation automatique (Sync)",
                     description=f"Profil désactivé : {reason}",
                     icon="ri-user-unfollow-line",
                     color="danger",
                     details=new_val
                 ))
-            
-            # Mobility / Data Change
-            else:
-                # Check for specific changes like Site/Group if possible, or just generic update
+            elif log.action == "UPDATE_DEVELOPER":
+                # ✅ [INTELLIGENT] Détecte mutations (Case B) vs corrections (Case A)
+                mutation_date = new_val.get("mutation_date")
+                is_mutation = mutation_date is not None
+                
+                # Reactivation
+                if old_val.get("is_active") is False and new_val.get("is_active") is True:
+                    events.append(TimelineEvent(
+                        date=log.created_at,
+                        title="Réactivation du profil",
+                        description="Retour dans l'effectif actif détecté (Synchronisation).",
+                        icon="ri-user-follow-line",
+                        color="success",
+                        details=new_val
+                    ))
+                
+                # Deactivation
+                elif old_val.get("is_active") is True and new_val.get("is_active") is False:
+                    reason = new_val.get("reason") or "Désactivation manuelle ou administrative"
+                    events.append(TimelineEvent(
+                        date=log.created_at,
+                        title="Désactivation (Offboarding)",
+                        description=f"Profil désactivé : {reason}",
+                        icon="ri-user-unfollow-line",
+                        color="danger",
+                        details=new_val
+                    ))
+                
+                # ✅ [INTELLIGENT] Détecte mutations historiques (Case B)
+                elif is_mutation:
+                    site_changes = _detect_changes(old_val, new_val, "sites", "site_id")
+                    group_changes = _detect_changes(old_val, new_val, "group_ids", "group_id")
+                    project_changes = _detect_changes(old_val, new_val, "projects", "project_id")
+                    
+                    if site_changes or group_changes or project_changes:
+                        desc_parts = []
+                        if site_changes:
+                            desc_parts.append(f"Mutation de site : {', '.join(site_changes)}")
+                        if group_changes:
+                            desc_parts.append(f"Mutation d'équipe : {', '.join(group_changes)}")
+                        if project_changes:
+                            desc_parts.append(f"Mutation de projet : {', '.join(project_changes)}")
+                        
+                        events.append(TimelineEvent(
+                            date=log.created_at,
+                            title="Mutation historique (SCD Type 2)",
+                            description=f"Changement d'affectation à date d'effet : {mutation_date}. {' '.join(desc_parts)}",
+                            icon="ri-arrow-right-line",
+                            color="primary",
+                            details=new_val
+                        ))
+                    else:
+                        # Mutation sans changement d'affectation
+                        events.append(TimelineEvent(
+                            date=log.created_at,
+                            title="Mutation historique (SCD Type 2)",
+                            description=f"Mutation à date d'effet : {mutation_date} (sans changement d'affectation)",
+                            icon="ri-arrow-right-line",
+                            color="primary",
+                            details=new_val
+                        ))
+                
+                # ✅ [INTELLIGENT] Détecte corrections rétroactives (Case A)
+                elif not is_mutation:
+                    site_changes = _detect_changes(old_val, new_val, "sites", "site_id")
+                    group_changes = _detect_changes(old_val, new_val, "group_ids", "group_id")
+                    project_changes = _detect_changes(old_val, new_val, "projects", "project_id")
+                    
+                    if site_changes or group_changes or project_changes:
+                        desc_parts = []
+                        if site_changes:
+                            desc_parts.append(f"Correction de site : {', '.join(site_changes)}")
+                        if group_changes:
+                            desc_parts.append(f"Correction d'équipe : {', '.join(group_changes)}")
+                        if project_changes:
+                            desc_parts.append(f"Correction de projet : {', '.join(project_changes)}")
+                        
+                        # Skip retroactive corrections - they are not useful in the timeline
+                        continue
+                
+                # Mobility / Data Change
+                else:
+                    # Check for specific changes like Site/Group if possible, or just generic update
+                    events.append(TimelineEvent(
+                        date=log.created_at,
+                        title="Mise à jour administrative",
+                        description="Modification des métadonnées RH (Site, Groupe ou Identité).",
+                        icon="ri-edit-line",
+                        color="info",
+                        details=new_val
+                    ))
+            elif log.action == "MERGE_DEVELOPER":
                 events.append(TimelineEvent(
                     date=log.created_at,
-                    title="Mise à jour administrative",
-                    description="Modification des métadonnées RH (Site, Groupe ou Identité).",
-                    icon="ri-edit-line",
-                    color="info",
-                    details=new_val
+                    title="Fusion de profil (Dédoublonnage)",
+                    description="Un compte en doublon a été fusionné vers ce profil principal.",
+                    icon="ri-merge-cells-horizontal-line",
+                    color="warning"
                 ))
-        elif log.action == "MERGE_DEVELOPER":
-            events.append(TimelineEvent(
-                date=log.created_at,
-                title="Fusion de profil (Dédoublonnage)",
-                description="Un compte en doublon a été fusionné vers ce profil principal.",
-                icon="ri-merge-cells-horizontal-line",
-                color="warning"
-            ))
 
-    # Sort descending
-    events.sort(key=lambda x: x.date, reverse=True)
-    return events
+        # Sort descending
+        events.sort(key=lambda x: x.date, reverse=True)
+        return events
+    except Exception as e:
+        print(f"Error in get_developer_timeline: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
-@router.get("/{developer_id}/alerts")
-def get_developer_alerts(
-    developer_id: int,
-    db:           Session = Depends(get_db),
-    current_user: AppUser = Depends(get_current_user),
-):
-    from app.services.kpi.alert_service import AlertService
-    developer = dev_repo.get_by_id(db, developer_id)
-    if not developer:
-        raise HTTPException(status_code=404, detail="Développeur introuvable.")
-    alert_service = AlertService()
-    return alert_service.get_developer_alert_summary(db, developer_id)
+# ✅ [REMOVED] Alerts endpoint - Non fonctionnelle
+# @router.get("/{developer_id}/alerts")
+# def get_developer_alerts(
+#     developer_id: int,
+#     db:           Session = Depends(get_db),
+#     current_user: AppUser = Depends(get_current_user),
+# ):
+#     from app.services.kpi.alert_service import AlertService
+#     developer = dev_repo.get_by_id(db, developer_id)
+#     if not developer:
+#         raise HTTPException(status_code=404, detail="Développeur introuvable.")
+#     alert_service = AlertService()
+#     return alert_service.get_developer_alert_summary(db, developer_id)
 
 
 @router.patch("/{developer_id}/validate", response_model=DeveloperResponse)
@@ -697,21 +1257,58 @@ def validate_developer(
     return _build_developer_response(db, developer)
 
 
-@router.put("/{developer_id}", response_model=DeveloperResponse)
+@router.put("/{developer_id}")
 def update_developer(
-    developer_id:  int,
-    request:       DeveloperUpdate,
-    req:           Request,
-    db:            Session = Depends(get_db),
-    current_admin: AppUser = Depends(get_current_admin),
+    developer_id:    int,
+    request:         DeveloperUpdate,
+    req:             Request,
+    background_tasks: BackgroundTasks,
+    db:              Session = Depends(get_db),
+    current_admin:   AppUser = Depends(get_current_admin),
 ):
-    service   = DeveloperService()
-    developer = service.update_developer(
-        db=db, developer_id=developer_id, payload=request,
-        updated_by=current_admin.id,
-        ip_address=req.client.host if req.client else None,
-    )
-    return _build_developer_response(db, developer)
+    try:
+        service = DeveloperService()
+        result  = service.update_developer(
+            db=db, developer_id=developer_id, payload=request,
+            updated_by=current_admin.id,
+            ip_address=req.client.host if req.client else None,
+        )
+
+        # [ENTERPRISE] Le service retourne un dict enrichi avec les métadonnées
+        # de recalcul pour informer l'UI qu'une correction sensible a eu lieu.
+        developer           = result["developer"]
+        recalculation_needed = result.get("recalculation_needed", False)
+        changed_fields       = result.get("changed_fields", [])
+
+        # Construction de la réponse developer standard
+        dev_response = _build_developer_response(db, developer)
+
+        # Enrichissement de la réponse avec les métadonnées de recalcul
+        response_dict = dev_response.model_dump()
+        response_dict["recalculation_needed"] = recalculation_needed
+        response_dict["changed_fields"]       = changed_fields
+
+        if recalculation_needed:
+            logger.info(
+                f"[ENTERPRISE] Developer {developer_id} ({developer.name}) updated "
+                f"with sensitive changes: {changed_fields}. Triggering autonomous background recalculation."
+            )
+            from app.services.kpi.kpi_service import KpiService
+            kpi_service = KpiService()
+            
+            # ✅ [REAL-TIME AGILITY] : Recalcul autonome de l'historique
+            background_tasks.add_task(
+                kpi_service.recalculate_developer_history,
+                developer_id=developer_id,
+                changed_fields=changed_fields
+            )
+ 
+        return response_dict
+
+    except Exception as e:
+        logger.error(f"Error updating developer {developer_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
+
 
 
 @router.post("/{canonical_id}/merge/{duplicate_id}", response_model=DeveloperResponse)
@@ -748,26 +1345,34 @@ def delete_developer(
 #  HELPER PRIVÉ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _build_developer_response(db: Session, developer) -> DeveloperResponse:
-    site_assocs    = DeveloperSiteRepository().get_by_developer(db, developer.id)
-    project_assocs = DeveloperProjectRepository().get_by_developer(db, developer.id)
-
+def _build_developer_response(db: Session, developer, site_names: dict = None, project_names: dict = None, is_master_view: bool = False) -> DeveloperResponse:
+    #  [SCD TYPE 2] Use context-aware properties instead of raw associations
+    # If a DeveloperContext is active, developer.sites and developer.projects are already filtered.
+    # When is_master_view=True, we bypass the context filter to return ALL historical segments.
+    
     sites = []
-    for sa in site_assocs:
-        site_obj = db.query(Site).filter(Site.id == sa.site_id).first()
+    site_source = developer.site_associations if is_master_view else developer.sites
+    for sa in site_source:
+        sname = site_names.get(sa.site_id) if site_names else (sa.site.name if sa.site else None)
         sites.append(SiteAssociationResponse(
             site_id    = sa.site_id,
-            site_name  = site_obj.name if site_obj else None,
+            site_name  = sname,
             is_primary = sa.is_primary,
+            is_active  = sa.is_active,
+            start_date = sa.start_date,
+            end_date   = sa.end_date,
         ))
 
     projects = []
-    for pa in project_assocs:
-        proj_obj = db.query(Project).filter(Project.id == pa.project_id).first()
+    project_source = developer.project_associations if is_master_view else developer.projects
+    for pa in project_source:
+        pname = project_names.get(pa.project_id) if project_names else (pa.project.name if pa.project else None)
         projects.append(ProjectAssociationResponse(
             project_id   = pa.project_id,
-            project_name = proj_obj.name if proj_obj else None,
+            project_name = pname,
             is_active    = pa.is_active,
+            start_date   = pa.start_date,
+            end_date     = pa.end_date,
         ))
 
     return DeveloperResponse(
@@ -776,20 +1381,19 @@ def _build_developer_response(db: Session, developer) -> DeveloperResponse:
         gitlab_username = developer.gitlab_username,
         name            = developer.name or developer.gitlab_username or "Unknown",
         email           = developer.email,
-        company         = developer.company,
-        avatar_url      = developer.avatar_url,
         is_external     = developer.is_external,
         auto_created    = developer.auto_created,
         onboarding_date = developer.onboarding_date,
         offboarding_date = developer.offboarding_date,
         last_active_at  = developer.last_active_at,
-        group_ids       = [g.id for g in developer.groups] if hasattr(developer, 'groups') else [],
+        group_ids       = [g.group_id for g in developer.group_links] if is_master_view else developer.group_ids,
         is_active       = developer.is_active,
         is_validated    = developer.is_validated,
         is_bot          = developer.is_bot,
         source          = developer.source if hasattr(developer, 'source') else "UNKNOWN",
         created_by      = developer.created_by,
         created_at      = developer.created_at,
+        rh_status       = developer.rh_status,
         sites           = sites,
         projects        = projects,
     )

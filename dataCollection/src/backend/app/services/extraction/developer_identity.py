@@ -11,6 +11,29 @@ from app.repositories.developer_project_repository import DeveloperProjectReposi
 from app.repositories.developer_repository import DeveloperRepository
 from app.services.gitlab.gitlab_mapper import GitLabMapper
 
+# ─────────────────────────────────────────────────────────────────────────────
+# [ENTERPRISE] Project-Scope Authorization Guard
+# Vérifie qu'un développeur trouvé est bien autorisé pour le projet cible.
+# C'est le verrou qui empêche les commits inter-projets (ex: Vaibhav inkscape).
+# ─────────────────────────────────────────────────────────────────────────────
+def _is_authorized_for_project(
+    db: Session,
+    dev_project_repo: DeveloperProjectRepository,
+    developer_id: int,
+    project_id: int,
+) -> bool:
+    """
+    Retourne True si le développeur a une association active avec ce projet
+    (toute période confondue — permanent ou périodique).
+    """
+    from app.models.developer_project import DeveloperProject
+    exists = db.query(DeveloperProject).filter(
+        DeveloperProject.developer_id == developer_id,
+        DeveloperProject.project_id   == project_id,
+        DeveloperProject.is_active    == True,
+    ).first() is not None
+    return exists
+
 BOT_PATTERNS = [
     "bot",
     "merge",
@@ -104,9 +127,13 @@ def resolve_developer(
     if gitlab_id is not None and gitlab_id > 0:
         dev = developer_repo.get_by_gitlab_user_id(db, gitlab_id)
         if dev:
-            # ✅ FIX SENIOR : On n'ajoute plus auto le projet. 
-            # La mission DOIT venir du CSV (Strict Mission).
-            # dev_project_repo.add(db, dev.id, project_id, period_id)
+            # ✅ [ENTERPRISE GUARD] Vérification de scope projet
+            if forbid_creation and not _is_authorized_for_project(db, dev_project_repo, dev.id, project_id):
+                logger.warning(
+                    f"[MISSION-STRICT] Dev '{dev.name}' (id={dev.id}) trouvé en base "
+                    f"mais NON autorisé pour project_id={project_id}. Commit rejeté."
+                )
+                return None
             if norm_email and not dev.email:
                 developer_repo.update(db, dev, {"email": norm_email})
             return dev
@@ -114,7 +141,13 @@ def resolve_developer(
     if norm_email:
         dev = developer_repo.get_by_email(db, norm_email)
         if dev:
-            # dev_project_repo.add(db, dev.id, project_id, period_id) # ✅ DISABLED AUTO-MISSION
+            # ✅ [ENTERPRISE GUARD] Vérification de scope projet
+            if forbid_creation and not _is_authorized_for_project(db, dev_project_repo, dev.id, project_id):
+                logger.warning(
+                    f"[MISSION-STRICT] Dev '{dev.name}' (id={dev.id}) trouvé en base "
+                    f"mais NON autorisé pour project_id={project_id}. Commit rejeté."
+                )
+                return None
             if gitlab_id and gitlab_id > 0 and not dev.gitlab_user_id:
                 developer_repo.update(db, dev, {"gitlab_user_id": gitlab_id})
             return dev
@@ -122,7 +155,13 @@ def resolve_developer(
     if norm_username:
         dev = developer_repo.get_by_gitlab_username(db, norm_username)
         if dev:
-            # dev_project_repo.add(db, dev.id, project_id, period_id) # ✅ DISABLED AUTO-MISSION
+            # ✅ [ENTERPRISE GUARD] Vérification de scope projet
+            if forbid_creation and not _is_authorized_for_project(db, dev_project_repo, dev.id, project_id):
+                logger.warning(
+                    f"[MISSION-STRICT] Dev '{dev.name}' (id={dev.id}) trouvé en base "
+                    f"mais NON autorisé pour project_id={project_id}. Commit rejeté."
+                )
+                return None
             updates = {}
             if norm_email and not dev.email:
                 updates["email"] = norm_email
@@ -137,7 +176,13 @@ def resolve_developer(
         if dev is None:
             dev = developer_repo.get_by_username(db, name or "")
         if dev:
-            # dev_project_repo.add(db, dev.id, project_id, period_id) # ✅ DISABLED AUTO-MISSION
+            # ✅ [ENTERPRISE GUARD] Vérification de scope projet
+            if forbid_creation and not _is_authorized_for_project(db, dev_project_repo, dev.id, project_id):
+                logger.warning(
+                    f"[MISSION-STRICT] Dev '{dev.name}' (id={dev.id}) trouvé en base "
+                    f"mais NON autorisé pour project_id={project_id}. Commit rejeté."
+                )
+                return None
             updates = {}
             if norm_email and not dev.email:
                 updates["email"] = norm_email
@@ -194,3 +239,44 @@ def resolve_developer(
         f"username='{developer.gitlab_username}' is_bot={developer.is_bot} project_id={project_id}"
     )
     return developer
+
+
+def resolve_developer_id_fuzzy(db: Session, author_email: Optional[str], author_name: Optional[str], mission_devs: list[Developer]) -> Optional[int]:
+    """
+    ✅ [SENIOR++++] FUZZY IDENTITY RESOLUTION
+    Recherche un match pour l'auteur d'un commit parmi les développeurs de la mission.
+    """
+    if not mission_devs:
+        return None
+
+    norm_email = normalize_email(author_email)
+    norm_name = normalize_name(author_name)
+
+    # Stratégie 1 : Match strict par Email
+    if norm_email:
+        for dev in mission_devs:
+            if normalize_email(dev.email) == norm_email:
+                return dev.id
+            if normalize_email(dev.gitlab_username) == norm_email: # Certains mettent l'username en email
+                return dev.id
+
+    # Stratégie 2 : Match par Username / Alias GitLab
+    if author_name:
+        for dev in mission_devs:
+            if normalize_name(dev.name) == norm_name:
+                return dev.id
+            if dev.gitlab_username and normalize_username(dev.gitlab_username) == norm_name:
+                return dev.id
+
+    # Stratégie 3 : Fuzzy Matching d'email (si email pro vs email gitlab divergent)
+    # Exemple: igor.d@telnet.com vs igor.drozdov@gmail.com
+    # On matche la partie locale de l'email si elle est assez longue
+    if norm_email and "@" in norm_email:
+        local_part = norm_email.split("@")[0]
+        if len(local_part) > 4:
+            for dev in mission_devs:
+                dev_email = normalize_email(dev.email)
+                if dev_email and local_part in dev_email:
+                    return dev.id
+
+    return None

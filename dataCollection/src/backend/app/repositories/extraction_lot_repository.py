@@ -37,7 +37,7 @@ class ExtractionLotRepository(BaseRepository[ExtractionLot]):
         db:         Session,
         project_id: int,
     ) -> List[ExtractionLot]:
-        """✅ AJOUT : liste tous les lots d'un projet donnés (pour le sélecteur de lots)."""
+        """ liste tous les lots d'un projet donnés (pour le sélecteur de lots)."""
         from sqlalchemy.orm import joinedload
         return (
             db.query(ExtractionLot)

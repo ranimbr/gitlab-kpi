@@ -1,0 +1,234 @@
+import pytest
+from datetime import date, datetime
+from sqlalchemy.orm import Session
+from fastapi.testclient import TestClient
+
+from app.database.session import SessionLocal
+from app.models.developer import Developer
+from app.models.developer_site import DeveloperSite
+from app.models.developer_group import DeveloperGroupLink
+from app.models.developer_project import DeveloperProject
+from app.models.period import Period
+from app.models.site import Site
+from app.models.project import Project
+from app.models.developer_group import DeveloperGroup
+from app.models.merge_request import MergeRequest, MRStateEnum
+from app.models.comment import Comment
+from app.services.kpi.analytics_service import AnalyticsService
+from app.main import app
+
+@pytest.fixture
+def db():
+    """Fresh database session for each test, rolled back afterwards."""
+    session = SessionLocal()
+    session.begin_nested()  # SAVEPOINT
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+@pytest.fixture
+def setup_diagnostic_data(db):
+    # Create Sites
+    site_sfax = Site(name="Sfax_diag", country="Tunisia", is_active=True)
+    site_paris = Site(name="Paris_diag", country="France", is_active=True)
+    db.add_all([site_sfax, site_paris])
+    db.flush()
+
+    # Create Groups
+    group_backend = DeveloperGroup(name="Backend_diag")
+    db.add_all([group_backend])
+    db.flush()
+
+    # Create Projects (use unique project id to avoid collisions)
+    project_id_val = 888877
+    project = db.query(Project).filter(Project.gitlab_project_id == project_id_val).first()
+    if not project:
+        project = Project(name="Project_diag", gitlab_project_id=project_id_val, is_active=True)
+        db.add(project)
+        db.flush()
+
+    # Create Periods (get-or-create to avoid unique constraint violations)
+    def get_or_create_period(year, month, status):
+        p = db.query(Period).filter(Period.year == year, Period.month == month).first()
+        if not p:
+            p = Period(year=year, month=month, status=status)
+            db.add(p)
+            db.flush()
+        return p
+
+    period_jan = get_or_create_period(2026, 1, "closed")
+
+    # Create Developers
+    dev_author = Developer(
+        name="Author Dev",
+        email="author_diag@example.com",
+        gitlab_username="author_diag_dev",
+        is_active=True,
+        is_validated=True,
+        onboarding_date=date(2026, 1, 1),
+    )
+    dev_reviewer = Developer(
+        name="Reviewer Dev",
+        email="reviewer_diag@example.com",
+        gitlab_username="reviewer_diag_dev",
+        is_active=True,
+        is_validated=True,
+        onboarding_date=date(2026, 1, 1),
+    )
+    db.add_all([dev_author, dev_reviewer])
+    db.flush()
+
+    # Assign to Sfax site, Backend group, and Project
+    db.add_all([
+        DeveloperSite(developer_id=dev_author.id, site_id=site_sfax.id, is_primary=True, is_active=True, start_date=date(2026, 1, 1)),
+        DeveloperSite(developer_id=dev_reviewer.id, site_id=site_sfax.id, is_primary=True, is_active=True, start_date=date(2026, 1, 1)),
+        DeveloperGroupLink(developer_id=dev_author.id, group_id=group_backend.id, is_primary=True, is_active=True, start_date=date(2026, 1, 1)),
+        DeveloperGroupLink(developer_id=dev_reviewer.id, group_id=group_backend.id, is_primary=True, is_active=True, start_date=date(2026, 1, 1)),
+        DeveloperProject(developer_id=dev_author.id, project_id=project.id, is_active=True, start_date=date(2026, 1, 1)),
+        DeveloperProject(developer_id=dev_reviewer.id, project_id=project.id, is_active=True, start_date=date(2026, 1, 1)),
+    ])
+    db.flush()
+
+    # Create Merge Request
+    mr = MergeRequest(
+        gitlab_mr_id=12345,
+        title="Diagnostic Test MR",
+        state=MRStateEnum.merged,
+        is_draft=False,
+        created_at_gitlab=datetime(2026, 1, 15, 12, 0, 0),
+        merged_at=datetime(2026, 1, 16, 12, 0, 0),
+        approved=True,
+        approved_at=datetime(2026, 1, 16, 12, 0, 0),
+        review_time_hours=24.0,
+        additions=100,
+        deletions=20,
+        total_changes=120,
+        user_notes_count=2,
+        project_id=project.id,
+        developer_id=dev_author.id,
+        reviewer_id=dev_reviewer.id,
+    )
+    db.add(mr)
+    db.flush()
+
+    # Create Comment
+    comment = Comment(
+        gitlab_id=9876543,
+        body="This is a diagnostic comment",
+        developer_id=dev_reviewer.id,
+        merge_request_id=mr.id,
+    )
+    db.add(comment)
+    db.flush()
+
+    return {
+        "project": project,
+        "period": period_jan,
+        "site": site_sfax,
+        "group": group_backend,
+        "author": dev_author,
+        "reviewer": dev_reviewer,
+        "mr": mr,
+        "comment": comment
+    }
+
+def test_get_project_diagnostic_metrics(db, setup_diagnostic_data):
+    data = setup_diagnostic_data
+    service = AnalyticsService(db)
+
+    # Test without filters
+    res = service.get_project_diagnostic_metrics(project_id=data["project"].id)
+    assert "mr_size_vs_review" in res
+    assert "reviewer_load" in res
+
+    # Verify MR size vs review data
+    mr_list = res["mr_size_vs_review"]
+    assert len(mr_list) == 1
+    assert mr_list[0]["mr_id"] == data["mr"].id
+    assert mr_list[0]["additions"] == 100
+    assert mr_list[0]["deletions"] == 20
+    assert mr_list[0]["total_changes"] == 120
+    assert mr_list[0]["review_time_hours"] == 24.0
+    assert mr_list[0]["user_notes_count"] == 2
+    assert mr_list[0]["author_name"] == data["author"].name
+
+    # Verify Reviewer load data
+    rev_list = res["reviewer_load"]
+    assert len(rev_list) == 1
+    assert rev_list[0]["reviewer_id"] == data["reviewer"].id
+    assert rev_list[0]["reviewer_name"] == data["reviewer"].name
+    assert rev_list[0]["mr_count"] == 1
+    assert rev_list[0]["avg_review_time_hours"] == 24.0
+    assert rev_list[0]["total_comments"] == 1
+
+def test_get_project_diagnostic_metrics_with_filters(db, setup_diagnostic_data):
+    data = setup_diagnostic_data
+    service = AnalyticsService(db)
+
+    # Test with period filter
+    res = service.get_project_diagnostic_metrics(
+        project_id=data["project"].id,
+        period_id=data["period"].id
+    )
+    assert len(res["mr_size_vs_review"]) == 1
+
+    # Test with wrong period filter
+    wrong_period = Period(year=2025, month=12, status="closed")
+    db.add(wrong_period)
+    db.flush()
+    res = service.get_project_diagnostic_metrics(
+        project_id=data["project"].id,
+        period_id=wrong_period.id
+    )
+    assert len(res["mr_size_vs_review"]) == 0
+
+    # Test with site filter
+    res = service.get_project_diagnostic_metrics(
+        project_id=data["project"].id,
+        site_id=data["site"].id
+    )
+    assert len(res["mr_size_vs_review"]) == 1
+
+    # Test with group filter
+    res = service.get_project_diagnostic_metrics(
+        project_id=data["project"].id,
+        group_id=data["group"].id
+    )
+    assert len(res["mr_size_vs_review"]) == 1
+
+def test_diagnostic_endpoint(db, setup_diagnostic_data):
+    data = setup_diagnostic_data
+    client = TestClient(app)
+
+    # Override standard DB dependency to use the test transaction
+    from app.database.session import get_db
+    app.dependency_overrides[get_db] = lambda: db
+
+    # Override authentication dependency to bypass actual user lookup
+    from app.api.dependencies import get_current_user
+    from app.models.app_user import AppUser, UserRoleEnum
+    test_user = AppUser(id=1, email="test_user@example.com", role=UserRoleEnum.super_admin, is_active=True)
+    app.dependency_overrides[get_current_user] = lambda: test_user
+
+    try:
+        response = client.get(
+            f"/api/v1/analytics/{data['project'].id}/diagnostic",
+            params={
+                "period_id": data["period"].id,
+                "site_id": data["site"].id,
+                "group_id": data["group"].id,
+            }
+        )
+        assert response.status_code == 200
+        res_json = response.json()
+        assert "mr_size_vs_review" in res_json
+        assert "reviewer_load" in res_json
+        assert len(res_json["mr_size_vs_review"]) == 1
+        assert len(res_json["reviewer_load"]) == 1
+        assert res_json["mr_size_vs_review"][0]["mr_id"] == data["mr"].id
+        assert res_json["reviewer_load"][0]["reviewer_id"] == data["reviewer"].id
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_current_user, None)

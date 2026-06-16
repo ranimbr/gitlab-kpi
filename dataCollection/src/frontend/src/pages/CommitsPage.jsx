@@ -237,16 +237,16 @@ function ChartSection({ commits, stats }) {
   return (
     <div className="row mb-4">
       {/* Pie — Commits par développeur */}
-      <div className="col-xl-6">
-        <div className="card h-100">
-          <div className="card-header d-flex align-items-center border-bottom-dashed">
+      <div className="col-xl-6 mb-4 mb-xl-0">
+        <div className="commits-chart-card h-100">
+          <div className="commits-chart-card-header d-flex align-items-center justify-content-between">
             <div className="flex-grow-1">
-              <h4 className="card-title mb-1">
+              <h4 className="mb-1" style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "#1a1f36" }}>
                 <i className="ri-pie-chart-line me-2 text-info"></i>Commits par développeur
               </h4>
               <p className="text-muted mb-0 fs-12">{pieSubtitle}</p>
             </div>
-            <span className="badge bg-info-subtle text-info fs-12">{stats.uniqueAuthors} devs</span>
+            <span className="badge bg-info-subtle text-info fs-12" style={{ padding: "4px 8px", borderRadius: "12px" }}>{stats.uniqueAuthors} devs</span>
           </div>
           <div className="card-body">
             <div style={{ height: 260 }}>
@@ -258,15 +258,15 @@ function ChartSection({ commits, stats }) {
 
       {/* Polar — Volume d'additions */}
       <div className="col-xl-6">
-        <div className="card h-100">
-          <div className="card-header d-flex align-items-center border-bottom-dashed">
+        <div className="commits-chart-card h-100">
+          <div className="commits-chart-card-header d-flex align-items-center justify-content-between">
             <div className="flex-grow-1">
-              <h4 className="card-title mb-1">
+              <h4 className="mb-1" style={{ fontSize: "14px", fontWeight: 700, margin: 0, color: "#1a1f36" }}>
                 <i className="ri-donut-chart-line me-2 text-danger"></i>Volume de contribution
               </h4>
               <p className="text-muted mb-0 fs-12">{polarSubtitle}</p>
             </div>
-            <span className="badge bg-danger-subtle text-danger fs-12">
+            <span className="badge bg-danger-subtle text-danger fs-12" style={{ padding: "4px 8px", borderRadius: "12px" }}>
               +{stats.totalAdditions.toLocaleString("fr-FR")} lignes
             </span>
           </div>
@@ -276,6 +276,50 @@ function ChartSection({ commits, stats }) {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+function KPICard({ icon, label, value, color, sub }) {
+  // Déterminer la couleur d'ombre et d'accentuation en fonction de la couleur active
+  const rgbColor = color === "#405189" ? "64, 81, 137" :
+                   color === "#0ab39c" ? "10, 179, 156" :
+                   color === "#f06548" ? "240, 101, 72" :
+                   color === "#299cdb" ? "41, 156, 219" : "64, 81, 137";
+
+  return (
+    <div className="kpi-card-wrapper">
+      <div className="kpi-card-premium"
+        style={{
+          cursor: "default",
+          '--kpi-accent': color,
+          '--kpi-accent-rgb': rgbColor,
+        }}>
+        {/* Subtle dynamic background gradient glowing effect */}
+        <div className="kpi-card-glow-bg" style={{background: `radial-gradient(circle at top right, rgba(${rgbColor}, 0.08), transparent 70%)`}}></div>
+        
+        {/* Background blob */}
+        <div className="kpi-card-blob" style={{opacity: 0.04}}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="180" height="110">
+            <path fill={color} d="m189.5-25.8c0 0 20.1 46.2-26.7 71.4 0 0-60 15.4-62.3 65.3-2.2 49.8-50.6 59.3-57.8 61.5-7.2 2.3-60.8 0-60.8 0l-11.9-199.4z"/>
+          </svg>
+        </div>
+        
+        <div className="kpi-card-inner">
+          <div className="kpi-icon-wrap" style={{background: `${color}12`, color: color, boxShadow: `0 4px 14px rgba(${rgbColor}, 0.15)`}}>
+            <i className={icon}></i>
+          </div>
+          <div className="kpi-text">
+            <p className="kpi-label">{label}</p>
+            <h4 className="kpi-value" style={{color: "#1e293b"}}>{value}</h4>
+            {sub && <p className="kpi-sub"><span className="kpi-sub-badge" style={{background: `${color}10`, color: color}}>{sub}</span></p>}
+          </div>
+        </div>
+        
+        {/* Beautiful indicator bar at the bottom */}
+        <div className="kpi-active-bar" style={{background: `linear-gradient(90deg, ${color}, rgba(${rgbColor}, 0.4))`}}></div>
       </div>
     </div>
   );
@@ -509,6 +553,28 @@ function getLotColor(lotId) {
   return LOT_COLORS[(lotId || 0) % LOT_COLORS.length];
 }
 
+function getCardAccentColor(index) {
+  return [
+    "#f7b84b", // warning / orange-yellow
+    "#f06548", // danger / red-orange
+    "#0ab39c", // success / teal
+    "#299cdb", // info / light blue
+    "#405189", // primary / indigo
+    "#3577f1", // secondary / blue
+  ][index % 6];
+}
+
+function getAvatarGradient(index) {
+  return [
+    { from: "#f7b84b", to: "#f8cb70" },
+    { from: "#f06548", to: "#ff8c6b" },
+    { from: "#0ab39c", to: "#06d6a0" },
+    { from: "#299cdb", to: "#4db6e4" },
+    { from: "#405189", to: "#3577f1" },
+    { from: "#8b5cf6", to: "#a78bfa" },
+  ][index % 6];
+}
+
 function CommitCard({ commit, index, onDetails, lots = [] }) {
   const author = getAuthor(commit);
   const site   = getSite(commit);
@@ -522,116 +588,111 @@ function CommitCard({ commit, index, onDetails, lots = [] }) {
   const lot = lots.find(l => l.id === commit.extraction_lot_id);
   const lotColor = getLotColor(commit.extraction_lot_id);
 
-
   return (
-    <div className="col-xxl-3 col-sm-6">
-      <div className="card card-height-100">
-        <div className="card-body">
-          <div className="d-flex flex-column h-100">
-
-            {/* ── Header : timing + badges ─────────────────────── */}
-            <div className="d-flex mb-2 align-items-start gap-1 flex-wrap">
-              <div className="flex-grow-1">
-                <p className="text-muted mb-1 fs-12">
-                  <i className="ri-time-line me-1"></i>il y a {timeAgo(commit.authored_date)}
-                </p>
-              </div>
-              {/* Badge Lot — data lineage */}
+    <div className="col-xxl-3 col-sm-6 mb-4">
+      <div className="commits-card">
+        {/* Top colored accent bar matching the index coloring to look premium */}
+        <div className="commits-card-accent" style={{ background: `linear-gradient(90deg, ${getCardAccentColor(index)}, #fff)` }}></div>
+        
+        <div className="commits-card-body">
+          {/* Header row: time & badges */}
+          <div className="commits-card-header-row mb-3">
+            <span className="commits-card-time" title={`Écrit le ${formatDate(commit.authored_date)}`}>
+              <i className="ri-time-line me-1"></i>il y a {timeAgo(commit.authored_date)}
+            </span>
+            
+            <div className="d-flex gap-1 align-items-center flex-wrap">
               {commit.extraction_lot_id && (
                 <span
+                  className="commits-card-lot-badge"
                   title={`Capturé lors de la session d'extraction Lot #${commit.extraction_lot_id}${lot ? ` le ${formatDate(lot.created_at)}` : ""}`}
                   style={{
-                    background: lotColor.bg, color: lotColor.text,
-                    borderRadius: 20, padding: "2px 8px",
-                    fontSize: 10, fontWeight: 700,
-                    cursor: "help", whiteSpace: "nowrap",
-                    border: `1px solid ${lotColor.text}22`,
+                    background: lotColor.bg,
+                    color: lotColor.text,
+                    border: `1px solid ${lotColor.text}33`
                   }}
                 >
                   <i className="ri-stack-line me-1"></i>Lot #{commit.extraction_lot_id}
                 </span>
               )}
-              <span className={`badge bg-${getBadgeColor(index)}-subtle text-${getBadgeColor(index)}`}>
+              <span className={`commits-card-id-badge commits-card-id-badge-${getBadgeColor(index)}`}>
                 <i className="ri-git-commit-line me-1"></i>#{commit.id}
               </span>
             </div>
+          </div>
 
-
-            <div className="d-flex mb-2">
-              <div className="flex-shrink-0 me-3">
-                <div className="avatar-sm">
-                  <span className={`avatar-title ${getCardBgColor(index)} text-${getBadgeColor(index)} rounded fs-14 fw-bold`}>
-                    {getInitials(author)}
+          {/* User info row */}
+          <div className="commits-card-user-row mb-3">
+            <div
+              className="commits-card-avatar"
+              style={{
+                background: `linear-gradient(135deg, ${getAvatarGradient(index).from}, ${getAvatarGradient(index).to})`
+              }}
+            >
+              {getInitials(author)}
+            </div>
+            <div className="commits-card-user-info min-w-0">
+              <h5
+                className="commits-card-title mb-1"
+                title={title}
+                onClick={() => onDetails(commit)}
+              >
+                {title}
+              </h5>
+              <div className="d-flex align-items-center gap-2 flex-wrap text-muted fs-12">
+                <span className="commits-card-author-name"><i className="ri-user-line me-1"></i>{author}</span>
+                {site && (
+                  <span className="commits-card-site-badge">
+                    {site}
                   </span>
-                </div>
-              </div>
-              <div className="flex-grow-1 min-w-0">
-                <h5
-                  className="mb-1 fs-14 fw-semibold text-body"
-                  title={title}
-                  style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.4, maxHeight: "2.8em", wordBreak: "break-word" }}
-                >
-                  {title}
-                </h5>
-                <p className="text-muted mb-0 fs-12">
-                  <i className="ri-user-line me-1"></i>{author}
-                  {site && <span className="badge bg-info-subtle text-info ms-2 fs-10">{site}</span>}
-                </p>
+                )}
               </div>
             </div>
+          </div>
 
-            {body && (
-              <div
-                className="bg-light rounded p-2 mb-2 fs-11 text-muted"
-                style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word", lineHeight: 1.5, cursor: "pointer" }}
-                onClick={() => onDetails(commit)}
-                title="Cliquer pour voir le message complet"
-              >
-                {truncate(body, 80)}
-              </div>
-            )}
+          {/* Body message preview if present */}
+          {body && (
+            <div
+              className="commits-card-body-preview mb-3"
+              onClick={() => onDetails(commit)}
+              title="Cliquer pour voir le message complet"
+            >
+              {truncate(body, 80)}
+            </div>
+          )}
 
-            <div className="mt-auto">
-              <div className="d-flex mb-2 align-items-center">
-                <div className="flex-grow-1 fs-12">
-                  <span className="text-success fw-semibold"><i className="ri-add-line"></i>+{commit.additions || 0}</span>
-                  <span className="ms-2 text-danger fw-semibold"><i className="ri-subtract-line"></i>-{commit.deletions || 0}</span>
-                </div>
-                <span className="text-muted fs-12">{commit.total_changes || 0} changes</span>
+          {/* Code changes summary */}
+          <div className="commits-card-changes-box mt-auto">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <div className="commits-card-diff-numbers">
+                <span className="text-success fw-semibold"><i className="ri-add-line"></i>+{commit.additions || 0}</span>
+                <span className="ms-2 text-danger fw-semibold"><i className="ri-subtract-line"></i>-{commit.deletions || 0}</span>
               </div>
-              <div className="progress progress-sm animated-progress">
-                <div className="progress-bar bg-success" style={{ width: `${addPct}%` }}></div>
-                <div className="progress-bar bg-danger"  style={{ width: `${100 - addPct}%` }}></div>
-              </div>
+              <span className="commits-card-diff-total">{commit.total_changes || 0} changes</span>
+            </div>
+            
+            {/* Elegant high fidelity progress bar */}
+            <div className="commits-card-progress-bar">
+              <div className="commits-card-progress-add" style={{ width: `${addPct}%` }}></div>
+              <div className="commits-card-progress-del" style={{ width: `${100 - addPct}%` }}></div>
             </div>
           </div>
         </div>
 
-        {/* ── Footer : double date (authored vs capturé) ───────── */}
-        <div className="card-footer bg-transparent border-top-dashed py-2">
-          <div className="d-flex align-items-center flex-wrap gap-1">
-            <div className="flex-grow-1">
-              <span
-                className={`avatar-title avatar-xxs rounded-circle bg-${getBadgeColor(index)}`}
-                style={{ width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10 }}
-              >
-                {getInitials(author)}
-              </span>
-            </div>
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              {/* Date authored (écriture du code) */}
-              <span
-                className="text-muted fs-11"
-                title="authored_date : date à laquelle le développeur a écrit ce commit dans son environnement local"
-              >
-                <i className="ri-quill-pen-line me-1 align-bottom" style={{ color: "#405189" }}></i>
-                {formatDate(commit.authored_date)}
-              </span>
-              <button className="btn btn-xs btn-soft-primary py-0 px-2" style={{ fontSize: 10 }}
-                onClick={() => onDetails(commit)} title="Voir détails">
-                <i className="ri-eye-line"></i>
-              </button>
-            </div>
+        {/* Footer row */}
+        <div className="commits-card-footer">
+          <div className="d-flex align-items-center justify-content-between w-100">
+            <span className="commits-card-footer-date" title="Date d'écriture locale">
+              <i className="ri-quill-pen-line me-1 text-primary"></i>
+              {formatDate(commit.authored_date)}
+            </span>
+            <button
+              className="commits-card-eye-btn"
+              onClick={() => onDetails(commit)}
+              title="Voir les détails"
+            >
+              <i className="ri-eye-line"></i>
+            </button>
           </div>
         </div>
       </div>
@@ -816,11 +877,11 @@ export default function CommitsPage() {
       result = result.filter((c) => (c.site_id || c.developer?.site_id) === targetSiteId);
     }
 
-    // [SENIOR] Normalisation des données (Exclusion des Merges)
-    // On s'appuie désormais sur le flag is_merge_commit renforcé par le backend
-    if (filters.excludeMerges) {
-      result = result.filter(c => !c.is_merge_commit);
-    }
+    // ✅ [ENTERPRISE PARITY] — Le backend est l'unique Source de Vérité.
+    // Le filtre exclude_merge_commits=true est déjà appliqué par le backend (commit_repository.py)
+    // avant l'envoi des données. Un filtre côté frontend créerait une incohérence
+    // avec les compteurs du Lot (extraction_lots.py) qui comptent les mêmes données.
+    // NE PAS RE-FILTRER ICI.
 
     // [NEW] Filtre Equipe
     if (filters.groupId !== "all") {
@@ -1041,144 +1102,225 @@ export default function CommitsPage() {
           );
         })()}
 
-        {/* Toolbar Unifié Senior+++++ */}
-        <div className="card mb-3">
-          <div className="card-body pb-2">
-            <div className="row g-2 align-items-end">
-              <div className="col-xl-2 col-md-5">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Recherche</label>
-                <div className="search-box">
-                  <input type="text" className="form-control form-control-sm" placeholder="SHA, auteur, message…" value={filters.search} onChange={(e)=>handleFilterChange("search",e.target.value)} />
-                  <i className="ri-search-line search-icon"></i>
-                </div>
+        {/* ── Toolbar Premium ────────────────────────────────────────────────── */}
+        <div className="commits-filter-card mb-4">
+          <div className="commits-filter-header">
+            <div className="commits-filter-header-left">
+              <div className="commits-filter-icon">
+                <i className="ri-equalizer-3-line"></i>
               </div>
-
-              <div className="col-xl-2 col-md-3">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Période (Mois)</label>
-                <select className="form-select form-select-sm" value={filters.period} onChange={(e)=>handleFilterChange("period",e.target.value)}>
-                  <option value="all">Toutes les périodes</option>
-                  {periods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+              <div>
+                <span className="commits-filter-title">Filtres</span>
+                {activeFilterCount > 0 && (
+                  <span className="commits-filter-badge">{activeFilterCount} actif{activeFilterCount > 1 ? "s" : ""}</span>
+                )}
               </div>
+            </div>
+            <div className="d-flex gap-2">
+              <button
+                className="commits-btn-refresh"
+                onClick={loadCommits}
+                disabled={loading}
+                title="Rafraîchir"
+              >
+                <i className={spinning ? "ri-restart-line commits-spin" : "ri-restart-line"}></i>
+                Rafraîchir
+              </button>
+              {activeFilterCount > 0 && (
+                <button
+                  className="commits-btn-reset"
+                  onClick={() => setFilters(INITIAL_FILTERS)}
+                  title="Réinitialiser tous les filtres"
+                >
+                  <i className="ri-filter-off-line"></i>
+                  Réinitialiser
+                </button>
+              )}
+              <button
+                className="commits-btn-export"
+                onClick={() => exportCommitsCSV(filtered, filters.project === "all" ? "global" : projects.find(p=>p.id===parseInt(filters.project))?.name)}
+                title="Exporter CSV"
+              >
+                <i className="ri-download-2-line"></i>
+                Export CSV
+              </button>
+            </div>
+          </div>
 
-              <div className="col-xl-1 col-md-3">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Projet</label>
-                <select className="form-select form-select-sm" value={filters.project} onChange={(e)=>handleFilterChange("project",e.target.value)}>
-                  <option value="all">Tous les projets</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-
-              <div className="col-xl-1 col-md-3">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Site</label>
-                <select className="form-select form-select-sm" value={filters.siteId} onChange={(e)=>handleFilterChange("siteId",e.target.value)}>
-                  <option value="all">Tous</option>
-                  {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-
-              <div className="col-xl-1 col-md-3">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Équipe</label>
-                <select className="form-select form-select-sm" value={filters.groupId} onChange={(e)=>{handleFilterChange("groupId",e.target.value);handleFilterChange("developerId","all");}}>
-                  <option value="all">Toutes</option>
-                  {groupList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-              </div>
-
-              <div className="col-xl-2 col-md-3">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Développeur</label>
-                <select className="form-select form-select-sm" value={filters.developerId} onChange={(e)=>handleFilterChange("developerId",e.target.value)}>
-                  <option value="all">Tous</option>
-                  {authorsList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-
-              <div className="col-xl-1 col-md-2">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Tri par</label>
-                <select className="form-select form-select-sm" value={filters.sort} onChange={(e)=>handleFilterChange("sort",e.target.value)}>
-                  <option value="date">Date</option>
-                  <option value="changes">Changes</option>
-                  <option value="author">Auteur</option>
-                </select>
-              </div>
-
-              <div className="col-xl-2 col-md-3">
-                <label className="form-label fs-11 text-muted text-uppercase fw-bold mb-1">Type de flux</label>
-                <div className="d-flex align-items-center">
-                  <div className="form-check form-switch form-switch-success" title="Exclure les commits de merge pour une analyse de contribution pure">
-                    <input 
-                      className="form-check-input" 
-                      type="checkbox" 
-                      id="excludeMergesSwitch" 
-                      checked={filters.excludeMerges} 
-                      onChange={(e) => handleFilterChange("excludeMerges", e.target.checked)} 
-                    />
-                    <label className="form-check-label fs-12 ms-1 fw-medium" htmlFor="excludeMergesSwitch">
-                      {filters.excludeMerges ? "Contribution Pure" : "Flux Complet"}
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-xl-2 col-md-2">
-                <div className="d-flex gap-2">
-                  <button className="btn btn-sm btn-light flex-grow-1" onClick={loadCommits} title="Rafraîchir" disabled={loading}>
-                    <i className={spinning ? "ri-restart-line spin" : "ri-restart-line"}></i>
-                  </button>
-                  {activeFilterCount > 0 && (
-                    <button className="btn btn-sm btn-soft-danger flex-grow-1" onClick={()=>setFilters(INITIAL_FILTERS)} title="Réinitialiser">
-                      <i className="ri-filter-off-line"></i> {activeFilterCount}
-                    </button>
-                  )}
-                  <button className="btn btn-sm btn-primary flex-grow-1" onClick={() => exportCommitsCSV(filtered, filters.project === "all" ? "global" : projects.find(p=>p.id===parseInt(filters.project))?.name)} title="Download CSV">
-                    <i className="ri-download-2-line"></i>
-                  </button>
-                </div>
+          <div className="commits-filter-body">
+            {/* Recherche */}
+            <div className="commits-filter-group">
+              <label className="commits-filter-label">
+                <i className="ri-search-line"></i> Recherche
+              </label>
+              <div className="commits-search-wrap">
+                <i className="ri-search-line commits-search-icon"></i>
+                <input
+                  type="text"
+                  className="commits-filter-input commits-search-input"
+                  placeholder="SHA, auteur, message…"
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange("search", e.target.value)}
+                />
               </div>
             </div>
 
-            {activeFilterCount > 0 && (
-              <div className="d-flex flex-wrap gap-2 mt-3 pt-2 border-top border-top-dashed">
-                {filters.search && <span className="badge bg-light text-dark border py-1.5 px-2">Recherche: {filters.search}</span>}
-                {filters.period !== "all" && <span className="badge bg-info-subtle text-info py-1.5 px-2">Période: {periods.find(p=>p.id===parseInt(filters.period))?.name}</span>}
-                {filters.project !== "all" && <span className="badge bg-primary-subtle text-primary py-1.5 px-2">Projet: {projects.find(p=>p.id===parseInt(filters.project))?.name}</span>}
-                {filters.siteId !== "all" && <span className="badge bg-success-subtle text-success py-1.5 px-2">Site: {allSites.find(s=>String(s.id)===filters.siteId)?.name}</span>}
-                {filters.lot !== "all" && <span className="badge bg-info-subtle text-info py-1.5 px-2">Session: {lots.find(l=>String(l.id)===String(filters.lot))?.created_at ? new Date(lots.find(l=>String(l.id)===String(filters.lot)).created_at).toLocaleDateString("fr-FR") : `#${filters.lot}`}</span>}
-                {filters.groupId !== "all" && <span className="badge bg-warning-subtle text-warning py-1.5 px-2">Équipe: {groups.find(g=>g.id===parseInt(filters.groupId))?.name}</span>}
-                {filters.developerId !== "all" && <span className="badge bg-secondary-subtle text-secondary py-1.5 px-2">Auteur: {developers.find(d=>String(d.id)===filters.developerId)?.name}</span>}
+            {/* Période */}
+            <div className="commits-filter-group">
+              <label className="commits-filter-label">
+                <i className="ri-calendar-line"></i> Période
+              </label>
+              <select
+                className="commits-filter-select"
+                value={filters.period}
+                onChange={(e) => handleFilterChange("period", e.target.value)}
+              >
+                <option value="all">Toutes les périodes</option>
+                {periods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+
+            {/* Projet */}
+            <div className="commits-filter-group">
+              <label className="commits-filter-label">
+                <i className="ri-git-repository-line"></i> Projet
+              </label>
+              <select
+                className="commits-filter-select"
+                value={filters.project}
+                onChange={(e) => handleFilterChange("project", e.target.value)}
+              >
+                <option value="all">Tous les projets</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+
+            {/* Développeur */}
+            <div className="commits-filter-group">
+              <label className="commits-filter-label">
+                <i className="ri-user-line"></i> Développeur
+              </label>
+              <select
+                className="commits-filter-select"
+                value={filters.developerId}
+                onChange={(e) => handleFilterChange("developerId", e.target.value)}
+              >
+                <option value="all">Tous les développeurs</option>
+                {authorsList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+
+            {/* Tri */}
+            <div className="commits-filter-group">
+              <label className="commits-filter-label">
+                <i className="ri-sort-desc"></i> Tri par
+              </label>
+              <select
+                className="commits-filter-select"
+                value={filters.sort}
+                onChange={(e) => handleFilterChange("sort", e.target.value)}
+              >
+                <option value="date">Date</option>
+                <option value="changes">Changes</option>
+                <option value="author">Auteur</option>
+              </select>
+            </div>
+
+            {/* Type de flux */}
+            <div className="commits-filter-group">
+              <label className="commits-filter-label">
+                <i className="ri-git-branch-line"></i> Type de flux
+              </label>
+              <div className="commits-toggle-wrap">
+                <div
+                  className={`commits-toggle ${filters.excludeMerges ? "commits-toggle-active" : ""}`}
+                  onClick={() => handleFilterChange("excludeMerges", !filters.excludeMerges)}
+                  title="Exclure les commits de merge pour une analyse de contribution pure"
+                >
+                  <div className="commits-toggle-thumb"></div>
+                </div>
+                <span className="commits-toggle-label">
+                  {filters.excludeMerges ? "Contribution Pure" : "Flux Complet"}
+                </span>
+                <input
+                  type="checkbox"
+                  id="excludeMergesSwitch"
+                  checked={filters.excludeMerges}
+                  onChange={(e) => handleFilterChange("excludeMerges", e.target.checked)}
+                  style={{ display: "none" }}
+                />
               </div>
-            )}
+            </div>
           </div>
+
+          {/* Active filter tags */}
+          {activeFilterCount > 0 && (
+            <div className="commits-filter-tags">
+              {filters.search && (
+                <span className="commits-filter-tag">
+                  <i className="ri-search-line"></i> {filters.search}
+                  <button onClick={() => handleFilterChange("search", "")} className="commits-filter-tag-remove">×</button>
+                </span>
+              )}
+              {filters.period !== "all" && (
+                <span className="commits-filter-tag commits-filter-tag-info">
+                  <i className="ri-calendar-line"></i> {periods.find(p=>p.id===parseInt(filters.period))?.name}
+                  <button onClick={() => handleFilterChange("period", "all")} className="commits-filter-tag-remove">×</button>
+                </span>
+              )}
+              {filters.project !== "all" && (
+                <span className="commits-filter-tag commits-filter-tag-primary">
+                  <i className="ri-git-repository-line"></i> {projects.find(p=>p.id===parseInt(filters.project))?.name}
+                  <button onClick={() => handleFilterChange("project", "all")} className="commits-filter-tag-remove">×</button>
+                </span>
+              )}
+              {filters.developerId !== "all" && (
+                <span className="commits-filter-tag commits-filter-tag-secondary">
+                  <i className="ri-user-line"></i> {developers.find(d=>String(d.id)===filters.developerId)?.name}
+                  <button onClick={() => handleFilterChange("developerId", "all")} className="commits-filter-tag-remove">×</button>
+                </span>
+              )}
+              {filters.lot !== "all" && (
+                <span className="commits-filter-tag commits-filter-tag-info">
+                  <i className="ri-stack-line"></i> Session #{filters.lot}
+                  <button onClick={() => handleFilterChange("lot", "all")} className="commits-filter-tag-remove">×</button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* ── Stat Cards — toujours affichées si un filtre est actif ─────────── */}
+        {/* ── Stat Cards Premium ──────────────────────────────────────────────── */}
         {(filters.period !== "all" || filters.project !== "all" || commits.length > 0) && !loading && (
-          <div className="row mb-3">
-            {[
-              { label: "Total Commits",   value: filtered.length,                                     color: "primary", icon: "ri-git-commit-line", sub: `${stats.uniqueAuthors} développeur${stats.uniqueAuthors > 1 ? 's' : ''}`  },
-              { label: "Total Additions", value: `+${stats.totalAdditions.toLocaleString("fr-FR")}`, color: "success", icon: "ri-add-circle-line",  sub: "Lignes ajoutées"                      },
-              { label: "Total Deletions", value: `-${stats.totalDeletions.toLocaleString("fr-FR")}`, color: "danger",  icon: "ri-subtract-line",    sub: "Lignes supprimées"                    },
-              { label: "Moy. changes",    value: stats.avgChanges.toLocaleString("fr-FR"),           color: "info",    icon: "ri-file-code-line",   sub: "Par commit"                           },
-            ].map((s, i) => (
-              <div key={i} className="col-xl-3 col-sm-6">
-                <div className="card card-animate">
-                  <div className="card-body">
-                    <div className="d-flex align-items-center">
-                      <div className="avatar-sm flex-shrink-0">
-                        <span className={`avatar-title bg-${s.color}-subtle text-${s.color} rounded-2 fs-3`}>
-                          <i className={s.icon}></i>
-                        </span>
-                      </div>
-                      <div className="flex-grow-1 ms-3">
-                        <p className="text-uppercase fw-medium text-muted mb-1 fs-12">{s.label}</p>
-                        <h4 className={`mb-0 text-${s.color}`}>{s.value}</h4>
-                        <p className="text-muted mb-0 fs-11 mt-1">{s.sub}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="commits-kpi-grid-row">
+            <KPICard
+              icon="ri-git-commit-line"
+              label="Total Commits"
+              value={filtered.length}
+              color="#405189"
+              sub={`${stats.uniqueAuthors} développeur${stats.uniqueAuthors > 1 ? "s" : ""}`}
+            />
+            <KPICard
+              icon="ri-add-circle-line"
+              label="Total Additions"
+              value={`+${stats.totalAdditions.toLocaleString("fr-FR")}`}
+              color="#0ab39c"
+              sub="Lignes ajoutées"
+            />
+            <KPICard
+              icon="ri-subtract-line"
+              label="Total Deletions"
+              value={`-${stats.totalDeletions.toLocaleString("fr-FR")}`}
+              color="#f06548"
+              sub="Lignes supprimées"
+            />
+            <KPICard
+              icon="ri-file-code-line"
+              label="Moy. Changes"
+              value={stats.avgChanges.toLocaleString("fr-FR")}
+              color="#299cdb"
+              sub="Par commit"
+            />
           </div>
         )}
 
@@ -1277,8 +1419,519 @@ export default function CommitsPage() {
       </div>
 
       <style>{`
-        .spinning { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        /* ── Commits Filter Card ─────────────────────────────────────────────── */
+        .commits-filter-card {
+          background: #fff;
+          border-radius: 20px;
+          box-shadow: 0 4px 24px rgba(64,81,137,0.08);
+          border: 1px solid rgba(64,81,137,0.08);
+          overflow: hidden;
+          transition: box-shadow .25s;
+        }
+        .commits-filter-card:hover { box-shadow: 0 8px 32px rgba(64,81,137,0.13); }
+
+        .commits-filter-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 18px 24px;
+          border-bottom: 1px solid #f1f4f9;
+          background: linear-gradient(90deg, #f8f9ff 0%, #fff 100%);
+        }
+        .commits-filter-header-left { display: flex; align-items: center; gap: 12px; }
+        .commits-filter-icon {
+          width: 38px; height: 38px; border-radius: 10px;
+          background: linear-gradient(135deg, #405189, #3577f1);
+          display: flex; align-items: center; justify-content: center;
+          color: #fff; font-size: 17px; flex-shrink: 0;
+          box-shadow: 0 4px 12px rgba(64,81,137,0.3);
+        }
+        .commits-filter-title { font-weight: 700; font-size: 15px; color: #1a1f36; }
+        .commits-filter-badge {
+          display: inline-block;
+          margin-left: 8px;
+          background: linear-gradient(135deg, #405189, #3577f1);
+          color: #fff;
+          font-size: 10px; font-weight: 700;
+          padding: 2px 8px; border-radius: 20px;
+          vertical-align: middle;
+        }
+
+        .commits-filter-body {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          padding: 20px 24px;
+          align-items: flex-end;
+        }
+        .commits-filter-group {
+          display: flex; flex-direction: column; gap: 6px;
+          flex: 1; min-width: 160px;
+        }
+        .commits-filter-label {
+          font-size: 10px; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.8px;
+          color: #8896ab;
+          display: flex; align-items: center; gap: 5px; margin: 0;
+        }
+        .commits-filter-label i { font-size: 11px; }
+        .commits-filter-select, .commits-filter-input {
+          height: 38px;
+          border: 1.5px solid #e8edf5;
+          border-radius: 10px;
+          padding: 0 12px;
+          font-size: 13px;
+          color: #1a1f36;
+          background: #f8faff;
+          transition: border-color .2s, box-shadow .2s;
+          outline: none;
+          width: 100%;
+          appearance: none; -webkit-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238896ab' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 12px center;
+          padding-right: 32px;
+        }
+        .commits-filter-select:focus, .commits-filter-input:focus {
+          border-color: #405189;
+          box-shadow: 0 0 0 3px rgba(64,81,137,0.12);
+          background-color: #fff;
+        }
+        .commits-search-wrap { position: relative; }
+        .commits-search-icon {
+          position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+          color: #8896ab; font-size: 14px; pointer-events: none;
+        }
+        .commits-search-input {
+          padding-left: 36px !important;
+          background-image: none !important;
+        }
+
+        /* Toggle switch */
+        .commits-toggle-wrap { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+        .commits-toggle {
+          width: 42px; height: 24px; border-radius: 12px;
+          background: #e2e8f0;
+          position: relative; cursor: pointer;
+          transition: background .25s;
+          flex-shrink: 0;
+        }
+        .commits-toggle.commits-toggle-active { background: linear-gradient(135deg, #0ab39c, #06d6a0); }
+        .commits-toggle-thumb {
+          width: 18px; height: 18px; border-radius: 50%;
+          background: #fff;
+          position: absolute; top: 3px; left: 3px;
+          transition: left .25s;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.18);
+        }
+        .commits-toggle.commits-toggle-active .commits-toggle-thumb { left: 21px; }
+        .commits-toggle-label { font-size: 12px; font-weight: 600; color: #495057; white-space: nowrap; }
+
+        /* Filter tag strip */
+        .commits-filter-tags {
+          display: flex; flex-wrap: wrap; gap: 8px;
+          padding: 12px 24px;
+          border-top: 1px dashed #e8edf5;
+          background: #fafbff;
+        }
+        .commits-filter-tag {
+          display: inline-flex; align-items: center; gap: 5px;
+          background: #f0f4ff; border: 1px solid #c7d4f5;
+          color: #405189; font-size: 11px; font-weight: 600;
+          padding: 4px 10px; border-radius: 20px;
+        }
+        .commits-filter-tag-info { background: #e8f4fb; border-color: #9fd3ef; color: #299cdb; }
+        .commits-filter-tag-primary { background: #eef2ff; border-color: #c5cfef; color: #405189; }
+        .commits-filter-tag-secondary { background: #f4f5f7; border-color: #c4c8d4; color: #495057; }
+        .commits-filter-tag-remove {
+          background: none; border: none; cursor: pointer;
+          font-size: 13px; line-height: 1; color: inherit;
+          opacity: 0.6; padding: 0; margin-left: 2px;
+          transition: opacity .15s;
+        }
+        .commits-filter-tag-remove:hover { opacity: 1; }
+
+        /* Action buttons */
+        .commits-btn-refresh, .commits-btn-reset, .commits-btn-export {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 8px 16px; border-radius: 10px;
+          font-size: 12px; font-weight: 600;
+          border: none; cursor: pointer;
+          transition: all .2s; white-space: nowrap;
+        }
+        .commits-btn-refresh {
+          background: #f0f4ff; color: #405189;
+          border: 1.5px solid #c7d4f5;
+        }
+        .commits-btn-refresh:hover { background: #e0e8ff; transform: translateY(-1px); }
+        .commits-btn-refresh:disabled { opacity: 0.55; cursor: not-allowed; }
+        .commits-btn-reset {
+          background: #fff0ed; color: #f06548;
+          border: 1.5px solid #f8c4ba;
+        }
+        .commits-btn-reset:hover { background: #ffe4de; transform: translateY(-1px); }
+        .commits-btn-export {
+          background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+          border: 1.5px solid #6ee7b7;
+          color: #065f46;
+        }
+        .commits-btn-export:hover {
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: #fff;
+          border-color: #059669;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+          transform: translateY(-1px);
+        }
+
+        /* ── KPI Grid ─────────────────────────────────────────── */
+        .commits-kpi-grid-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 18px;
+          margin-bottom: 28px;
+        }
+        @media (max-width: 1200px) { .commits-kpi-grid-row { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 576px)  { .commits-kpi-grid-row { grid-template-columns: 1fr; } }
+
+        .kpi-card-wrapper { display: flex; flex-direction: column; }
+
+        .kpi-card-premium {
+          position: relative;
+          overflow: hidden;
+          background: #ffffff;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 20px;
+          padding: 24px 20px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+        
+        .kpi-card-premium:hover {
+          transform: translateY(-5px);
+          border-color: var(--kpi-accent);
+          box-shadow: 0 20px 30px -8px rgba(var(--kpi-accent-rgb), 0.18);
+        }
+        
+        .kpi-card-glow-bg {
+          position: absolute;
+          top: 0; left: 0; right: 0; bottom: 0;
+          pointer-events: none;
+          transition: opacity 0.3s ease;
+          opacity: 0.5;
+        }
+        .kpi-card-premium:hover .kpi-card-glow-bg {
+          opacity: 1;
+        }
+        
+        .kpi-card-blob {
+          position: absolute;
+          top: -12px; right: -12px;
+          pointer-events: none;
+          transition: transform 0.4s ease;
+        }
+        .kpi-card-premium:hover .kpi-card-blob {
+          transform: scale(1.15) rotate(5deg);
+        }
+        
+        .kpi-card-inner {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        
+        .kpi-icon-wrap {
+          width: 52px; height: 52px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          flex-shrink: 0;
+          transition: all 0.3s ease;
+        }
+        .kpi-card-premium:hover .kpi-icon-wrap { 
+          transform: scale(1.1) rotate(-8deg); 
+        }
+        
+        .kpi-text { flex: 1; }
+        
+        .kpi-label {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .08em;
+          color: #64748b;
+          margin-bottom: 6px;
+        }
+        
+        .kpi-value {
+          font-size: 28px;
+          font-weight: 800;
+          margin-bottom: 0;
+          line-height: 1.1;
+          letter-spacing: -1px;
+        }
+        
+        .kpi-sub {
+          font-size: 11px;
+          margin-top: 8px;
+          margin-bottom: 0;
+        }
+        
+        .kpi-sub-badge {
+          padding: 3px 8px;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 10px;
+          display: inline-block;
+        }
+        
+        .kpi-active-bar {
+          position: absolute;
+          bottom: 0; left: 0; right: 0;
+          height: 4px;
+          border-radius: 0 0 20px 20px;
+          opacity: 0.3;
+          transition: opacity 0.3s ease;
+        }
+        .kpi-card-premium:hover .kpi-active-bar {
+          opacity: 1;
+        }
+
+        /* Spin animation */
+        .commits-spin { animation: commits-spin-anim 1s linear infinite; }
+        @keyframes commits-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* ── Chart Cards ────────────────────────────────────────────────────── */
+        .commits-chart-card {
+          background: #fff;
+          border-radius: 20px;
+          box-shadow: 0 4px 24px rgba(64,81,137,0.08);
+          border: 1px solid rgba(64,81,137,0.08);
+          overflow: hidden;
+          transition: box-shadow .25s, transform .25s;
+        }
+        .commits-chart-card:hover {
+          box-shadow: 0 8px 32px rgba(64,81,137,0.13);
+          transform: translateY(-2px);
+        }
+        .commits-chart-card-header {
+          padding: 16px 24px;
+          border-bottom: 1px dashed #e8edf5;
+          background: linear-gradient(90deg, #f8f9ff 0%, #fff 100%);
+        }
+
+        /* ── Commit Cards ───────────────────────────────────────────────────── */
+        .commits-card {
+          position: relative;
+          background: #fff;
+          border-radius: 20px;
+          border: 1px solid rgba(64,81,137,0.08);
+          box-shadow: 0 4px 20px rgba(64,81,137,0.07);
+          overflow: hidden;
+          transition: transform .25s ease, box-shadow .25s ease;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+        }
+        .commits-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 12px 30px rgba(64,81,137,0.15);
+        }
+        .commits-card-accent {
+          height: 4px;
+          width: 100%;
+        }
+        .commits-card-body {
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          flex-grow: 1;
+        }
+        .commits-card-header-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .commits-card-time {
+          font-size: 11px;
+          color: #8896ab;
+          font-weight: 500;
+          display: inline-flex;
+          align-items: center;
+        }
+        .commits-card-time i {
+          font-size: 12px;
+          color: #a0aec0;
+        }
+        .commits-card-lot-badge {
+          border-radius: 20px;
+          padding: 2px 8px;
+          font-size: 10px;
+          font-weight: 700;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          cursor: help;
+        }
+        .commits-card-id-badge {
+          border-radius: 6px;
+          padding: 2px 7px;
+          font-size: 10px;
+          font-weight: 700;
+          font-family: 'SFMono-Regular', Consolas, monospace;
+          display: inline-flex;
+          align-items: center;
+        }
+        .commits-card-id-badge-primary { background: #e8ecf8; color: #405189; border: 1px solid #c7d2f0; }
+        .commits-card-id-badge-success { background: #d4f5f0; color: #0a7a6a; border: 1px solid #a3e2d7; }
+        .commits-card-id-badge-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+        .commits-card-id-badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+        .commits-card-id-badge-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+        .commits-card-id-badge-secondary { background: #f4f5f7; color: #495057; border: 1px solid #e2e8f0; }
+
+        .commits-card-user-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .commits-card-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 700;
+          flex-shrink: 0;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+        .commits-card-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #1e293b;
+          margin: 0;
+          line-height: 1.45;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          cursor: pointer;
+          transition: color .2s;
+        }
+        .commits-card-title:hover {
+          color: #405189;
+        }
+        .commits-card-author-name {
+          font-weight: 600;
+          color: #64748b;
+        }
+        .commits-card-site-badge {
+          background: #eff6ff;
+          color: #2563eb;
+          border: 1px solid #bfdbfe;
+          border-radius: 20px;
+          padding: 1px 7px;
+          font-size: 9.5px;
+          font-weight: 700;
+        }
+        .commits-card-body-preview {
+          background: #f8fafc;
+          border: 1px solid #f1f5f9;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 11.5px;
+          color: #64748b;
+          line-height: 1.5;
+          cursor: pointer;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          transition: background .2s, border-color .2s;
+        }
+        .commits-card-body-preview:hover {
+          background: #f1f5f9;
+          border-color: #e2e8f0;
+        }
+
+        .commits-card-changes-box {
+          border-top: 1px dashed #f1f5f9;
+          padding-top: 12px;
+        }
+        .commits-card-diff-numbers {
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .commits-card-diff-total {
+          font-size: 11px;
+          color: #94a3b8;
+          font-weight: 500;
+        }
+        .commits-card-progress-bar {
+          height: 6px;
+          background: #f1f5f9;
+          border-radius: 99px;
+          overflow: hidden;
+          display: flex;
+        }
+        .commits-card-progress-add {
+          height: 100%;
+          background: linear-gradient(90deg, #10b981, #34d399);
+          border-radius: 99px 0 0 99px;
+        }
+        .commits-card-progress-del {
+          height: 100%;
+          background: linear-gradient(90deg, #ef4444, #f87171);
+          border-radius: 0 99px 99px 0;
+        }
+
+        .commits-card-footer {
+          padding: 12px 20px;
+          background: #fafbfc;
+          border-top: 1px dashed #e8edf5;
+          display: flex;
+          align-items: center;
+        }
+        .commits-card-footer-date {
+          font-size: 11.5px;
+          color: #64748b;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+        }
+        .commits-card-footer-date i {
+          font-size: 13px;
+        }
+        .commits-card-eye-btn {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: #fff;
+          border: 1px solid #d1d5db;
+          color: #374151;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all .2s;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+          outline: none;
+        }
+        .commits-card-eye-btn:hover {
+          background: #f0f4ff;
+          border-color: #a5b4fc;
+          color: #405189;
+          transform: scale(1.1);
+          box-shadow: 0 4px 8px rgba(64,81,137,0.15);
+        }
       `}</style>
     </div>
   );

@@ -33,6 +33,8 @@ class DashboardRepository(BaseRepository[Dashboard]):
         Dashboards accessibles à un user :
           - IDs dans AppUser.dashboard_access[] (ARRAY PostgreSQL)
           - OU is_public=True
+          - OU dashboards des sites accessibles (pour site_managers avec multi-sites)
+          - OU dashboards des projets accessibles (pour project_managers)
         """
         user = db.query(AppUser).filter(AppUser.id == user_id).one_or_none()
         if not user:
@@ -56,6 +58,38 @@ class DashboardRepository(BaseRepository[Dashboard]):
         for d in public_dashboards:
             if d.id not in seen:
                 result.append(d)
+                seen.add(d.id)
+
+        # ✅ AJOUT : Pour les site_managers, inclure les dashboards de leurs sites accessibles
+        if user.is_site_manager:
+            accessible_site_ids = user.accessible_site_ids
+            # Fallback vers l'ancien système single site
+            if user.site_id:
+                accessible_site_ids.append(user.site_id)
+            
+            if accessible_site_ids:
+                site_dashboards = (
+                    db.query(Dashboard)
+                    .filter(Dashboard.site_id.in_(accessible_site_ids))
+                    .all()
+                )
+                for d in site_dashboards:
+                    if d.id not in seen:
+                        result.append(d)
+                        seen.add(d.id)
+
+        # ✅ AJOUT : Pour les project_managers, inclure les dashboards de leurs projets assignés
+        if user.is_project_manager and user.project_ids:
+            project_dashboards = (
+                db.query(Dashboard)
+                .filter(Dashboard.project_id.in_(user.project_ids))
+                .all()
+            )
+            for d in project_dashboards:
+                if d.id not in seen:
+                    result.append(d)
+                    seen.add(d.id)
+
         return result
 
     def get_by_creator(self, db: Session, created_by: int) -> List[Dashboard]:

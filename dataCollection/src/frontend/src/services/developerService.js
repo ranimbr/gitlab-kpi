@@ -31,8 +31,11 @@ const developerService = {
   getAll: (activeOnly = true) =>
     api.get("/developers", { params: { tab: "validated", active_only: activeOnly } }).then(r => r.data),
 
-  getById: (id) =>
-    api.get(`/developers/${id}`).then(r => r.data),
+  getById: (id, periodId = null) => {
+    const params = {};
+    if (periodId && periodId !== "all") params.period_id = parseInt(periodId);
+    return api.get(`/developers/${id}`, { params }).then(r => r.data);
+  },
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -40,15 +43,18 @@ const developerService = {
   update:   (id, data) => api.put(`/developers/${id}`, data).then(r => r.data),
   validate: (id, data) => api.patch(`/developers/${id}/validate`, data).then(r => r.data),
   validateAll: () => api.post(`/developers/validate-all`).then(r => r.data),
+  validateSelected: (ids) => api.post(`/developers/validate-selected`, { ids }).then(r => r.data),
   delete:   (id) => api.delete(`/developers/${id}`).then(r => r.data),
   merge:    (canonicalId, duplicateId) => api.post(`/developers/${canonicalId}/merge/${duplicateId}`).then(r => r.data),
 
   // ── Groupes ───────────────────────────────────────────────────────────────
 
-  getGroups: (siteId = null, activeOnly = false) => {
+  getGroups: (siteId = null, activeOnly = false, periodId = null, groupId = null) => {
     const params = {};
     if (siteId) params.site_id = siteId;
+    if (groupId) params.group_id = groupId;
     if (activeOnly) params.active_only = true;
+    if (periodId && periodId !== "all") params.period_id = periodId;
     return api.get("/developer-groups", { params }).then(r => r.data);
   },
   createGroup: (data) => api.post("/developer-groups",      data).then(r => r.data),
@@ -63,8 +69,14 @@ const developerService = {
   getHeatmap: (id, months = 12) =>
     api.get(`/analytics/developer/${id}/heatmap`, { params: { months } }).then(r => r.data),
     
-  getTimeline: (id) =>
-    api.get(`/developers/${id}/timeline`).then(res => res.data),
+  getTimeline: (id, periodId = null) => {
+    const params = {};
+    if (periodId && periodId !== "all") params.period_id = parseInt(periodId);
+    return api.get(`/developers/${id}/timeline`, { params }).then(res => res.data).catch(err => {
+      console.error("Timeline fetch error:", err);
+      return [];
+    });
+  },
 
   getLeaderboard: (projectId, { siteId = null, periodId = null, lotId = null, limit = 20 } = {}) => {
     const params = { project_id: projectId };

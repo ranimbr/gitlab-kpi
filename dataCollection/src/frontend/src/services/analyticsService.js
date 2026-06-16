@@ -25,7 +25,7 @@ import api from "./api";
 
 const buildParams = (obj) =>
   Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v != null && v !== "")
+    Object.entries(obj).filter(([, v]) => v != null && v !== "" && v !== undefined)
   );
 
 const analyticsService = {
@@ -35,6 +35,7 @@ const analyticsService = {
    * Dernier snapshot KPI pour un projet/site/groupe/développeur.
    */
   getLatest: async (projectId, { siteId, groupId, developerId, lotId, periodId } = {}) => {
+    console.log("getLatest called with periodId:", periodId, "projectId:", projectId);
     if (projectId === "all") {
        // [SENIOR FIX] Standard analytics route doesn't support "all". Use dashboard instead.
        const summary = await analyticsService.getKpiDashboard("all", { siteId, groupId, developerId, lotId, periodId });
@@ -47,18 +48,24 @@ const analyticsService = {
       lot_id:       lotId,
       period_id:    periodId, // Backend AnalyticsService handles period_id if we update it
     });
-    const { data } = await api.get(`/analytics/${projectId}/latest`, { params });
+    console.log("getLatest params:", params);
+    const { data } = await api.get(`/analytics/${projectId}/latest`, { params }).catch(err => {
+      console.error("Analytics latest fetch error:", err);
+      return null;
+    });
     return data;
   },
 
   /**
    * GET /kpis/developer/{developerId}/summary
    * Résumé global d'un développeur, toutes périodes confondues.
+   * ✅ [FIX] Ajout support period_id pour données historiques
    */
-  getDeveloperSummary: async (projectId, developerId, { lotId } = {}) => {
+  getDeveloperSummary: async (projectId, developerId, { lotId, periodId } = {}) => {
     const pId = (projectId === "all" || !projectId) ? null : projectId;
+    console.log("getDeveloperSummary called with periodId:", periodId, "projectId:", pId);
     const { data } = await api.get(`/kpis/developer/${developerId}/summary`, { 
-      params: buildParams({ project_id: pId, lot_id: lotId }) 
+      params: buildParams({ project_id: pId, lot_id: lotId, period_id: periodId }) 
     });
     return data;
   },
@@ -78,7 +85,10 @@ const analyticsService = {
       start_date:   startDate,
       end_date:     endDate,
     });
-    const { data } = await api.get(`/analytics/${projectId}/history`, { params });
+    const { data } = await api.get(`/analytics/${projectId}/history`, { params }).catch(err => {
+      console.error("Analytics history fetch error:", err);
+      return { snapshots: [] };
+    });
     return data;
   },
 
@@ -342,6 +352,66 @@ const analyticsService = {
   getDoraMetrics: async (projectId, periodId = null) => {
     const params = buildParams({ project_id: projectId, period_id: periodId });
     const { data } = await api.get("/kpis/dora", { params });
+    return data;
+  },
+
+  /**
+   * GET /analytics/{projectId}/diagnostic
+   * [DIAGNOSTIC] Métriques avancées : corrélation taille MR / temps de revue,
+   * charge des reviewers, congestion du pipeline de revue.
+   *
+   * Réponse :
+   * {
+   *   project_id, period_label,
+   *   mr_size_review_correlation: [{ mr_id, title, lines_changed, review_time_hours, reviewer_count }],
+   *   reviewer_load: [{ reviewer_id, reviewer_name, review_count, avg_response_hours, congestion_flag }],
+   *   summary: { total_mrs_analyzed, avg_lines_changed, avg_review_time_hours, overloaded_reviewers }
+   * }
+   */
+  getDiagnostic: async (projectId, { siteId, groupId, periodId } = {}) => {
+    const params = buildParams({
+      site_id:   siteId,
+      group_id:  groupId,
+      period_id: periodId,
+    });
+    const { data } = await api.get(`/analytics/${projectId}/diagnostic`, { params });
+    return data;
+  },
+
+  /**
+   * GET /intelligence/admin/{projectId}
+   * Intelligence statistique pour Super Admin (anomalies, corrélations, recommandations)
+   * @param {number} projectId
+   * @param {number} [periodId] - Période optionnelle
+   * @param {number|number[]} [siteId] - Filtrer par site(s) (pour site_manager)
+   * @param {number[]} [siteIds] - Filtrer par sites multiples (pour multi-sites site_manager)
+   */
+  getAdminIntelligence: async (projectId, periodId = null, siteId = null, siteIds = null) => {
+    // ✅ Support multi-sites: passer site_ids array si fourni, sinon site_id single
+    const params = buildParams({ period_id: periodId });
+    
+    // N'envoyer qu'un seul paramètre de filtrage par site
+    if (siteIds && siteIds.length > 0) {
+      params.site_ids = siteIds;
+    } else if (siteId) {
+      params.site_id = siteId;
+    }
+    
+    console.log("[DEBUG] getAdminIntelligence - projectId:", projectId, "periodId:", periodId, "siteId:", siteId, "siteIds:", siteIds, "params:", params);
+    const { data } = await api.get(`/intelligence/admin/${projectId}`, { params });
+    console.log("[DEBUG] getAdminIntelligence - response data:", data);
+    return data;
+  },
+
+  /**
+   * GET /intelligence/team/{projectId}
+   * Intelligence statistique pour les équipes (teams)
+   * @param {number} [periodId] - Période optionnelle
+   * @param {number|number[]} [groupId] - Filtrer par groupe(s) (pour team_lead)
+   */
+  getTeamIntelligence: async (projectId, periodId = null, groupId = null) => {
+    const params = buildParams({ period_id: periodId, group_id: groupId });
+    const { data } = await api.get(`/intelligence/team/${projectId}`, { params });
     return data;
   },
 };

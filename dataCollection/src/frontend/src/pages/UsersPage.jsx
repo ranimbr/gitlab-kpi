@@ -14,6 +14,10 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api          from "../services/api";
 import adminService from "../services/adminService";
+import profileService from "../services/profileService";
+import siteService from "../services/siteService";
+import projectService from "../services/projectService";
+import developerService from "../services/developerService";
 import { ROLES }   from "../context/AuthContext";
 
 function formatDate(d) {
@@ -25,35 +29,37 @@ function getInitials(email = "") {
   return (parts.length >= 2 ? (parts[0][0] + parts[1][0]) : email.slice(0, 2)).toUpperCase();
 }
 
-// ✅ FIX : 4 rôles
+// ✅ FIX : 5 rôles (ajout viewer)
 const ROLE_COLORS = {
   [ROLES.SUPER_ADMIN]:  "danger",
   [ROLES.SITE_MANAGER]: "warning",
   [ROLES.TEAM_LEAD]:    "info",
-  [ROLES.DEVELOPER]:    "secondary",
+  [ROLES.PROJECT_MANAGER]: "primary",
+  [ROLES.VIEWER]:       "secondary",
 };
 const ROLE_ICONS = {
   [ROLES.SUPER_ADMIN]:  "ri-shield-star-line",
   [ROLES.SITE_MANAGER]: "ri-map-pin-user-line",
   [ROLES.TEAM_LEAD]:    "ri-team-line",
-  [ROLES.DEVELOPER]:    "ri-code-s-slash-line",
+  [ROLES.PROJECT_MANAGER]: "ri-folder-3-line",
+  [ROLES.VIEWER]:       "ri-eye-line",
 };
 const ROLE_LABELS = {
   [ROLES.SUPER_ADMIN]:  "Super Admin",
   [ROLES.SITE_MANAGER]: "Site Manager",
   [ROLES.TEAM_LEAD]:    "Team Lead",
-  [ROLES.DEVELOPER]:    "Développeur",
+  [ROLES.PROJECT_MANAGER]: "Project Manager",
+  [ROLES.VIEWER]:       "Viewer",
 };
 
 function exportCSV(users) {
-  const headers = ["ID", "Email", "Rôle", "Site ID", "Groupe ID", "Statut", "Dashboards", "Créé le"];
+  const headers = ["ID", "Email", "Rôle", "Site ID", "Groupe ID", "Statut", "Créé le"];
   const rows = users.map(u => [
     u.id, u.email,
     ROLE_LABELS[u.role] || u.role,
     u.site_id  || "",
     u.group_id || "",
     u.is_active ? "Actif" : "Inactif",
-    (u.dashboard_access || []).length,
     formatDate(u.created_at),
   ]);
   const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
@@ -83,11 +89,23 @@ function Toast({ toast }) {
 }
 
 // ── UserDetailModal ───────────────────────────────────────────────────────────
-function UserDetailModal({ user, onClose, onEdit, onDelete }) {
+function UserDetailModal({ user, onClose, onEdit, onDelete, sites, groups }) {
   useEscapeKey(onClose);
   if (!user) return null;
-  const color     = ROLE_COLORS[user.role] || "secondary";
-  const dashCount = (user.dashboard_access || []).length;
+  const color = ROLE_COLORS[user.role] || "secondary";
+  
+  // ✅ FIX : Afficher tous les sites assignés
+  const userSites = (user.site_ids || []).map(sid => sites?.find(s => s.id === sid)?.name).filter(Boolean);
+  const siteDisplay = userSites.length > 0 
+    ? userSites.join(", ") 
+    : (sites?.find(s => s.id === user.site_id)?.name || "—");
+  
+  // ✅ FIX : Afficher tous les groupes assignés
+  const userGroups = (user.group_ids || []).map(gid => groups?.find(g => g.id === gid)?.name).filter(Boolean);
+  const groupDisplay = userGroups.length > 0
+    ? userGroups.join(", ")
+    : (groups?.find(g => g.id === user.group_id)?.name || "—");
+  
   return (
     <div className="modal fade show d-block" role="dialog" aria-modal="true"
       style={{ backgroundColor: "rgba(30,34,45,0.6)", backdropFilter: "blur(3px)", zIndex: 1055 }}
@@ -122,10 +140,9 @@ function UserDetailModal({ user, onClose, onEdit, onDelete }) {
                 { icon: "ri-mail-line",        label: "Email",      value: user.email },
                 { icon: "ri-shield-user-line", label: "Rôle",       value: ROLE_LABELS[user.role] || user.role },
                 { icon: "ri-calendar-line",    label: "Créé le",    value: formatDate(user.created_at) },
-                { icon: "ri-map-pin-line",     label: "Site ID",    value: user.site_id  ? `#${user.site_id}`  : "—" },
-                { icon: "ri-group-line",       label: "Groupe ID",  value: user.group_id ? `#${user.group_id}` : "—" },
+                { icon: "ri-map-pin-line",     label: "Sites",      value: siteDisplay },
+                { icon: "ri-group-line",       label: "Groupes",    value: groupDisplay },
                 { icon: "ri-toggle-line",      label: "Statut",     value: user.is_active ? "Actif" : "Inactif", valueColor: user.is_active ? "#15803d" : "#dc2626" },
-                { icon: "ri-layout-grid-line", label: "Dashboards", value: `${dashCount} dashboard${dashCount !== 1 ? "s" : ""}`, valueColor: dashCount > 0 ? "#405189" : undefined },
               ].map((item, i) => (
                 <div key={i} className="col-6">
                   <div className="rounded-3 p-3" style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}>
@@ -200,20 +217,127 @@ function DeleteModal({ user, onConfirm, onClose, loading }) {
 // ── UserModal ─────────────────────────────────────────────────────────────────
 function UserModal({ mode, user, onClose, onSave }) {
   const isEdit = mode === "edit";
+  const [profiles, setProfiles] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [loadingEntities, setLoadingEntities] = useState(false);
+  
   const [form, setForm] = useState({
     email:       user?.email    || "",
     password:    "",
     role:        user?.role     || ROLES.DEVELOPER,
+    profile_id:  user?.profile_id || "",
     is_active:   user?.is_active ?? true,
     new_password:"",
+    // ✅ AJOUT : support multi-sites et multi-équipes
     site_id:     user?.site_id  || "",
+    site_ids:    user?.site_ids || [],
     group_id:    user?.group_id || "",
+    group_ids:   user?.group_ids || [],
+    project_ids: user?.project_ids || [],
     login:       user?.login    || "",
     name:        user?.name     || "",
   });
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
+
+  // Charger les profils dynamiquement
+  useEffect(() => {
+    const loadProfiles = async () => {
+      setLoadingProfiles(true);
+      try {
+        const data = await profileService.getAllProfiles();
+        setProfiles(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Erreur chargement profils:", err);
+        setProfiles([]);
+      } finally {
+        setLoadingProfiles(false);
+      }
+    };
+    loadProfiles();
+  }, []);
+
+  // Charger sites, groupes et projets dynamiquement
+  useEffect(() => {
+    const loadEntities = async () => {
+      setLoadingEntities(true);
+      try {
+        const [sitesData, groupsData, projectsData] = await Promise.all([
+          siteService.getAll(),
+          developerService.getGroups(),
+          projectService.getAll(),
+        ]);
+        console.log("Sites:", sitesData);
+        console.log("Groups:", groupsData);
+        console.log("Projects:", projectsData);
+        console.log("Projects array length:", projectsData?.length);
+        setSites(Array.isArray(sitesData) ? sitesData : []);
+        setGroups(Array.isArray(groupsData) ? groupsData : []);
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
+        console.log("Projects state set:", Array.isArray(projectsData) ? projectsData : []);
+      } catch (err) {
+        console.error("Erreur chargement entités:", err);
+        setSites([]);
+        setGroups([]);
+        setProjects([]);
+      } finally {
+        setLoadingEntities(false);
+      }
+    };
+    loadEntities();
+  }, []);
+
+  // Mapping intelligent: nom de profil → rôle technique
+  const getRoleFromProfile = (profileName) => {
+    const mapping = {
+      "Super Admin": ROLES.SUPER_ADMIN,
+      "Site Manager": ROLES.SITE_MANAGER,
+      "Team Lead": ROLES.TEAM_LEAD,
+      "Developer": ROLES.DEVELOPER,
+      "Project Manager": ROLES.PROJECT_MANAGER,
+      "Viewer": ROLES.VIEWER,
+    };
+    return mapping[profileName] || ROLES.DEVELOPER;
+  };
+
+  // Mapping inverse: rôle technique → nom de profil par défaut
+  const getProfileNameFromRole = (role) => {
+    const mapping = {
+      [ROLES.SUPER_ADMIN]: "Super Admin",
+      [ROLES.SITE_MANAGER]: "Site Manager",
+      [ROLES.TEAM_LEAD]: "Team Lead",
+      [ROLES.DEVELOPER]: "Developer",
+      [ROLES.PROJECT_MANAGER]: "Project Manager",
+      [ROLES.VIEWER]: "Viewer",
+    };
+    return mapping[role] || "Developer";
+  };
+
+  // Quand le profil change, mettre à jour le rôle technique
+  const handleProfileChange = (profileId) => {
+    const selectedProfile = profiles.find(p => p.id === parseInt(profileId));
+    if (selectedProfile) {
+      const technicalRole = getRoleFromProfile(selectedProfile.name);
+      setForm(f => ({ ...f, profile_id: parseInt(profileId), role: technicalRole }));
+    }
+  };
+
+  // Quand le rôle technique change, trouver le profil correspondant
+  const handleRoleChange = (role) => {
+    const profileName = getProfileNameFromRole(role);
+    const matchingProfile = profiles.find(p => p.name === profileName);
+    setForm(f => ({ 
+      ...f, 
+      role,
+      profile_id: matchingProfile ? matchingProfile.id : "",
+      // Clear project_ids when changing to project_manager to force user to select projects
+      project_ids: role === ROLES.PROJECT_MANAGER ? [] : f.project_ids
+    }));
+  };
 
   useEscapeKey(() => { if (!loading) onClose(); });
 
@@ -226,38 +350,66 @@ function UserModal({ mode, user, onClose, onSave }) {
     setError("");
     if (!isEdit && !form.email) return setError("L'email est obligatoire.");
     if (!isEdit && form.password.length < 8) return setError("Mot de passe : minimum 8 caractères.");
+    if (!form.profile_id) return setError("Le profil est obligatoire.");
 
-    // Validation selon le rôle
-    if (form.role === ROLES.SITE_MANAGER && !form.site_id)
-      return setError("Un site_id est obligatoire pour le rôle site_manager.");
-    if (form.role === ROLES.TEAM_LEAD && !form.group_id)
-      return setError("Un group_id est obligatoire pour le rôle team_lead.");
+    // Validation selon le rôle (support multi-sites et multi-équipes)
+    if (form.role === ROLES.SITE_MANAGER && !form.site_ids && !form.site_id)
+      return setError("Au moins un site est obligatoire pour le rôle site_manager.");
+    if (form.role === ROLES.TEAM_LEAD && !form.group_ids && !form.group_id)
+      return setError("Au moins un groupe est obligatoire pour le rôle team_lead.");
+    if (form.role === ROLES.PROJECT_MANAGER && (!form.project_ids || form.project_ids.length === 0))
+      return setError("Au moins un projet est obligatoire pour le rôle project_manager.");
+    // Viewer: flexible - peut avoir sites, équipes, projets, ou aucun (lecture seule globale)
+    // Pas de validation spécifique requise
 
     setLoading(true);
     try {
       if (isEdit) {
         const payload = {
           role:      form.role,
+          profile_id: form.profile_id ? parseInt(form.profile_id) : null,
           is_active: form.is_active,
+          // ✅ AJOUT : support multi-sites et multi-équipes
           site_id:   form.site_id  ? parseInt(form.site_id)  : null,
-          group_id:  form.group_id ? parseInt(form.group_id) : null,
+          site_ids:  form.site_ids && form.site_ids.length > 0 ? form.site_ids.map(id => parseInt(id)) : null,
+          group_id: form.group_id ? parseInt(form.group_id) : null,
+          group_ids: form.group_ids && form.group_ids.length > 0 ? form.group_ids.map(id => parseInt(id)) : null,
+          project_ids: form.project_ids && form.project_ids.length > 0 ? form.project_ids.map(id => parseInt(id)) : null,
         };
+        console.log("UPDATE payload:", JSON.stringify(payload, null, 2));
         if (form.new_password) payload.new_password = form.new_password;
         await api.put(`/admin/users/${user.id}`, payload);
       } else {
-        await api.post("/admin/users", {
+        const payload = {
           email:    form.email,
           password: form.password,
           role:     form.role,
+          profile_id: form.profile_id ? parseInt(form.profile_id) : null,
           login:    form.login  || undefined,
           name:     form.name   || undefined,
+          // ✅ AJOUT : support multi-sites et multi-équipes
           site_id:  form.site_id  ? parseInt(form.site_id)  : undefined,
+          site_ids: form.site_ids && form.site_ids.length > 0 ? form.site_ids.map(id => parseInt(id)) : [],
           group_id: form.group_id ? parseInt(form.group_id) : undefined,
-        });
+          group_ids: form.group_ids && form.group_ids.length > 0 ? form.group_ids.map(id => parseInt(id)) : [],
+          project_ids: form.project_ids && form.project_ids.length > 0 ? form.project_ids.map(id => parseInt(id)) : [],
+        };
+        console.log("CREATE payload:", JSON.stringify(payload, null, 2));
+        await api.post("/admin/users", payload);
       }
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || "Une erreur est survenue.");
+      // Handle both FastAPI HTTPException and Pydantic validation errors
+      let errorMessage = "Une erreur est survenue.";
+      if (err.response?.data) {
+        if (err.response.data.detail) {
+          errorMessage = err.response.data.detail;
+        } else if (Array.isArray(err.response.data)) {
+          // Pydantic validation errors come as an array
+          errorMessage = err.response.data.map(e => e.msg).join(", ");
+        }
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -287,137 +439,287 @@ function UserModal({ mode, user, onClose, onSave }) {
 
           <div className="px-4 py-4">
             {error && (
-              <div className="alert alert-danger py-2 fs-13 mb-3">
+              <div className="alert alert-danger py-2 fs-13 mb-4">
                 <i className="ri-error-warning-line me-1"></i>{error}
               </div>
             )}
-            <div className="row g-3">
-
-              {/* Email — création uniquement */}
-              {!isEdit && (
-                <div className="col-12">
-                  <label className="form-label fw-medium fs-13">Email <span className="text-danger">*</span></label>
-                  <div className="input-group">
-                    <span className="input-group-text"><i className="ri-mail-line"></i></span>
-                    <input type="email" name="email" className="form-control" placeholder="user@telnet.tn" value={form.email} onChange={handle} />
-                  </div>
-                </div>
-              )}
-
-              {/* Login + Nom — création uniquement */}
-              {!isEdit && (
-                <>
-                  <div className="col-md-6">
-                    <label className="form-label fw-medium fs-13">Login <span className="text-muted fs-11">(optionnel)</span></label>
-                    <input type="text" name="login" className="form-control" placeholder="ex: jdupont" value={form.login} onChange={handle} />
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-medium fs-13">Nom complet <span className="text-muted fs-11">(optionnel)</span></label>
-                    <input type="text" name="name" className="form-control" placeholder="Jean Dupont" value={form.name} onChange={handle} />
-                  </div>
-                </>
-              )}
-
-              {/* Mot de passe */}
-              {!isEdit && (
-                <div className="col-12">
-                  <label className="form-label fw-medium fs-13">Mot de passe <span className="text-danger">*</span></label>
-                  <div className="input-group">
-                    <span className="input-group-text"><i className="ri-lock-line"></i></span>
-                    <input type={showPwd ? "text" : "password"} name="password" className="form-control"
-                      placeholder="Min. 8 caractères, 1 majuscule, 1 chiffre" value={form.password} onChange={handle} />
-                    <button className="btn btn-outline-secondary" type="button" onClick={() => setShowPwd(v => !v)} tabIndex="-1">
-                      <i className={showPwd ? "ri-eye-off-line" : "ri-eye-line"}></i>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Reset password — édition uniquement */}
-              {isEdit && (
-                <div className="col-12">
-                  <label className="form-label fw-medium fs-13">
-                    Réinitialiser le mot de passe <span className="text-muted fs-11">(laisser vide pour ne pas changer)</span>
-                  </label>
-                  <div className="input-group">
-                    <span className="input-group-text"><i className="ri-lock-password-line"></i></span>
-                    <input type={showPwd ? "text" : "password"} name="new_password" className="form-control"
-                      placeholder="Nouveau mot de passe (optionnel)" value={form.new_password} onChange={handle} />
-                    <button className="btn btn-outline-secondary" type="button" onClick={() => setShowPwd(v => !v)} tabIndex="-1">
-                      <i className={showPwd ? "ri-eye-off-line" : "ri-eye-line"}></i>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Rôle */}
-              <div className="col-md-6">
-                <label className="form-label fw-medium fs-13">Rôle <span className="text-danger">*</span></label>
-                <select name="role" className="form-select" value={form.role} onChange={handle}>
-                  <option value={ROLES.SUPER_ADMIN}>Super Admin — accès total</option>
-                  <option value={ROLES.SITE_MANAGER}>Site Manager — son site uniquement</option>
-                  <option value={ROLES.TEAM_LEAD}>Team Lead — son groupe uniquement</option>
-                  <option value={ROLES.DEVELOPER}>Développeur — lecture seule</option>
-                </select>
-              </div>
-
-              {/* Statut — édition uniquement */}
-              {isEdit && (
-                <div className="col-md-6">
-                  <label className="form-label fw-medium fs-13">Statut</label>
-                  <div className="rounded-3 p-2 d-flex align-items-center justify-content-between"
-                    style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}>
-                    <span className={`fs-13 fw-medium ${form.is_active ? "text-success" : "text-danger"}`}>
-                      {form.is_active ? "Actif" : "Inactif"}
-                    </span>
-                    <div className="form-check form-switch mb-0">
-                      <input className="form-check-input" type="checkbox" role="switch" name="is_active"
-                        checked={form.is_active} onChange={handle} style={{ width: "2.5em", height: "1.4em", cursor: "pointer" }} />
+            
+            {/* Section: Informations de base */}
+            <div className="mb-4">
+              <h6 className="fw-semibold text-dark fs-13 mb-3 d-flex align-items-center gap-2">
+                <i className="ri-user-line text-primary"></i>
+                Informations de base
+              </h6>
+              <div className="row g-3">
+                {/* Email — création uniquement */}
+                {!isEdit && (
+                  <div className="col-12">
+                    <label className="form-label fw-medium fs-13">Email <span className="text-danger">*</span></label>
+                    <div className="input-group">
+                      <span className="input-group-text"><i className="ri-mail-line"></i></span>
+                      <input type="email" name="email" className="form-control" placeholder="user@telnet.tn" value={form.email} onChange={handle} />
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Site ID — requis pour site_manager */}
-              {(form.role === ROLES.SITE_MANAGER || form.role === ROLES.SUPER_ADMIN) && (
-                <div className="col-md-6">
-                  <label className="form-label fw-medium fs-13">
-                    Site ID
-                    {form.role === ROLES.SITE_MANAGER && <span className="text-danger"> *</span>}
-                  </label>
-                  <div className="input-group">
-                    <span className="input-group-text"><i className="ri-map-pin-line"></i></span>
-                    <input type="number" name="site_id" className="form-control" placeholder="ID du site"
-                      value={form.site_id} onChange={handle} />
+                {/* Login + Nom — création uniquement */}
+                {!isEdit && (
+                  <>
+                    <div className="col-md-6">
+                      <label className="form-label fw-medium fs-13">Login <span className="text-muted fs-11">(optionnel)</span></label>
+                      <input type="text" name="login" className="form-control" placeholder="ex: jdupont" value={form.login} onChange={handle} />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-medium fs-13">Nom complet <span className="text-muted fs-11">(optionnel)</span></label>
+                      <input type="text" name="name" className="form-control" placeholder="Jean Dupont" value={form.name} onChange={handle} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Section: Authentification */}
+            <div className="mb-4">
+              <h6 className="fw-semibold text-dark fs-13 mb-3 d-flex align-items-center gap-2">
+                <i className="ri-lock-line text-primary"></i>
+                Authentification
+              </h6>
+              <div className="row g-3">
+                {/* Mot de passe */}
+                {!isEdit && (
+                  <div className="col-12">
+                    <label className="form-label fw-medium fs-13">Mot de passe <span className="text-danger">*</span></label>
+                    <div className="input-group">
+                      <span className="input-group-text"><i className="ri-lock-line"></i></span>
+                      <input type={showPwd ? "text" : "password"} name="password" className="form-control"
+                        placeholder="Min. 8 caractères, 1 majuscule, 1 chiffre" value={form.password} onChange={handle} />
+                      <button className="btn btn-outline-secondary" type="button" onClick={() => setShowPwd(v => !v)} tabIndex="-1">
+                        <i className={showPwd ? "ri-eye-off-line" : "ri-eye-line"}></i>
+                      </button>
+                    </div>
                   </div>
-                  <div className="form-text fs-11">ID du site assigné (voir Admin → Sites)</div>
-                </div>
-              )}
+                )}
 
-              {/* Group ID — requis pour team_lead */}
-              {(form.role === ROLES.TEAM_LEAD || form.role === ROLES.SUPER_ADMIN) && (
-                <div className="col-md-6">
-                  <label className="form-label fw-medium fs-13">
-                    Groupe ID
-                    {form.role === ROLES.TEAM_LEAD && <span className="text-danger"> *</span>}
-                  </label>
-                  <div className="input-group">
-                    <span className="input-group-text"><i className="ri-group-line"></i></span>
-                    <input type="number" name="group_id" className="form-control" placeholder="ID du groupe"
-                      value={form.group_id} onChange={handle} />
+                {/* Reset password — édition uniquement */}
+                {isEdit && (
+                  <div className="col-12">
+                    <label className="form-label fw-medium fs-13">
+                      Réinitialiser le mot de passe <span className="text-muted fs-11">(laisser vide pour ne pas changer)</span>
+                    </label>
+                    <div className="input-group">
+                      <span className="input-group-text"><i className="ri-lock-password-line"></i></span>
+                      <input type={showPwd ? "text" : "password"} name="new_password" className="form-control"
+                        placeholder="Nouveau mot de passe (optionnel)" value={form.new_password} onChange={handle} />
+                      <button className="btn btn-outline-secondary" type="button" onClick={() => setShowPwd(v => !v)} tabIndex="-1">
+                        <i className={showPwd ? "ri-eye-off-line" : "ri-eye-line"}></i>
+                      </button>
+                    </div>
                   </div>
-                  <div className="form-text fs-11">ID du groupe assigné (voir Admin → Développeurs → Groupes)</div>
-                </div>
-              )}
+                )}
+              </div>
+            </div>
 
-              {/* Info dashboards */}
-              <div className="col-12">
-                <div className="alert alert-info py-2 fs-12 mb-0">
-                  <i className="ri-information-line me-1"></i>
-                  Les accès aux dashboards se gèrent dans <strong>Admin → Dashboards</strong> via le bouton "Accès".
+            {/* Section: Profil & Rôle */}
+            <div className="mb-4">
+              <h6 className="fw-semibold text-dark fs-13 mb-3 d-flex align-items-center gap-2">
+                <i className="ri-shield-user-line text-primary"></i>
+                Profil & Rôle
+              </h6>
+              <div className="row g-3">
+                {/* Profil (dynamique depuis ProfileManagementPage) */}
+                <div className="col-md-6">
+                  <label className="form-label fw-medium fs-13">Profil <span className="text-danger">*</span></label>
+                  {loadingProfiles ? (
+                    <select className="form-select" disabled>
+                      <option>Chargement des profils...</option>
+                    </select>
+                  ) : (
+                    <select 
+                      name="profile_id" 
+                      className="form-select" 
+                      value={form.profile_id || ""} 
+                      onChange={(e) => handleProfileChange(e.target.value)}
+                    >
+                      <option value="">-- Sélectionner un profil --</option>
+                      {profiles.map(profile => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name} 
+                          {profile.description && ` — ${profile.description}`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="form-text fs-11">
+                    <i className="ri-information-line me-1"></i>
+                    Les profils sont gérés dans <strong>Admin → Profils & Menus</strong>
+                  </div>
+                </div>
+
+                {/* Rôle technique (auto-sélectionné selon le profil) */}
+                <div className="col-md-6">
+                  <label className="form-label fw-medium fs-13">Rôle technique</label>
+                  <select name="role" className="form-select bg-light" value={form.role} onChange={(e) => handleRoleChange(e.target.value)} disabled>
+                    <option value={ROLES.SUPER_ADMIN}>Super Admin — accès total</option>
+                    <option value={ROLES.SITE_MANAGER}>Site Manager — son site uniquement</option>
+                    <option value={ROLES.PROJECT_MANAGER}>Project Manager — ses projets</option>
+                    <option value={ROLES.TEAM_LEAD}>Team Lead — son groupe uniquement</option>
+                    <option value={ROLES.VIEWER}>Viewer — flexible (sites/équipes/projets)</option>
+                    <option value={ROLES.DEVELOPER}>Développeur — lecture seule</option>
+                  </select>
+                  <div className="form-text fs-11 text-muted">
+                    Auto-sélectionné selon le profil choisi
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Section: Assignations */}
+            <div className="mb-4">
+              <h6 className="fw-semibold text-dark fs-13 mb-3 d-flex align-items-center gap-2">
+                <i className="ri-building-line text-primary"></i>
+                Assignations
+              </h6>
+              <div className="row g-3">
+                {/* Site ID — requis pour site_manager (support multi-sites) */}
+                <div className="col-md-6">
+                  <label className="form-label fw-medium fs-13">
+                    Sites
+                    {form.role === ROLES.SITE_MANAGER && <span className="text-danger"> *</span>}
+                  </label>
+                  {loadingEntities ? (
+                    <select className="form-select" disabled>
+                      <option>Chargement...</option>
+                    </select>
+                  ) : (
+                    <select 
+                      name="site_ids" 
+                      className="form-select" 
+                      value={form.site_ids || []} 
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => parseInt(opt.value));
+                        setForm(f => ({ 
+                          ...f, 
+                          site_ids: selected,
+                          // Si on sélectionne des sites, mettre à jour site_id avec le premier (compatibilité)
+                          site_id: selected.length > 0 ? selected[0] : ""
+                        }));
+                      }}
+                      multiple
+                      size={4}
+                    >
+                      {sites.map(site => (
+                        <option key={site.id} value={site.id}>
+                          {site.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="form-text fs-11">
+                    Maintenir Ctrl/Cmd pour sélection multiple. Site assigné (voir Admin → Sites)
+                  </div>
+                </div>
+
+                {/* Group ID — requis pour team_lead (support multi-équipes) */}
+                <div className="col-md-6">
+                  <label className="form-label fw-medium fs-13">
+                    Équipes
+                    {form.role === ROLES.TEAM_LEAD && <span className="text-danger"> *</span>}
+                  </label>
+                  {loadingEntities ? (
+                    <select className="form-select" disabled>
+                      <option>Chargement...</option>
+                    </select>
+                  ) : (
+                    <select 
+                      name="group_ids" 
+                      className="form-select" 
+                      value={form.group_ids || []} 
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => parseInt(opt.value));
+                        setForm(f => ({ 
+                          ...f, 
+                          group_ids: selected,
+                          // Si on sélectionne des groupes, mettre à jour group_id avec le premier (compatibilité)
+                          group_id: selected.length > 0 ? selected[0] : ""
+                        }));
+                      }}
+                      multiple
+                      size={4}
+                    >
+                      {groups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="form-text fs-11">
+                    Maintenir Ctrl/Cmd pour sélection multiple. Groupe assigné (voir Admin → Développeurs → Groupes)
+                  </div>
+                </div>
+
+                {/* Project IDs — pour project_manager */}
+                <div className="col-12">
+                  <label className="form-label fw-medium fs-13">
+                    Projets
+                    {form.role === ROLES.PROJECT_MANAGER && <span className="text-danger"> *</span>}
+                  </label>
+                  {loadingEntities ? (
+                    <select className="form-select" disabled>
+                      <option>Chargement...</option>
+                    </select>
+                  ) : (
+                    <select 
+                      name="project_ids" 
+                      className="form-select" 
+                      value={form.project_ids || []} 
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions, opt => parseInt(opt.value));
+                        setForm(f => ({ ...f, project_ids: selected }));
+                      }}
+                      multiple
+                      size={4}
+                    >
+                      {projects.map(project => {
+                        console.log("Rendering project:", project);
+                        return (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                  <div className="form-text fs-11">
+                    Maintenir Ctrl/Cmd pour sélection multiple. (voir Admin → Projets)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Statut (édition uniquement) */}
+            {isEdit && (
+              <div className="mb-4">
+                <h6 className="fw-semibold text-dark fs-13 mb-3 d-flex align-items-center gap-2">
+                  <i className="ri-toggle-line text-primary"></i>
+                  Statut
+                </h6>
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <div className="rounded-3 p-3 d-flex align-items-center justify-content-between"
+                      style={{ background: "#f8f9fc", border: "1px solid #e9ecef" }}>
+                      <span className={`fs-13 fw-medium ${form.is_active ? "text-success" : "text-danger"}`}>
+                        {form.is_active ? "Actif" : "Inactif"}
+                      </span>
+                      <div className="form-check form-switch mb-0">
+                        <input className="form-check-input" type="checkbox" role="switch" name="is_active"
+                          checked={form.is_active} onChange={handle} style={{ width: "2.5em", height: "1.4em", cursor: "pointer" }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="px-4 py-3 d-flex justify-content-end gap-2"
@@ -439,6 +741,9 @@ function UserModal({ mode, user, onClose, onSave }) {
 export default function UsersPage() {
   const navigate = useNavigate();
   const [users,        setUsers]        = useState([]);
+  const [sites,        setSites]        = useState([]);
+  const [groups,       setGroups]       = useState([]);
+  const [projects,     setProjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
   const [roleFilter,   setRoleFilter]   = useState("all");
@@ -461,11 +766,31 @@ export default function UsersPage() {
 
   const loadUsers = useCallback(() => {
     setLoading(true);
-    api.get("/admin/users")
+    // Add timestamp to bypass caching
+    api.get(`/admin/users?_t=${Date.now()}`)
       .then(res => { setUsers(Array.isArray(res.data) ? res.data : (res.data?.items ?? [])); })
       .catch(() => showToast("Impossible de charger les utilisateurs.", "danger"))
       .finally(() => setLoading(false));
   }, [showToast]);
+
+  // Charger sites, groupes et projets pour le tableau
+  useEffect(() => {
+    const loadEntities = async () => {
+      try {
+        const [sitesData, groupsData, projectsData] = await Promise.all([
+          siteService.getAll(),
+          developerService.getGroups(),
+          projectService.getAll(),
+        ]);
+        setSites(Array.isArray(sitesData) ? sitesData : []);
+        setGroups(Array.isArray(groupsData) ? groupsData : []);
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
+      } catch (err) {
+        console.error("Erreur chargement entités:", err);
+      }
+    };
+    loadEntities();
+  }, [loadUsers]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
@@ -510,7 +835,8 @@ export default function UsersPage() {
       await api.delete(`/admin/users/${id}`);
       setDeleteTarget(null);
       showToast("Utilisateur supprimé.");
-      loadUsers();
+      // Force refresh to ensure UI updates
+      await loadUsers();
     } catch (err) {
       setDeleteTarget(null);
       showToast(err.response?.data?.detail || "Suppression échouée.", "danger");
@@ -628,9 +954,6 @@ export default function UsersPage() {
                     <i className="ri-download-2-line me-1"></i>CSV
                   </button>
                 )}
-                <button className="btn btn-soft-info" onClick={() => navigate("/admin/dashboards")}>
-                  <i className="ri-layout-grid-line me-1"></i>Dashboards
-                </button>
                 <button className="btn btn-primary" onClick={() => { setSelected(null); setModal("create"); }}>
                   <i className="ri-user-add-line me-1"></i>Créer
                 </button>
@@ -656,11 +979,12 @@ export default function UsersPage() {
                         <th style={{ cursor: "pointer" }} onClick={() => handleSort("role")}>
                           Rôle<SortIcon k="role" />
                         </th>
-                        <th>Site / Groupe</th>
+                        <th>Site</th>
+                        <th>Groupe</th>
+                        <th>Projets</th>
                         <th style={{ cursor: "pointer" }} onClick={() => handleSort("is_active")}>
                           Statut<SortIcon k="is_active" />
                         </th>
-                        <th>Dashboards</th>
                         <th style={{ cursor: "pointer" }} onClick={() => handleSort("created_at")}>
                           Créé le<SortIcon k="created_at" />
                         </th>
@@ -670,13 +994,20 @@ export default function UsersPage() {
                     <tbody>
                       {paginated.length === 0 ? (
                         <tr>
-                          <td colSpan="7" className="text-center py-5 text-muted">
+                          <td colSpan="8" className="text-center py-5 text-muted">
                             <i className="ri-user-search-line fs-2 d-block mb-2 opacity-50"></i>
                             Aucun utilisateur trouvé.
                           </td>
                         </tr>
                       ) : paginated.map(user => {
                         const color = ROLE_COLORS[user.role] || "secondary";
+                        // ✅ FIX : Afficher tous les sites assignés (multi-sites)
+                        const userSites = (user.site_ids || []).map(sid => sites.find(s => s.id === sid)?.name).filter(Boolean);
+                        const siteName = userSites.length > 0 ? userSites[0] : (sites.find(s => s.id === user.site_id)?.name || "—");
+                        // ✅ FIX : Afficher tous les groupes assignés (multi-équipes)
+                        const userGroups = (user.group_ids || []).map(gid => groups.find(g => g.id === gid)?.name).filter(Boolean);
+                        const groupName = userGroups.length > 0 ? userGroups[0] : (groups.find(g => g.id === user.group_id)?.name || "—");
+                        const userProjects = (user.project_ids || []).map(pid => projects.find(p => p.id === pid)?.name).filter(Boolean);
                         return (
                           <tr key={user.id} style={{ cursor: "pointer" }} onClick={() => setDetailUser(user)}>
                             <td>
@@ -698,19 +1029,39 @@ export default function UsersPage() {
                               </span>
                             </td>
                             <td className="fs-12 text-muted">
-                              {user.site_id  && <span className="me-1"><i className="ri-map-pin-line me-1"></i>Site #{user.site_id}</span>}
-                              {user.group_id && <span><i className="ri-group-line me-1"></i>Grp #{user.group_id}</span>}
-                              {!user.site_id && !user.group_id && "—"}
+                              {userSites.length > 0 ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {userSites.slice(0, 2).map((site, idx) => (
+                                    <span key={idx} className="badge bg-light text-dark fs-11"><i className="ri-map-pin-line me-1"></i>{site}</span>
+                                  ))}
+                                  {userSites.length > 2 && <span className="badge bg-light text-dark fs-11">+{userSites.length - 2}</span>}
+                                </div>
+                              ) : siteName !== "—" ? <span><i className="ri-map-pin-line me-1"></i>{siteName}</span> : "—"}
+                            </td>
+                            <td className="fs-12 text-muted">
+                              {userGroups.length > 0 ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {userGroups.slice(0, 2).map((group, idx) => (
+                                    <span key={idx} className="badge bg-light text-dark fs-11"><i className="ri-group-line me-1"></i>{group}</span>
+                                  ))}
+                                  {userGroups.length > 2 && <span className="badge bg-light text-dark fs-11">+{userGroups.length - 2}</span>}
+                                </div>
+                              ) : groupName !== "—" ? <span><i className="ri-group-line me-1"></i>{groupName}</span> : "—"}
+                            </td>
+                            <td className="fs-12 text-muted">
+                              {userProjects.length > 0 ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {userProjects.slice(0, 2).map((proj, idx) => (
+                                    <span key={idx} className="badge bg-light text-dark fs-11">{proj}</span>
+                                  ))}
+                                  {userProjects.length > 2 && <span className="badge bg-light text-dark fs-11">+{userProjects.length - 2}</span>}
+                                </div>
+                              ) : "—"}
                             </td>
                             <td>
                               {user.is_active
                                 ? <span className="badge bg-success-subtle text-success"><i className="ri-checkbox-circle-line me-1"></i>Actif</span>
                                 : <span className="badge bg-danger-subtle text-danger"><i className="ri-close-circle-line me-1"></i>Inactif</span>}
-                            </td>
-                            <td>
-                              {(user.dashboard_access || []).length > 0
-                                ? <span className="badge bg-primary-subtle text-primary"><i className="ri-layout-grid-line me-1"></i>{(user.dashboard_access || []).length}</span>
-                                : <span className="text-muted fs-12">—</span>}
                             </td>
                             <td className="text-muted fs-13">{formatDate(user.created_at)}</td>
                             <td className="text-center" onClick={e => e.stopPropagation()}>
@@ -769,6 +1120,8 @@ export default function UsersPage() {
       )}
       {detailUser && !modal && (
         <UserDetailModal user={detailUser}
+          sites={sites}
+          groups={groups}
           onClose={() => setDetailUser(null)}
           onEdit={u => { setDetailUser(null); setSelected(u); setModal("edit"); }}
           onDelete={u => { setDetailUser(null); setDeleteTarget(u); }} />
@@ -778,3 +1131,9 @@ export default function UsersPage() {
     </div>
   );
 }
+
+
+
+
+
+

@@ -45,6 +45,12 @@ from app.services.extraction.gitlab_fetch_strategy import (
 )
 from app.services.gitlab.gitlab_client import GitLabAPIError, GitLabClient, GitLabProjectNotFoundError
 from app.services.gitlab.gitlab_mapper import GitLabMapper
+from app.utils.mission_utils import (
+    get_certified_developers_for_mission,
+    get_developers_for_data_extraction,
+    is_project_contribution_certified,
+    is_contribution_certified
+)
 
 logger   = logging.getLogger(__name__)
 settings = get_settings()
@@ -62,6 +68,7 @@ class ExtractionService:
         self.comment_repo     = CommentRepository()
         self.lot_repo         = ExtractionLotRepository()
         self.audit_repo       = AuditLogRepository()
+        self.period_repo      = PeriodRepository()
 
     @staticmethod
     def _log_context(*, project_id: Optional[int] = None, lot_id: Optional[int] = None, phase: str = "unknown", **extra) -> str:
@@ -141,8 +148,17 @@ class ExtractionService:
             
             logger.info(self._log_context(project_id=project.id, lot_id=lot.id, phase="realtime_start"))
             
+            # [SENIOR FIX] Identification de la mission pour le Realtime
+            # On récupère les IDs des développeurs officiellement rattachés à ce projet
+            from app.models.developer_project import DeveloperProject
+            eligible_dev_ids = [
+                r[0] for r in db.query(DeveloperProject.developer_id)
+                .filter(DeveloperProject.project_id == project.id, DeveloperProject.is_active == True)
+                .all()
+            ]
+
             self._update_lot_progress(db, lot, 20, "Extraction des Commits et Merge Requests...")
-            counts = await self._extract_data(db, project, lot, client)
+            counts = await self._extract_data(db, project, lot, client, developer_ids=eligible_dev_ids)
             logger.info(
                 f"[DIAGNOSTIC] Extraction REALTIME lancée pour projet={project.gitlab_project_id}"
             )
@@ -297,30 +313,23 @@ class ExtractionService:
             from app.services.extraction.extraction_filters import build_period_window
             _, _, p_start, p_end = build_period_window(period)
             
-            # [STRICT MISSION FILTER - SENIOR] ─────────────────────────────────
-            # On récupère d'abord tous les devs actifs pendant la période...
-            all_eligible_devs = self.developer_repo.get_active_during_period(
-                db, p_start.date(), p_end.date()
-            )
-            all_eligible_ids = {d.id for d in all_eligible_devs}
-
             # [STRICT MISSION FILTER - ENTERPRISE GRADE] ───────────────────────
-            # On ne récupère QUE les développeurs explicitement assignés à 
-            # CE projet pour CETTE période précise (via le CSV importé).
-            from app.models.developer_project import DeveloperProject as DevProj
-            eligible_ids = [
-                row.developer_id
-                for row in db.query(DevProj.developer_id).filter(
-                    DevProj.project_id == project.id,
-                    DevProj.period_id == period.id,  # ✅ ISOLATION TEMPORELLE
-                    DevProj.is_active == True,
-                ).all()
-            ]
+            # On utilise get_developers_for_data_extraction pour l'extraction de données brutes
+            # SANS la règle RG-02 des 15 jours (règle de proratisation RH)
+            # La règle RG-02 est appliquée uniquement au niveau du calcul des KPIs
+            eligible_ids = get_developers_for_data_extraction(
+                db=db,
+                project_id=project.id,
+                period_id=period.id,
+                start_date=p_start.date(),
+                end_date=p_end.date()
+            )
 
             logger.info(
-                f"[STRICT MISSION FILTER] Project '{project.name}' (ID: {project.id}) | "
+                f"[SMART MISSION FILTER] Project '{project.name}' (ID: {project.id}) | "
                 f"Period: {period.year}/{period.month} | "
-                f"Eligible devs: {len(eligible_ids)}"
+                f"Eligible devs: {len(eligible_ids)} "
+                f"(Includes persistent & monthly-bound - HUMAN ONLY)"
             )
 
             if not eligible_ids:
@@ -424,6 +433,13 @@ class ExtractionService:
                 lot.error_message = error_msg
                 db.add(lot)
                 db.commit()
+                
+                # [ENTERPRISE RETRY] Schedule automatic retry for failed extraction
+                from app.services.retry_service import get_retry_service
+                retry_service = get_retry_service()
+                asyncio.create_task(retry_service.schedule_retry(db, lot.id))
+                logger.info(f"[RETRY] Automatic retry scheduled for failed lot {lot.id}")
+                
             except Exception:
                 pass
             logger.error(
@@ -509,7 +525,7 @@ class ExtractionService:
         client, 
         developer_ids: Optional[List[int]] = None, 
         fast_mode: bool = False
-    ) -> None:
+    ) -> int:
         """
         [FIX-DEDUP-3] Pré-charge les membres avec emails officiels GitLab
         avant d'extraire les commits.
@@ -517,11 +533,34 @@ class ExtractionService:
         # 🎯 STRATÉGIE SENIOR : Extraction Robuste
         target_devs = []
         target_devs_map = {}
+        
+        # [SENIOR HARDENING - ENTERPRISE STRICT] ──────────────────────────────
+        # On ne se contente plus de faire confiance à developer_ids.
+        # On utilise get_developers_for_data_extraction pour l'extraction de données brutes
+        # SANS la règle RG-02 des 15 jours
+        certified_mission_ids = set(get_developers_for_data_extraction(
+            db=db, project_id=project.id, period_id=lot.period_id
+        ))
+
+        effective_ids = []
         if developer_ids:
-            target_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
-            target_devs_map = {d.id: d for d in target_devs}
-            # [FIX-ID-SYNC] S'assure que les IDs GitLab numériques sont présents
-            await self._ensure_developers_ids(db, target_devs, client)
+            effective_ids = [did for did in developer_ids if did in certified_mission_ids]
+            if len(effective_ids) < len(developer_ids):
+                logger.warning(
+                    f"[STRICT MISSION] {len(developer_ids) - len(effective_ids)} "
+                    f"développeurs sélectionnés manuellement ont été rejetés car non-assignés au projet {project.name}."
+                )
+        else:
+            effective_ids = list(certified_mission_ids)
+
+        if not effective_ids:
+            return 0
+
+        target_devs = db.query(Developer).filter(Developer.id.in_(effective_ids)).all()
+        target_devs_map = {d.id: d for d in target_devs}
+        
+        # [FIX-ID-SYNC] S'assure que les IDs GitLab numériques sont présents
+        await self._ensure_developers_ids(db, target_devs, client)
 
         members_map: Dict[int, dict] = {}
         # [SENIOR Optimization] On évite le fetch des membres si on est en mode ciblé.
@@ -538,6 +577,15 @@ class ExtractionService:
                 logger.warning(f"Could not pre-load members: {e}")
         else:
             logger.info(f"Targeted mode: skipping global member pre-load for project={project.name}")
+
+        # [SENIOR] Pre-fetch mission dates for this project to enable Surgical Daily Precision
+        from app.models.developer_project import DeveloperProject
+        missions = db.query(DeveloperProject).filter(
+            DeveloperProject.project_id == project.id,
+            DeveloperProject.developer_id.in_(effective_ids),
+            DeveloperProject.is_active == True
+        ).all()
+        prefetched_missions = {m.developer_id: (m.start_date, m.end_date) for m in missions}
 
         # [SENIOR Optimization] On récupère désormais tout par projet
         # pour éviter les faux-négatifs de l'API GitLab.
@@ -585,43 +633,56 @@ class ExtractionService:
             author_username = commit_data.get("author_username")
 
             # [STRICT TEAM ISOLATION] - LOGIQUE DURCIE (SENIOR)
-            if developer_ids and not self._matches_target_devs(gitlab_id, author_name, author_email, target_devs_map):
-                logger.debug(f"Filter Out (Dev): commit {sha[:8]} by {author_name} is not in targeted team.")
+            # On ne traite QUE si le dev est dans la map cible (Zero Trust Discovery)
+            if not self._matches_target_devs(gitlab_id, author_name, author_email, target_devs_map):
+                logger.debug(f"Filter Out (Non-Target): commit {sha[:8]} by {author_name} rejected.")
                 filtered_out_dev += 1
                 skipped += 1
                 continue
 
             # [SENIOR FIX] Si la logique ciblée a déjà trouvé le dev via _matches_target_devs, on l'utilise directement !
-            # Cela évite que `_resolve_developer` n'échoue car l'email Git public peut diverger de la DB
-            matched_dev = None
-            if developer_ids:
-                # On recherche le dev qui correspond dans notre map
-                matched_dev = find_matched_target_dev(
-                    target_devs_map=target_devs_map,
-                    gitlab_id=gitlab_id,
-                    author_email=author_email,
-                    author_username=author_username,
-                )
+            matched_dev = find_matched_target_dev(
+                target_devs_map=target_devs_map,
+                gitlab_id=gitlab_id,
+                author_email=author_email,
+                author_username=author_username,
+            )
             
             if matched_dev:
                 developer = matched_dev
             else:
-                # Résolution/Création via logic standard
                 developer = self._resolve_developer(
                     db=db,
                     project_id=project.id,
-                    period_id=lot.period_id,  # ✅ Pass period_id from lot
+                    period_id=lot.period_id,
                     email=author_email,
                     name=author_name,
                     gitlab_id=gitlab_id,
                     username=author_username,
                     members_map=members_map,
-                    forbid_creation=bool(developer_ids) 
+                    forbid_creation=True 
                 )
 
             if not developer:
                 skipped += 1
                 continue
+                
+            # [SENIOR] SURGICAL MISSION CHECK (Daily Precision)
+            try:
+                commit_dt = datetime.fromisoformat(commit_data.get("authored_date", "").replace("Z", "+00:00"))
+                commit_date = commit_dt.date()
+                
+                # Check absolute RH + Project Mission dates
+                if not is_project_contribution_certified(db, developer.id, project.id, commit_date, prefetched_missions):
+                    logger.warning(
+                        f"[SECURITY] Surgical: Commit {sha[:8]} rejected for {developer.name} "
+                        f"on project {project.name} (Date {commit_date} outside mission or contract)"
+                    )
+                    filtered_out_dev += 1
+                    skipped += 1
+                    continue
+            except Exception as e:
+                logger.error(f"Error during Surgical Mission check: {e}")
                 
             # [SENIOR HOTFIX] Fetch stats only for this specific matched commit
             detailed_commit = await client.get_commit_detail(project.gitlab_project_id, commit_data["id"])
@@ -641,56 +702,167 @@ class ExtractionService:
 
         # [SENIOR CERTIFICATION] Final step: ensure the lot "claims" its relevant data
         # even if those commits existed before. This ensures the JSON dump is accurate.
-        self._certify_lot_commits(db, lot, project, developer_ids, lot_start, lot_end)
+        self._certify_lot_commits(db, lot, project, effective_ids, lot_start, lot_end)
         
         db.refresh(lot)
         return len(lot.commits)
 
-    def _certify_lot_commits(self, db, lot, project, developer_ids, start_date, end_date):
+    def _certify_lot_commits(self, db: Session, lot, project, developer_ids: Optional[List[int]], start_date: datetime, end_date: datetime):
         """
-        [SENIOR] Links all 'Pure' commits (matched to dev/period) to the current lot.
-        This fixes the '0 commits in dump' problem by reclaiming existing data.
+        ✅ [SENIOR++++] THE GUARDIAN OF INTEGRITY
+        Certifie et ancre tous les commits du projet à ce lot si l'auteur fait partie de la mission.
+        Cette méthode répare les erreurs d'identification qui surviennent pendant l'extraction brute.
         """
         from app.models.commit import Commit
-        query = db.query(Commit).filter(
-            Commit.project_id == project.id,
-            Commit.committed_date >= start_date,
-            Commit.committed_date <= end_date,
-            Commit.is_merge_commit == False
-        )
-        
-        if developer_ids:
-            query = query.filter(Commit.developer_id.in_(developer_ids))
-        
-        # Batch update to link these commits to the lot
-        # (Using a loop for simplicity and to trigger any necessary refreshes)
-        matching_commits = query.all()
-        for c in matching_commits:
-            c.extraction_lot_id = lot.id
-        
-        db.commit()
-        logger.info(f"[lot={lot.id}] Certified {len(matching_commits)} commits (linked to lot).")
+        from app.models.developer import Developer
+        from app.services.extraction.developer_identity import resolve_developer_id_fuzzy
 
-    def _certify_lot_mrs(self, db, lot, project, developer_ids, start_date, end_date):
+        # [STRICT MISSION VALIDATION]
+        # On utilise get_developers_for_data_extraction pour l'extraction de données brutes
+        # SANS la règle RG-02 des 15 jours
+        certified_mission_ids = set(get_developers_for_data_extraction(
+            db=db, project_id=project.id, period_id=lot.period_id
+        ))
+        
+        effective_ids = developer_ids if developer_ids else list(certified_mission_ids)
+        # On s'assure qu'on ne traite que des certifiés
+        effective_ids = [did for did in effective_ids if did in certified_mission_ids]
+
+        if not effective_ids:
+            logger.warning(f"[lot={lot.id}] No certified developers for certification. Skipping.")
+            return
+
+        # 1. Identifier tous les développeurs valides pour cette mission (RH Source of Truth)
+        mission_devs = db.query(Developer).filter(Developer.id.in_(effective_ids)).all()
+        
+        # 2. Scanner TOUS les commits du projet sur la période (même ceux non-liés)
+        commits = db.query(Commit).filter(
+            Commit.project_id == project.id,
+            Commit.authored_date >= start_date,
+            Commit.authored_date <  end_date,
+            Commit.is_merge_commit == False
+        ).all()
+
+        from app.utils.mission_utils import is_project_contribution_certified
+        
+        # [SENIOR] Pre-fetch mission dates for this project
+        from app.models.developer_project import DeveloperProject
+        missions = db.query(DeveloperProject).filter(
+            DeveloperProject.project_id == project.id,
+            DeveloperProject.developer_id.in_(effective_ids),
+            DeveloperProject.is_active == True
+        ).all()
+        prefetched_missions = {m.developer_id: (m.start_date, m.end_date) for m in missions}
+
+        count = 0
+        for c in commits:
+            target_dev_id = c.developer_id
+            
+            # Si le commit n'a pas de lot ou pas de dev, on tente une résolution Senior
+            if not c.extraction_lot_id or not target_dev_id:
+                matched_id = resolve_developer_id_fuzzy(db, c.author_email, c.author_name, mission_devs)
+                if matched_id:
+                    target_dev_id = matched_id
+            
+            # [SURGICAL DAILY PRECISION]
+            if target_dev_id and target_dev_id in certified_mission_ids:
+                if is_project_contribution_certified(db, target_dev_id, project.id, c.authored_date.date(), prefetched_missions):
+                    c.developer_id = target_dev_id
+                    c.extraction_lot_id = lot.id
+                    count += 1
+                else:
+                    # [SENIOR] Dé-ancrage automatique si non-conforme aux dates de mission précises
+                    if c.extraction_lot_id == lot.id:
+                        c.extraction_lot_id = None
+            else:
+                if c.extraction_lot_id == lot.id:
+                    c.extraction_lot_id = None
+
+        db.commit()
+        logger.info(f"[lot={lot.id}] HIGH-INTEGRITY SURGICAL CERTIFICATION: Anchored {count} commits.")
+
+    def _certify_lot_mrs(self, db: Session, lot, project, developer_ids: Optional[List[int]], start_date: datetime, end_date: datetime):
         """
-        [SENIOR] Links all relevant Merge Requests to the current lot.
+        ✅ [SENIOR++++] MR SURGICAL CERTIFICATION
+        Ancre les Merge Requests au lot en vérifiant l'appartenance des auteurs à la mission AU JOUR PRÈS.
         """
         from app.models.merge_request import MergeRequest
-        query = db.query(MergeRequest).filter(
+        from app.models.developer import Developer
+        from app.services.extraction.developer_identity import resolve_developer_id_fuzzy
+        from app.utils.mission_utils import is_project_contribution_certified
+
+        # [STRICT MISSION VALIDATION]
+        certified_mission_ids = set(get_certified_developers_for_mission(
+            db=db, project_id=project.id, period_id=lot.period_id
+        ))
+        
+        effective_ids = developer_ids if developer_ids else list(certified_mission_ids)
+        effective_ids = [did for did in effective_ids if did in certified_mission_ids]
+
+        if not effective_ids:
+            return
+
+        mission_devs = db.query(Developer).filter(Developer.id.in_(effective_ids)).all()
+
+        # [SENIOR] Pre-fetch mission dates for this project
+        from app.models.developer_project import DeveloperProject
+        missions = db.query(DeveloperProject).filter(
+            DeveloperProject.project_id == project.id,
+            DeveloperProject.developer_id.in_(effective_ids),
+            DeveloperProject.is_active == True
+        ).all()
+        prefetched_missions = {m.developer_id: (m.start_date, m.end_date) for m in missions}
+
+        from sqlalchemy import or_, and_
+
+        mrs = db.query(MergeRequest).filter(
             MergeRequest.project_id == project.id,
-            MergeRequest.created_at >= start_date,
-            MergeRequest.created_at <= end_date
-        )
+            or_(
+                and_(
+                    MergeRequest.created_at_gitlab >= start_date,
+                    MergeRequest.created_at_gitlab <  end_date
+                ),
+                MergeRequest.extraction_lot_id == lot.id
+            )
+        ).all()
         
-        if developer_ids:
-            query = query.filter(MergeRequest.developer_id.in_(developer_ids))
-        
-        matching_mrs = query.all()
-        for mr in matching_mrs:
-            mr.extraction_lot_id = lot.id
-        
+        count = 0
+        for mr in mrs:
+            target_dev_id = mr.developer_id
+            
+            if not mr.extraction_lot_id or not target_dev_id:
+                matched_id = resolve_developer_id_fuzzy(db, None, mr.author_name, mission_devs)
+                if matched_id:
+                    target_dev_id = matched_id
+            
+            # [SURGICAL DAILY PRECISION]
+            actor_ids = [did for did in [target_dev_id, mr.reviewer_id, mr.assignee_id] if did]
+            
+            belongs_to_lot = (
+                mr.created_at_gitlab and 
+                mr.created_at_gitlab >= start_date and 
+                mr.created_at_gitlab < end_date
+            )
+            
+            is_certified = False
+            for act_id in set(actor_ids):
+                if act_id in certified_mission_ids:
+                    mr_date = mr.created_at_gitlab.date() if mr.created_at_gitlab else start_date.date()
+                    if is_project_contribution_certified(db, act_id, project.id, mr_date, prefetched_missions):
+                        is_certified = True
+                        break
+            
+            if is_certified and belongs_to_lot:
+                if target_dev_id:
+                    mr.developer_id = target_dev_id
+                mr.extraction_lot_id = lot.id
+                count += 1
+            else:
+                if mr.extraction_lot_id == lot.id:
+                    mr.extraction_lot_id = None
+
         db.commit()
-        logger.info(f"[lot={lot.id}] Certified {len(matching_mrs)} MRs (linked to lot).")
+        logger.info(f"[lot={lot.id}] HIGH-INTEGRITY SURGICAL CERTIFICATION: Anchored {count} MRs.")
 
     async def _extract_merge_requests(
         self, 
@@ -700,12 +872,28 @@ class ExtractionService:
         client, 
         developer_ids: Optional[List[int]] = None, 
         fast_mode: bool = False
-    ) -> None:
+    ) -> int:
         target_usernames = []
         # [FIX-N+1] Pré-charger les devs cibles en dict UNE SEULE FOIS
         target_devs_map: Dict[int, Developer] = {}
+        
+        # [SENIOR HARDENING] Always use a target map, even in Global mode.
+        # [STRICT MISSION VALIDATION]
+        certified_mission_ids = set(get_certified_developers_for_mission(
+            db=db, project_id=project.id, period_id=lot.period_id
+        ))
+
+        effective_ids = []
         if developer_ids:
-            _loaded_devs = db.query(Developer).filter(Developer.id.in_(developer_ids)).all()
+            effective_ids = [did for did in developer_ids if did in certified_mission_ids]
+        else:
+            effective_ids = list(certified_mission_ids)
+
+        if not effective_ids:
+            return 0
+
+        if effective_ids:
+            _loaded_devs = db.query(Developer).filter(Developer.id.in_(effective_ids)).all()
             target_devs_map = {d.id: d for d in _loaded_devs}
             # [FIX-ID-SYNC] S'assure que les IDs GitLab numériques sont présents avant d'extraire les MRs
             await self._ensure_developers_ids(db, list(target_devs_map.values()), client)
@@ -734,6 +922,15 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"Global MR fetch failed: {e}")
             mrs = []
+        # [SENIOR] Pre-fetch mission dates for this project to enable Surgical Daily Precision
+        from app.models.developer_project import DeveloperProject
+        missions = db.query(DeveloperProject).filter(
+            DeveloperProject.project_id == project.id,
+            DeveloperProject.developer_id.in_(effective_ids),
+            DeveloperProject.is_active == True
+        ).all()
+        prefetched_missions = {m.developer_id: (m.start_date, m.end_date) for m in missions}
+
         created = updated = skipped = 0
 
         for mr_data in mrs:
@@ -742,13 +939,37 @@ class ExtractionService:
             author = mr_data.get("author") or {}
             mr_iid = mr_data.get("iid")
             
-            # [FIX-N+1] Strict isolation — utilise le dict pré-chargé, ZÉRO requête DB en boucle
-            if developer_ids:
-                if not mr_matches_target_devs(mr_data, target_devs_map):
-                    skipped += 1
-                    continue
-                else:
-                    logger.info(f"[lot={lot.id}] MR !{mr_iid} MATCHED for targeted developer(s).")
+            if not mr_matches_target_devs(mr_data, target_devs_map):
+                skipped += 1
+                continue
+            
+            # [SENIOR] SURGICAL MISSION CHECK (Daily Precision for MRs)
+            mr_created_str = mr_data.get("created_at")
+            if mr_created_str:
+                try:
+                    mr_dt = datetime.fromisoformat(mr_created_str.replace("Z", "+00:00"))
+                    mr_date = mr_dt.date()
+                    
+                    # We check if the author is certified for THIS day on THIS project
+                    # MR author is the primary target.
+                    author_id = author.get("id")
+                    target_dev = None
+                    if author_id:
+                        target_dev = next((d for d in target_devs_map.values() if d.gitlab_user_id == author_id), None)
+                    
+                    if target_dev:
+                        from app.utils.mission_utils import is_project_contribution_certified
+                        if not is_project_contribution_certified(db, target_dev.id, project.id, mr_date, prefetched_missions):
+                            logger.warning(
+                                f"[SECURITY] Surgical: MR !{mr_iid} rejected for {target_dev.name} "
+                                f"on project {project.name} (Date {mr_date} outside mission)"
+                            )
+                            skipped += 1
+                            continue
+                except Exception as e:
+                    logger.error(f"Error during Surgical MR check: {e}")
+
+            logger.info(f"[lot={lot.id}] MR !{mr_iid} MATCHED for certified developers.")
 
             author_data = mr_data.get("author") or {}
             reviewers_list = mr_data.get("reviewers") or []
@@ -759,10 +980,11 @@ class ExtractionService:
             # Resolution des entités locales
             dev_author = self._resolve_developer(
                 db=db, project_id=project.id,
-                period_id=lot.period_id,  # ✅ Missing period_id
+                period_id=lot.period_id,
                 email=author_data.get("email"), name=author_data.get("name"),
                 gitlab_id=author_data.get("id"), username=author_data.get("username"),
-                forbid_creation=bool(developer_ids)
+                # ✅ [STRICT MISSION] Interdiction de création
+                forbid_creation=True
             )
             
             dev_reviewer = None
@@ -825,6 +1047,21 @@ class ExtractionService:
                 ]
                 mr_data["commits_count"] = len(filtered_commits)
 
+                # Compute additions, deletions, total_changes from MR commits in database
+                try:
+                    if mr_commits:
+                        from app.models.commit import Commit
+                        mr_commit_shas = [c.get("id") for c in mr_commits if c.get("id")]
+                        db_commits = db.query(Commit).filter(
+                            Commit.project_id == project.id,
+                            Commit.gitlab_commit_id.in_(mr_commit_shas)
+                        ).all()
+                        mr_data["additions"] = sum(c.additions or 0 for c in db_commits)
+                        mr_data["deletions"] = sum(c.deletions or 0 for c in db_commits)
+                        mr_data["total_changes"] = sum(c.total_changes or 0 for c in db_commits)
+                except Exception as e:
+                    logger.warning(f"Failed to calculate additions/deletions for MR !{mr_data['iid']}: {e}")
+
                 # [SENIOR FIX 1.3] Cycle Time calculation (Merge Date - First Commit Date)
                 if mr_data.get("state") == "merged" and mr_data.get("merged_at"):
                     try:
@@ -850,14 +1087,36 @@ class ExtractionService:
                 ]
                 mr_data["user_notes_count"] = len(filtered_notes)
 
+                # [SENIOR FIX] Fetch resource_state_events for precise approved_at timestamp
+                # This provides accurate review time calculation (creation -> approval)
+                # If unavailable, the mapper will use merged_at as fallback
+                try:
+                    resource_state_events = await client.get_merge_request_resource_state_events(
+                        project.gitlab_project_id, mr_data["iid"]
+                    )
+                    approval_event = None
+                    for event in resource_state_events:
+                        if event.get("state") == "approved":
+                            approval_event = event
+                            break
+                    
+                    if approval_event and approval_event.get("created_at"):
+                        mr_data["approved_at"] = approval_event["created_at"]
+                        logger.debug(f"MR !{mr_data['iid']}: precise approved_at from resource_state_events")
+                except Exception as e:
+                    logger.debug(f"Could not fetch resource_state_events for MR !{mr_data['iid']}: {e}")
+
             except Exception as e:
                 logger.warning(f"Could not fetch/filter MR detail/commits/notes for !{mr_data['iid']}: {e}")
+
+            mr_created_str = mr_data.get("created_at")
+            belongs_to_lot = is_in_period(mr_created_str, lot_start, lot_end)
 
             # Map Data
             mapped = GitLabMapper.map_merge_request(
                 data=mr_data, project_id=project.id,
                 developer_id=dev_author.id if dev_author else None, 
-                extraction_lot_id=lot.id,
+                extraction_lot_id=lot.id if belongs_to_lot else None,
                 approvals_data=approvals_data,
                 reviewer_id=dev_reviewer.id if dev_reviewer else None
             )
@@ -867,11 +1126,41 @@ class ExtractionService:
 
             current_mr = None
             if existing_mr:
+                if not belongs_to_lot:
+                    mapped.pop("extraction_lot_id", None)
                 current_mr = self.mr_repo.update(db, existing_mr, mapped)
                 updated += 1
             else:
                 current_mr = self.mr_repo.create(db, mapped)
                 created += 1
+
+            # Link commits to MR in commit_merge_request table
+            try:
+                if mr_commits:
+                    mr_commit_shas = [c.get("id") for c in mr_commits if c.get("id")]
+                    from app.models.commit import Commit
+                    from sqlalchemy import text
+                    db_commits = db.query(Commit).filter(
+                        Commit.project_id == project.id,
+                        Commit.gitlab_commit_id.in_(mr_commit_shas)
+                    ).all()
+                    for c in db_commits:
+                        exists = db.execute(
+                            text("SELECT 1 FROM commit_merge_request WHERE commit_id = :cid AND mr_id = :mrid"),
+                            {"cid": c.id, "mrid": current_mr.id}
+                        ).fetchone()
+                        if not exists:
+                            db.execute(
+                                text("INSERT INTO commit_merge_request (commit_id, authored_date, mr_id, developer_id) VALUES (:cid, :adate, :mrid, :devid)"),
+                                {
+                                    "cid": c.id,
+                                    "adate": c.authored_date,
+                                    "mrid": current_mr.id,
+                                    "devid": c.developer_id
+                                }
+                            )
+            except Exception as e:
+                logger.warning(f"Could not link commits to MR !{mr_data.get('iid', '?')}: {e}")
 
             # [FIX-DOUBLE-CALL] Réutilise mr_notes déjà chargé — aucun appel API supplémentaire
             # [FIX-SILENT] Exception loggée (warning) au lieu d'être silencieusement ignorée
@@ -881,10 +1170,11 @@ class ExtractionService:
                     n_author = note.get("author") or {}
                     commenter = self._resolve_developer(
                         db=db, project_id=project.id,
-                        period_id=lot.period_id,  # ✅ Pass period_id from lot
+                        period_id=lot.period_id,
                         email=n_author.get("email"), name=n_author.get("name"),
                         gitlab_id=n_author.get("id"), username=n_author.get("username"),
-                        forbid_creation=bool(developer_ids)
+                        # ✅ [STRICT MISSION] Interdiction de création
+                        forbid_creation=True
                     )
                     if commenter:
                         self.comment_repo.create_if_not_exists(db, {
@@ -897,7 +1187,7 @@ class ExtractionService:
             db.commit()
 
         # [SENIOR CERTIFICATION] Final step: ensure the lot "claims" its relevant data
-        self._certify_lot_mrs(db, lot, project, developer_ids, lot_start, lot_end)
+        self._certify_lot_mrs(db, lot, project, effective_ids, lot_start, lot_end)
 
         logger.info(f"MRs — created:{created} updated:{updated} skipped:{skipped} project={project.name}")
         return created + updated

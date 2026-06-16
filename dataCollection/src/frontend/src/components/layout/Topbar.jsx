@@ -311,6 +311,70 @@ const TOPBAR_CSS = `
   .tb-dd-item.is-danger i { color: #EF4444; }
   .tb-dd-item.is-danger:hover { background: #FEF2F2; color: #DC2626; }
   [data-bs-theme="dark"] .tb-dd-item.is-danger:hover { background: rgba(239,68,68,.1); color: #FCA5A5; }
+
+  /* DB Selector */
+  .tb-db-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #E5E7EB;
+    background: #F9FAFB;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tb-text-l);
+  }
+  .tb-db-btn:hover { background: #F3F4F6; border-color: #D1D5DB; }
+  [data-bs-theme="dark"] .tb-db-btn {
+    background: rgba(255,255,255,.03);
+    border-color: rgba(255,255,255,.07);
+    color: var(--tb-text-d);
+  }
+  [data-bs-theme="dark"] .tb-db-btn:hover {
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.12);
+  }
+  .tb-db-btn i:first-child { color: var(--tb-blue); font-size: 15px; }
+  
+  .tb-db-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 260px;
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.08);
+    overflow: hidden;
+    z-index: 1100;
+    animation: tb-dd-in .16s var(--tb-ease);
+  }
+  [data-bs-theme="dark"] .tb-db-dropdown {
+    background: #1E2536;
+    border-color: rgba(255,255,255,.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  }
+  .tb-db-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    border: none; width: 100%; background: transparent; text-align: left;
+    color: #374151; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: background .12s;
+  }
+  .tb-db-item:hover { background: #F9FAFB; color: #111827; }
+  [data-bs-theme="dark"] .tb-db-item { color: rgba(255,255,255,.7); }
+  [data-bs-theme="dark"] .tb-db-item:hover { background: rgba(255,255,255,.04); color: rgba(255,255,255,.9); }
+  .tb-db-item-left { display: flex; align-items: center; gap: 8px; }
+  .tb-db-item-left i { color: #9CA3AF; font-size: 15px; }
+  .tb-db-item.is-active { background: #EFF6FF; color: var(--tb-blue); }
+  .tb-db-item.is-active .tb-db-item-left i { color: var(--tb-blue); }
+  [data-bs-theme="dark"] .tb-db-item.is-active { background: rgba(59,130,246,.1); color: #60A5FA; }
+  [data-bs-theme="dark"] .tb-db-item.is-active .tb-db-item-left i { color: #60A5FA; }
+  .tb-db-check { color: var(--tb-blue); font-size: 16px; opacity: 0; }
+  .tb-db-item.is-active .tb-db-check { opacity: 1; }
 `;
 
 let tbCssInjected = false;
@@ -330,8 +394,10 @@ const LABELS = {
   "/team":                     { label: "Gestion d'Équipe",   icon: "ri-team-line"            },
   "/merge":                    { label: "Merge Requests",     icon: "ri-git-merge-line"       },
   "/commits":                  { label: "Commits GitLab",     icon: "ri-git-commit-line"      },
-  "/kpi-analysis":             { label: "Analyses KPI",       icon: "ri-line-chart-line"      },
-  "/alerts":                   { label: "Alertes KPI",        icon: "ri-notification-3-line"  },
+  // ✅ [REMOVED] Analyses KPI - Non fonctionnelle
+  // "/kpi-analysis":             { label: "Analyses KPI",       icon: "ri-line-chart-line"      },
+  // ✅ [REMOVED] Alerts KPI - Non fonctionnelle
+  // "/alerts":                   { label: "Alertes KPI",        icon: "ri-notification-3-line"  },
   "/extraction-lots":          { label: "Registre des Lots",  icon: "ri-database-2-line"      },
   "/extraction":               { label: "Moteur d'Extraction",icon: "ri-rocket-2-line"        },
   "/periods":                  { label: "Périodes",           icon: "ri-calendar-2-line"      },
@@ -356,9 +422,23 @@ export default function Topbar() {
 
   const [dark,     setDark]     = useState(() => document.documentElement.getAttribute("data-bs-theme") === "dark");
   const [ddOpen,   setDdOpen]   = useState(false);
+  const [dbDdOpen, setDbDdOpen] = useState(false);
   const [notifCnt] = useState(2);
 
   const ddRef = useRef(null);
+  const dbDdRef = useRef(null);
+
+  const [database, setDatabase] = useState(() => localStorage.getItem("selected_database") || "gitlab_kpi1");
+
+  const handleDbChange = (nextDb) => {
+    setDatabase(nextDb);
+    localStorage.setItem("selected_database", nextDb);
+    // Recharger la page pour charger les données de la nouvelle base
+    // Petit délai pour s'assurer que localStorage est écrit
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
 
   const userName    = user?.name  || "Utilisateur";
   const userEmail   = user?.email || "";
@@ -378,7 +458,10 @@ export default function Topbar() {
 
   // Close dropdown on outside click
   useEffect(() => {
-    const handler = e => { if (ddRef.current && !ddRef.current.contains(e.target)) setDdOpen(false); };
+    const handler = e => { 
+      if (ddRef.current && !ddRef.current.contains(e.target)) setDdOpen(false); 
+      if (dbDdRef.current && !dbDdRef.current.contains(e.target)) setDbDdOpen(false);
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
@@ -404,6 +487,40 @@ export default function Topbar() {
       </div>
 
       <div className="tb-spacer" />
+
+      {/* Database Switcher */}
+      <div className="position-relative" ref={dbDdRef} style={{ marginRight: 8 }}>
+        <button className="tb-db-btn" onClick={() => setDbDdOpen(v => !v)}>
+          <i className="ri-database-2-line" />
+          <span>{database === "gitlab_kpi1" ? "Base Principale" : "Base Test"}</span>
+          <i className={`ri-arrow-down-s-line tb-chevron ${dbDdOpen ? "is-open" : ""}`} />
+        </button>
+
+        {dbDdOpen && (
+          <div className="tb-db-dropdown">
+            <button 
+              className={`tb-db-item ${database === "gitlab_kpi1" ? "is-active" : ""}`}
+              onClick={() => { setDbDdOpen(false); handleDbChange("gitlab_kpi1"); }}
+            >
+              <div className="tb-db-item-left">
+                <i className="ri-database-2-line" />
+                <span>Base Principale (gitlab_kpi1)</span>
+              </div>
+              <i className="ri-check-line tb-db-check" />
+            </button>
+            <button 
+              className={`tb-db-item ${database === "telnetdb" ? "is-active" : ""}`}
+              onClick={() => { setDbDdOpen(false); handleDbChange("telnetdb"); }}
+            >
+              <div className="tb-db-item-left">
+                <i className="ri-test-tube-line" />
+                <span>Base Test (telnetdb)</span>
+              </div>
+              <i className="ri-check-line tb-db-check" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Right: action group */}
       <div className="tb-actions">
@@ -436,10 +553,7 @@ export default function Topbar() {
               <div className="tb-dd-email">{userEmail || "Session active"}</div>
             </div>
             <div className="tb-dd-body">
-              <Link to="/profile" className="tb-dd-item" onClick={() => setDdOpen(false)}>
-                <i className="ri-user-settings-line" />
-                <span>Mon Profil</span>
-              </Link>
+             
               <Link to="/dashboard" className="tb-dd-item" onClick={() => setDdOpen(false)}>
                 <i className="ri-dashboard-2-line" />
                 <span>Dashboard</span>

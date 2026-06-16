@@ -8,7 +8,9 @@
  */
 
 import { useState, useCallback } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import authService from "../services/authService";
 
 const getInitials = (email="") =>
   email.split("@")[0].split(/[._-]/).slice(0,2).map(p=>p[0]?.toUpperCase()??"").join("") || "U";
@@ -66,6 +68,7 @@ function PwdStrength({ pwd }) {
 
 export default function Profile() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const userEmail   = user?.email ?? "user@telnet.tn";
   const userRole    = user?.role  ?? "user";
   const displayName = userEmail.split("@")[0].replace(/[._-]/g," ");
@@ -119,16 +122,24 @@ export default function Profile() {
   },[showProfileToast]);
 
   // ✅ FIX : showPwdToast dans les deps
-  const handlePwdSave = useCallback((e) => {
+  const handlePwdSave = useCallback(async (e) => {
     e.preventDefault();
     const errors={};
     if (!pwdForm.old)                               errors.old     = "L'ancien mot de passe est requis.";
-    if (pwdForm.newPwd.length<6)                    errors.newPwd  = "Minimum 6 caractères.";
+    if (pwdForm.newPwd.length<8)                    errors.newPwd  = "Minimum 8 caractères.";
     if (pwdForm.newPwd===pwdForm.old&&pwdForm.old)  errors.newPwd  = "Le nouveau mot de passe doit être différent de l'ancien.";
     if (pwdForm.confirm!==pwdForm.newPwd)           errors.confirm = "Les mots de passe ne correspondent pas.";
     if (Object.keys(errors).length>0) { setPwdErrors(errors); return; }
-    setPwdForm({old:"",newPwd:"",confirm:""}); setPwdErrors({});
-    showPwdToast("Mot de passe modifié avec succès !");
+    
+    try {
+      await authService.changePassword(pwdForm.old, pwdForm.newPwd, pwdForm.confirm);
+      setPwdForm({old:"",newPwd:"",confirm:""}); setPwdErrors({});
+      showPwdToast("Votre mot de passe a été changé avec succès ! Vous pouvez maintenant vous connecter avec le nouveau mot de passe.");
+    } catch (err) {
+      console.error("Erreur changement mot de passe:", err);
+      const errorMsg = err.response?.data?.detail || "Une erreur est survenue lors du changement de mot de passe.";
+      showPwdToast(errorMsg, "error");
+    }
   },[pwdForm, showPwdToast]);
 
   const goToEdit  = () => setActiveTab("personalDetails");
@@ -339,7 +350,7 @@ export default function Profile() {
                     </div>
                     <div className="col-lg-12">
                       <div className="d-flex align-items-center justify-content-between">
-                        <a href="#" className="link-primary text-decoration-underline border-0 bg-transparent p-0 fs-13">Mot de passe oublié ?</a>
+                        <Link to="/forgot-password" className="link-primary text-decoration-underline border-0 bg-transparent p-0 fs-13">Mot de passe oublié ?</Link>
                         <div className="hstack gap-2">
                           <button type="submit" className="btn btn-info"><i className="ri-lock-password-line me-1"></i>Changer le mot de passe</button>
                           <button type="button" className="btn btn-soft-secondary" onClick={()=>{setPwdForm({old:"",newPwd:"",confirm:""});setPwdErrors({});}}>Annuler</button>

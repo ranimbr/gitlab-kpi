@@ -1,11 +1,17 @@
 """
 models/developer_site.py
 
+[SCD TYPE 2 - v2]
+Gestion historique des affectations de site :
+- is_active  : False = affectation clôturée
+- start_date : Date de début de l'affectation
+- end_date   : Date de fin (NULL = en cours)
 
+Permet de tracer QUAND un dev a changé de site (Paris → Lyon).
 """
 
 from sqlalchemy import (
-    Column, Integer, ForeignKey, Boolean, DateTime,
+    Column, Integer, ForeignKey, Boolean, DateTime, Date,
     Index, DDL, event, func,
 )
 from sqlalchemy.orm import relationship
@@ -17,17 +23,17 @@ class DeveloperSite(Base):
 
     __tablename__ = "developer_site"
 
-    # ── Clé primaire composite ────────────────────────────────────────────────
+    # ── Clé primaire ──────────────────────────────────────────────────────────
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
     developer_id = Column(
         Integer,
         ForeignKey("developer.id", ondelete="CASCADE"),
-        primary_key=True,
         nullable=False,
     )
     site_id = Column(
         Integer,
         ForeignKey("site.id", ondelete="CASCADE"),
-        primary_key=True,
         nullable=False,
     )
 
@@ -41,6 +47,14 @@ class DeveloperSite(Base):
         nullable=False,
     )
 
+    # ── [SCD TYPE 2] Historisation des transferts de site ────────────────────
+    is_active  = Column(Boolean, default=True, nullable=False,
+                        comment="False = affectation clôturée (transfert ou départ)")
+    start_date = Column(Date, nullable=True,
+                        comment="Date de début d'affectation au site")
+    end_date   = Column(Date, nullable=True,
+                        comment="Date de fin (NULL = affectation en cours)")
+
     # ── Relations ────────────────────────────────────────────────────────────
     developer = relationship("Developer", back_populates="site_associations")
     site      = relationship("Site",      back_populates="developer_associations")
@@ -51,20 +65,10 @@ class DeveloperSite(Base):
         Index("idx_dev_site_developer_primary", "developer_id", "is_primary"),
         # Retrouver tous les développeurs d'un site
         Index("idx_dev_site_site",              "site_id"),
+        # [SCD Type 2] Filtrage rapide des affectations actives
+        Index("idx_dev_site_active",            "developer_id", "is_active"),
+        Index("idx_dev_site_dates",             "developer_id", "start_date", "end_date"),
     )
 
 
-# ── Index unique partiel : 1 seul site primaire par développeur ──────────────
-# WHERE is_primary = TRUE → n'affecte pas les associations secondaires.
-# Garantit : impossible d'assigner 2 sites primaires au même développeur.
-_unique_primary_site = DDL("""
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_developer_one_primary_site
-    ON developer_site (developer_id)
-    WHERE is_primary = TRUE
-""")
-
-event.listen(
-    DeveloperSite.__table__,
-    "after_create",
-    _unique_primary_site,
-)
+

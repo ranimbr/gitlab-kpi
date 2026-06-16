@@ -20,6 +20,7 @@
 
   /* Layout Sources of Truth (Pro Fixed) */
   --sidebar-width:    240px;
+  --sidebar-collapsed-width: 64px;
   --topbar-height:    56px;
   --transition-norm:  0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -181,14 +182,20 @@ body {
 
 /* Main Content Wrapper Fixes */
 .main-content {
-  margin-left: var(--sidebar-width) !important;
-  width: calc(100% - var(--sidebar-width)) !important;
+  margin-left: var(--sidebar-current-width, var(--sidebar-width)) !important;
+  width: calc(100% - var(--sidebar-current-width, var(--sidebar-width))) !important;
   padding-top: var(--topbar-height) !important; /* CRITICAL FIX: Offset for fixed Topbar */
   padding-bottom: 40px;
   background: var(--page-bg) !important;
   position: relative;
   transition: all var(--transition-norm);
   overflow-x: hidden;
+}
+
+/* Collapsed sidebar state */
+#layout-wrapper.sidebar-collapsed .main-content {
+  margin-left: var(--sidebar-collapsed-width) !important;
+  width: calc(100% - var(--sidebar-collapsed-width)) !important;
 }
 
 /* Senior Mobile Override for User's Topbar */

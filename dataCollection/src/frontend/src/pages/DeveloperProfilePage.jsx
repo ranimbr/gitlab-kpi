@@ -9,11 +9,249 @@ import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom"
 import developerService from "../services/developerService";
 import analyticsService    from "../services/analyticsService";
 import projectService      from "../services/projectService";
+import periodService      from "../services/periodService";
 import { exportService }   from "../services";
+import api                from "../services/api";
 import LoadingSpinner      from "../components/common/LoadingSpinner";
 import EmptyState          from "../components/common/EmptyState";
 import ScoreRadarChart     from "../components/charts/ScoreRadarChart";
 import ReactApexChart      from "react-apexcharts";  // Phase 5: Evolution chart
+
+// ─── Review Details Modal ──────────────────────────────────────────────────────────
+function ReviewDetailModal({ reviews, loading, onClose, developerName, projectName, periodLabel }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const STATE_CFG = {
+    opened: { label: "Open", icon: "ri-git-pull-request-line", bg: "#e8ecf8", color: "#405189" },
+    merged: { label: "Merged", icon: "ri-git-merge-line", bg: "#d4f5f0", color: "#0a7a6a" },
+    closed: { label: "Closed", icon: "ri-close-circle-line", bg: "#fde8e8", color: "#9b1c1c" },
+  };
+
+  return (
+    <div className="modal fade show d-block" role="dialog" aria-modal="true" aria-label="Détails Revues de code"
+      style={{ backgroundColor: "rgba(30,34,45,0.6)", backdropFilter: "blur(3px)" }} onClick={onClose}>
+      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 800 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content border-0" style={{ borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" }}>
+          <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f1f3f7" }}>
+            <div className="d-flex align-items-start gap-3">
+              <div className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fw-bold text-white fs-14"
+                style={{ width: 44, height: 44, background: "linear-gradient(135deg,#405189,#3577f1)" }}>
+                {developerName ? developerName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "DV"}
+              </div>
+              <div className="flex-grow-1 min-w-0">
+                <h5 className="fw-semibold text-dark mb-1" style={{ fontSize: 14, lineHeight: 1.45 }}>
+                  Revues de code - {developerName}
+                </h5>
+                <div className="d-flex flex-wrap gap-2 align-items-center">
+                  <span style={{ background: "#d7edf9", color: "#1a6fa3", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                    <i className="ri-building-line me-1"></i>{projectName}
+                  </span>
+                  {periodLabel && (
+                    <span style={{ background: "#fef3dc", color: "#b78a1e", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                      <i className="ri-calendar-line me-1"></i>{periodLabel}
+                    </span>
+                  )}
+                  <span style={{ background: "#e8ecf8", color: "#405189", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                    <i className="ri-eye-line me-1"></i>{reviews.length} revues
+                  </span>
+                </div>
+              </div>
+              <button className="btn-close flex-shrink-0" style={{ opacity: 0.5 }} onClick={onClose} aria-label="Fermer"></button>
+            </div>
+          </div>
+          <div className="px-4 py-4" style={{ maxHeight: 500, overflowY: "auto" }}>
+            {loading ? (
+              <div className="text-center py-5">
+                <div className="spinner-border text-primary" role="status"></div>
+                <p className="text-muted mt-3">Chargement des revues...</p>
+              </div>
+            ) : reviews.length === 0 ? (
+              <div className="text-center py-5 text-muted">
+                <i className="ri-eye-off-line fs-1 d-block mb-2"></i>
+                <p>Aucune revue de code trouvée pour cette période</p>
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-hover table-nowrap align-middle">
+                  <thead>
+                    <tr style={{ background: "#f8f9fc" }}>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>MR</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Titre</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Auteur</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Statut</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Date</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Comm.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviews.map((review, idx) => {
+                      const cfg = STATE_CFG[review.state] || STATE_CFG.opened;
+                      return (
+                        <tr key={idx}>
+                          <td>
+                            <span className="fw-semibold text-primary">!{review.gitlab_mr_id}</span>
+                          </td>
+                          <td>
+                            <div className="fw-semibold text-dark" style={{ fontSize: 13, maxWidth: 250, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {review.title}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="text-muted fs-12">{review.author || "Unknown"}</span>
+                          </td>
+                          <td>
+                            <span style={{ background: cfg.bg, color: cfg.color, borderRadius: 12, padding: "4px 10px", fontSize: 11, fontWeight: 700 }}>
+                              <i className={`${cfg.icon} me-1`}></i>{cfg.label}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="text-muted fs-12">{review.created_at_gitlab ? new Date(review.created_at_gitlab).toLocaleDateString("fr-FR") : "—"}</span>
+                          </td>
+                          <td>
+                            <span className="fw-semibold text-dark">{review.user_notes_count || 0}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="px-4 py-3 d-flex align-items-center justify-content-between" style={{ borderTop: "1px solid #f1f3f7", background: "#fafbfc", borderRadius: "0 0 16px 16px" }}>
+            <span style={{ fontSize: 12, color: "#9ca3af" }}>
+              <i className="ri-eye-line me-1"></i>{reviews.length} revues affichées
+            </span>
+            <button className="btn btn-sm" onClick={onClose} style={{ fontSize: 12, padding: "5px 20px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontWeight: 500 }}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Comments Details Modal ─────────────────────────────────────────────────────────
+function CommentsDetailModal({ comments, loading, onClose, developerName, projectName, periodLabel }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const STATE_CFG = {
+    opened: { label: "Open", icon: "ri-git-pull-request-line", bg: "#e8ecf8", color: "#405189" },
+    merged: { label: "Merged", icon: "ri-git-merge-line", bg: "#d4f5f0", color: "#0a7a6a" },
+    closed: { label: "Closed", icon: "ri-close-circle-line", bg: "#fde8e8", color: "#9b1c1c" },
+  };
+
+  return (
+    <div className="modal fade show d-block" role="dialog" aria-modal="true" aria-label="Détails Commentaires"
+      style={{ backgroundColor: "rgba(30,34,45,0.6)", backdropFilter: "blur(3px)" }} onClick={onClose}>
+      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 900 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content border-0" style={{ borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" }}>
+          <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f1f3f7" }}>
+            <div className="d-flex align-items-start gap-3">
+              <div className="rounded-circle flex-shrink-0 d-flex align-items-center justify-content-center fw-bold text-white fs-14"
+                style={{ width: 44, height: 44, background: "linear-gradient(135deg,#405189,#3577f1)" }}>
+                {developerName ? developerName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "DV"}
+              </div>
+              <div className="flex-grow-1 min-w-0">
+                <h5 className="fw-semibold text-dark mb-1" style={{ fontSize: 14, lineHeight: 1.45 }}>
+                  Mentorat (Commentaires) - {developerName}
+                </h5>
+                <div className="d-flex flex-wrap gap-2 align-items-center">
+                  <span style={{ background: "#d7edf9", color: "#1a6fa3", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                    <i className="ri-building-line me-1"></i>{projectName}
+                  </span>
+                  {periodLabel && (
+                    <span style={{ background: "#fef3dc", color: "#b78a1e", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                      <i className="ri-calendar-line me-1"></i>{periodLabel}
+                    </span>
+                  )}
+                  <span style={{ background: "#e8ecf8", color: "#405189", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                    <i className="ri-chat-4-line me-1"></i>{comments.length} commentaires
+                  </span>
+                </div>
+              </div>
+              <button className="btn-close flex-shrink-0" style={{ opacity: 0.5 }} onClick={onClose} aria-label="Fermer"></button>
+            </div>
+          </div>
+          <div className="px-4 py-4" style={{ maxHeight: 500, overflowY: "auto" }}>
+            {loading ? (
+              <div className="text-center py-5">
+                <div className="spinner-border text-primary" role="status"></div>
+                <p className="text-muted mt-3">Chargement des commentaires...</p>
+              </div>
+            ) : comments.length === 0 ? (
+              <div className="text-center py-5 text-muted">
+                <i className="ri-chat-off-line fs-1 d-block mb-2"></i>
+                <p>Aucun commentaire trouvé pour cette période</p>
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-hover table-nowrap align-middle">
+                  <thead>
+                    <tr style={{ background: "#f8f9fc" }}>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>MR</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Titre MR</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Commentaire</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Date</th>
+                      <th className="fs-11 fw-bold text-muted text-uppercase" style={{ letterSpacing: 0.8 }}>Statut MR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comments.map((comment, idx) => {
+                      const cfg = STATE_CFG[comment.mr_state] || STATE_CFG.opened;
+                      return (
+                        <tr key={idx}>
+                          <td>
+                            <span className="fw-semibold text-primary">!{comment.mr_gitlab_id}</span>
+                          </td>
+                          <td>
+                            <div className="fw-semibold text-dark" style={{ fontSize: 13, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {comment.mr_title}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="text-muted fs-12" style={{ maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {comment.body}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="text-muted fs-12">{comment.created_at ? new Date(comment.created_at).toLocaleDateString("fr-FR") : "—"}</span>
+                          </td>
+                          <td>
+                            <span style={{ background: cfg.bg, color: cfg.color, borderRadius: 12, padding: "4px 10px", fontSize: 11, fontWeight: 700 }}>
+                              <i className={`${cfg.icon} me-1`}></i>{cfg.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="px-4 py-3 d-flex align-items-center justify-content-between" style={{ borderTop: "1px solid #f1f3f7", background: "#fafbfc", borderRadius: "0 0 16px 16px" }}>
+            <span style={{ fontSize: 12, color: "#9ca3af" }}>
+              <i className="ri-chat-4-line me-1"></i>{comments.length} commentaires affichés
+            </span>
+            <button className="btn btn-sm" onClick={onClose} style={{ fontSize: 12, padding: "5px 20px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontWeight: 500 }}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Helpers (Standardized) ──────────────────────────────────────────────────
 const fmt     = (n, d = 2) => (n == null || isNaN(+n)) ? "—" : (+n).toFixed(d);
@@ -151,10 +389,12 @@ function ActivityHeatmap({ data, startDate, endDate, maxCount, loading, accentCo
 }
 
 // ─── Component: Individual KPI Card (Dashboard Pattern) ───────────────────────
-function KpiCard({ title, value, unit, icon, color, delta }) {
+function KpiCard({ title, value, unit, icon, color, delta, subtitle, onClick }) {
   return (
     <div className="col-xl-3 col-sm-6">
-      <div className="card card-animate border-0 shadow-sm h-100">
+      <div className="card card-animate border-0 shadow-sm h-100" 
+           style={{ cursor: onClick ? 'pointer' : 'default' }}
+           onClick={onClick}>
         <div className="card-body">
           <div className="d-flex align-items-start">
             <div className="avatar-sm flex-shrink-0">
@@ -165,6 +405,9 @@ function KpiCard({ title, value, unit, icon, color, delta }) {
             <div className="flex-grow-1 ms-3">
               <p className="text-uppercase fw-medium text-muted mb-1 fs-11" style={{ letterSpacing: ".05em" }}>{title}</p>
               <h4 className="fs-22 mb-1 fw-bold">{value ?? "—"}<span className="fs-13 text-muted fw-normal ms-1">{unit}</span></h4>
+              {subtitle && (
+                <p className="text-muted fs-11 mb-1">{subtitle}</p>
+              )}
               {delta && (
                 <span className={`badge bg-${delta.color}-subtle text-${delta.color} fs-11`}>
                   <i className={`${delta.icon} me-1`}></i>{delta.value}
@@ -198,7 +441,12 @@ export default function DeveloperProfilePage() {
   const [alerts,     setAlerts]     = useState([]);
   const [projects,   setProjects]   = useState([]);
   const [selectedPid, setSelectedPid] = useState(projectId || localStorage.getItem("last_project_id") || "");
-  const [selectedPeriodId, setSelectedPeriodId] = useState(searchParams.get("period_id") || "");
+  const [selectedPeriodId, setSelectedPeriodId] = useState(searchParams.get("period_id") ? Number(searchParams.get("period_id")) : null);
+
+  // Debug: Log period changes
+  useEffect(() => {
+    console.log("selectedPeriodId changed:", selectedPeriodId);
+  }, [selectedPeriodId]);
   const [selectedLotId, setSelectedLotId] = useState(lotIdParam || "");
   const [periods, setPeriods] = useState([]);
 
@@ -207,6 +455,60 @@ export default function DeveloperProfilePage() {
   const [loadingHeatmap, setLoadingHeatmap] = useState(false);
   const [exportingPdf,   setExportingPdf]   = useState(false);
   const [heatmapMonths,  setHeatmapMonths]  = useState(12);
+  
+  // Review details modal state
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [reviewsData, setReviewsData] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [commentsData, setCommentsData] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+
+  // Function to fetch review details
+  const handleOpenReviewsModal = useCallback(async () => {
+    setShowReviewsModal(true);
+    setLoadingReviews(true);
+    try {
+      const p_id = selectedPid ? parseInt(selectedPid) : null;
+      // Use the new endpoint that uses the same logic as KPI calculation
+      const response = await api.get(`/kpis/developer/${id}/reviewed-mrs`, { 
+        params: { 
+          project_id: p_id,
+          period_id: selectedPeriodId,
+          lot_id: selectedLotId || undefined
+        }
+      });
+      setReviewsData(response.data || []);
+    } catch (err) {
+      console.error("Failed to fetch reviews:", err);
+      setReviewsData([]);
+    } finally {
+      setLoadingReviews(false);
+    }
+  }, [id, selectedPid, selectedPeriodId, selectedLotId]);
+
+  // Function to fetch comment details
+  const handleOpenCommentsModal = useCallback(async () => {
+    setShowCommentsModal(true);
+    setLoadingComments(true);
+    try {
+      const p_id = selectedPid ? parseInt(selectedPid) : null;
+      // Use endpoint to fetch comments
+      const response = await api.get(`/kpis/developer/${id}/comments`, { 
+        params: { 
+          project_id: p_id,
+          period_id: selectedPeriodId,
+          lot_id: selectedLotId || undefined
+        }
+      });
+      setCommentsData(response.data || []);
+    } catch (err) {
+      console.error("Failed to fetch comments:", err);
+      setCommentsData([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  }, [id, selectedPid, selectedPeriodId, selectedLotId]);
 
   // [SENIOR] Sync all filters to URL & LocalStorage
   useEffect(() => {
@@ -231,9 +533,14 @@ export default function DeveloperProfilePage() {
     projectService.getAll().then(data => {
       const list = Array.isArray(data) ? data : [];
       setProjects(list);
-      // Ne pas forcer selectedPid ici, laisser le useEffect de sync s'en charger ou garder la valeur initiale
+      // Force default project selection if none selected or "all"
+      if (!selectedPid || selectedPid === "all" || selectedPid === "") {
+        if (list.length > 0) {
+          setSelectedPid(String(list[0].id));
+        }
+      }
     });
-  }, []);
+  }, [selectedPid]);
 
   // [SENIOR] Scroll to hash on load
   useEffect(() => {
@@ -251,66 +558,90 @@ export default function DeveloperProfilePage() {
     setError(null);
     try {
       // 1. Fetch Core Developer Data
-      const devData = await developerService.getById(id);
+      const devData = await developerService.getById(id, selectedPeriodId);
       if (!devData) throw new Error("Développeur introuvable");
       setDeveloper(devData);
 
       // 2. Fetch Secondary Data (Non-blocking)
-      const [alertData, heatData, timelineData] = await Promise.all([
-        developerService.getDeveloperAlerts(id).catch(() => []),
+      const [heatData, timelineData, allPeriodsData] = await Promise.all([
         developerService.getHeatmap(id, heatmapMonths).catch(() => null),
-        developerService.getTimeline(id).catch(() => [])
+        developerService.getTimeline(id, selectedPeriodId).catch((err) => {
+          console.error("Timeline fetch error:", err);
+          // Return basic timeline with onboarding event if complex timeline fails
+          return [{
+            date: developerData?.onboarding_date || developerData?.created_at,
+            title: "Onboarding",
+            description: "Création du profil ou intégration dans l'entreprise",
+            icon: "ri-user-add-line",
+            color: "success"
+          }];
+        }),
+        periodService.getAll().catch(() => [])
       ]);
       
-      setAlerts(Array.isArray(alertData) ? alertData : []);
+      setAlerts([]); // Alerts endpoint désactivé - utiliser tableau vide
       setHeatmap(heatData?.activity || []);
       setHeatmapMeta(heatData || null);
       setTimeline(timelineData || []);
+      
+      // Load all periods globally (not project-specific)
+      if (allPeriodsData && allPeriodsData.length > 0) {
+        const availablePeriods = allPeriodsData.map(p => ({
+          id: p.id,
+          label: `${p.month}/${p.year}` // Use actual period month/year instead of created_at
+        })).reverse();
+        setPeriods(availablePeriods);
+        
+        // Auto-select first period if none selected
+        if (!selectedPeriodId && availablePeriods.length > 0) {
+          setSelectedPeriodId(availablePeriods[0].id);
+        }
+      }
 
-      // 3. Project-specific or Global KPIs
-      const p_id = (selectedPid === "all" || !selectedPid) ? null : parseInt(selectedPid);
+      // 3. Project-specific KPIs (always project-specific, no global mode)
+      const p_id = selectedPid ? parseInt(selectedPid) : null;
+
+      // Validate that selected project exists in the projects list
+      if (p_id && projects.length > 0) {
+        const projectExists = projects.some(p => p.id === p_id);
+        if (!projectExists) {
+          console.warn(`Project ${p_id} not found in available projects, falling back to first project`);
+          setSelectedPid(projects[0].id);
+          return; // Exit and reload with valid project
+        }
+      }
 
       if (p_id) {
         // Mode Projet Spécifique
         const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id) }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
         
-        const availablePeriods = snaps.map(s => ({
-          id: s.period_id,
-          label: new Date(s.snapshot_date).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
-        })).reverse();
-        setPeriods(availablePeriods);
-
-        const targetPeriodId = selectedPeriodId || (availablePeriods.length > 0 ? availablePeriods[0].id : null);
-        if (targetPeriodId && !selectedPeriodId) setSelectedPeriodId(targetPeriodId);
+        // Update periods with project-specific snapshots if available
+        let targetPeriodId = selectedPeriodId;
+        if (snaps && snaps.length > 0) {
+          const projectPeriods = snaps.map(s => ({
+            id: s.period_id,
+            label: new Date(s.snapshot_date).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
+          })).reverse();
+          setPeriods(projectPeriods);
+          
+          targetPeriodId = selectedPeriodId || (projectPeriods.length > 0 ? projectPeriods[0].id : null);
+          if (targetPeriodId && !selectedPeriodId) setSelectedPeriodId(targetPeriodId);
+        }
 
         let snap = null;
         if (targetPeriodId && !selectedLotId) {
-          snap = snaps.find(s => s.period_id === parseInt(targetPeriodId));
+          snap = snaps.find(s => s.period_id === targetPeriodId);
         } else {
-          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId }).catch(() => null);
+          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         }
         setSnapshot(snap);
 
-        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId }).catch(() => null);
+        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         setSummary(summ);
         
-        const currentIndex = snaps.findIndex(s => s.period_id === parseInt(targetPeriodId));
+        const currentIndex = snaps.findIndex(s => s.period_id === targetPeriodId);
         setPrevSnap(currentIndex > 0 ? snaps[currentIndex - 1] : null);
-      } else {
-        // Mode Global (All Projects)
-        const summ = await analyticsService.getDeveloperSummary(selectedPid, parseInt(id), { lotId: selectedLotId }).catch(() => null);
-        setSummary(summ);
-        
-        const snap = await analyticsService.getLatest("all", { 
-          developerId: parseInt(id), 
-          lotId: selectedLotId,
-          periodId: selectedPeriodId ? parseInt(selectedPeriodId) : null
-        }).catch(() => null);
-        setSnapshot(snap);
-        
-        setPeriods([]);
-        setPrevSnap(null);
       }
     } catch (err) {
       console.error("Profile Load Error:", err);
@@ -320,11 +651,11 @@ export default function DeveloperProfilePage() {
       // 4. Load History Trend (Independent)
       setLoadingHistory(true);
       try {
-        const trendProjId = selectedPid === 'all' ? 'all' : selectedPid;
-        const histData = await analyticsService.getTrend(trendProjId, { 
+        const histData = await analyticsService.getTrend(selectedPid, { 
           developerId: parseInt(id), 
           kpiField: 'developer_score', 
-          months: 12 
+          months: 12,
+          periodId: selectedPeriodId
         });
         setHistory(histData.datasets?.[0]?.data || []);
       } catch (e) {
@@ -346,14 +677,16 @@ export default function DeveloperProfilePage() {
       value: summary?.total_comments ?? 0, 
       icon: "ri-chat-4-line",   
       color: "primary", 
-      delta: snapshot ? { value: `${snapshot.total_comments ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
+      delta: snapshot ? { value: `${snapshot.total_comments ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null,
+      onClick: handleOpenCommentsModal
     },
     { 
       title: "Revues de code",    
       value: summary?.total_reviews ?? 0, 
       icon: "ri-eye-line", 
       color: "info", 
-      delta: snapshot ? { value: `${snapshot.total_reviews ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
+      delta: snapshot ? { value: `${snapshot.total_reviews ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null,
+      onClick: handleOpenReviewsModal
     },
     { 
       title: "MRs Créées", 
@@ -375,7 +708,8 @@ export default function DeveloperProfilePage() {
       unit: summary ? " pts" : "", 
       icon: "ri-medal-line", 
       color: "danger",
-      delta: snapshot ? deltaInfo(snapshot.developer_score, prevSnap?.developer_score) : null
+      delta: snapshot ? deltaInfo(snapshot.developer_score, prevSnap?.developer_score) : null,
+      subtitle: "Basé sur commits, MRs, approbation et revues"
     }
   ];
 
@@ -442,7 +776,7 @@ export default function DeveloperProfilePage() {
                     <div className="d-flex flex-wrap gap-4 text-muted fs-13">
                        <span><i className="ri-at-line me-1 text-primary"></i>@{developer.gitlab_username}</span>
                        <span><i className="ri-mail-line me-1 text-primary"></i>{developer.email || "N/A"}</span>
-                       <span><i className="ri-building-line me-1 text-primary"></i>{projects.find(p=>p.id===parseInt(selectedPid))?.name || "Tous projets"}</span>
+                       <span><i className="ri-building-line me-1 text-primary"></i>{projects.find(p=>p.id===parseInt(selectedPid))?.name || "Projet"}</span>
                        {developer.sites?.length > 0 && (() => {
                          const siteNames = developer.sites
                            .map(s => typeof s === "string" ? s : (s.name || s.site_name || s.label || s.code || null))
@@ -455,11 +789,11 @@ export default function DeveloperProfilePage() {
                   </div>
                   <div className="col-xl-auto">
                     <div className="d-flex flex-wrap justify-content-xl-end gap-2 mb-3">
-                       <Link to={`/commits?developer_id=${id}&project_id=${selectedPid || 'all'}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
+                       <Link to={`/commits?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
                           className="btn btn-soft-primary d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
                           <i className="ri-history-line"></i> Commits
                        </Link>
-                       <Link to={`/merge?developer_id=${id}&project_id=${selectedPid || 'all'}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
+                       <Link to={`/merge?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
                           className="btn btn-soft-info d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
                           <i className="ri-git-merge-line"></i> MRs
                        </Link>
@@ -471,7 +805,7 @@ export default function DeveloperProfilePage() {
                         <div style={{ width: 160 }}>
                            <label className="fs-11 fw-bold text-muted text-uppercase mb-1 d-block">Période</label>
                            <select className="form-select form-select-sm border-light"
-                             value={selectedPeriodId} onChange={e => setSelectedPeriodId(e.target.value)}>
+                             value={selectedPeriodId || ""} onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}>
                              <option value="">Dernière</option>
                              {periods.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                            </select>
@@ -480,7 +814,6 @@ export default function DeveloperProfilePage() {
                            <label className="fs-11 fw-bold text-muted text-uppercase mb-1 d-block">Projet</label>
                            <select className="form-select form-select-sm border-light"
                              value={selectedPid} onChange={e => setSelectedPid(e.target.value)}>
-                             <option value="all">Global</option>
                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                            </select>
                         </div>
@@ -511,19 +844,146 @@ export default function DeveloperProfilePage() {
                  <div style={{ height: 320, padding: '20px 20px 0 20px' }}>
                     <ReactApexChart 
                        options={{
-                          chart: { type: 'area', toolbar: { show: false }, sparkline: { enabled: false } },
-                          stroke: { curve: 'smooth', width: 3 },
-                          fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.05 } },
+                          chart: { 
+                            type: 'area', 
+                            toolbar: { show: false }, 
+                            sparkline: { enabled: false },
+                            fontFamily: "'Inter', sans-serif"
+                          },
+                          stroke: { 
+                            curve: 'smooth', 
+                            width: 3,
+                            lineCap: 'round'
+                          },
+                          fill: { 
+                            type: 'gradient', 
+                            gradient: { 
+                              shadeIntensity: 1, 
+                              opacityFrom: 0.7, 
+                              opacityTo: 0.1,
+                              stops: [0, 90, 100]
+                            } 
+                          },
                           xaxis: { 
                             categories: periods.map(p => p.label).reverse(),
-                            labels: { style: { colors: '#94a3b8', fontSize: '11px', fontWeight: 600 } },
-                            axisBorder: { show: false }, axisTicks: { show: false }
+                            labels: { 
+                              style: { 
+                                colors: '#64748b', 
+                                fontSize: '12px', 
+                                fontWeight: 500,
+                                fontFamily: "'Inter', sans-serif"
+                              } 
+                            },
+                            axisBorder: { show: false }, 
+                            axisTicks: { show: false },
+                            tooltip: { enabled: false }
                           },
-                          yaxis: { labels: { style: { colors: '#94a3b8', fontSize: '11px' } }, min: 0, max: 100 },
-                          grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
-                          colors: ['#4361ee'],
+                          yaxis: { 
+                            labels: { 
+                              style: { 
+                                colors: '#64748b', 
+                                fontSize: '12px', 
+                                fontWeight: 500,
+                                fontFamily: 'Inter, sans-serif'
+                              } 
+                            },
+                            min: 0,
+                            max: 100,
+                            tickAmount: 8,
+                            floating: false
+                          },
+                          grid: { 
+                            borderColor: '#e2e8f0', 
+                            strokeDashArray: 4,
+                            row: { colors: ['#f1f5f9', 'transparent'], opacity: 1 },
+                            padding: { top: 0, right: 0, bottom: 0, left: 10 }
+                          },
+                          colors: ['#6366f1'],
                           dataLabels: { enabled: false },
-                          tooltip: { theme: 'light', x: { show: true }, marker: { show: true } }
+                          tooltip: { 
+                            theme: 'light', 
+                            x: { show: true },
+                            y: { 
+                              formatter: (val) => val.toFixed(0),
+                              title: { formatter: () => 'Score' }
+                            },
+                            marker: { show: true },
+                            style: {
+                              fontSize: '12px',
+                              fontFamily: 'Inter, sans-serif'
+                            }
+                          },
+                          annotations: {
+                            yaxis: [
+                              {
+                                y: 25,
+                                borderColor: '#94a3b8',
+                                borderWidth: 1,
+                                borderDash: 4,
+                                label: {
+                                  borderColor: '#94a3b8',
+                                  style: {
+                                    color: '#64748b',
+                                    background: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 500,
+                                    padding: { left: 4, right: 4, top: 2, bottom: 2 },
+                                    borderRadius: 4
+                                  },
+                                  text: '25',
+                                  position: 'left',
+                                  textAnchor: 'start'
+                                }
+                              },
+                              {
+                                y: 50,
+                                borderColor: '#94a3b8',
+                                borderWidth: 1,
+                                borderDash: 4,
+                                label: {
+                                  borderColor: '#94a3b8',
+                                  style: {
+                                    color: '#64748b',
+                                    background: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 500,
+                                    padding: { left: 4, right: 4, top: 2, bottom: 2 },
+                                    borderRadius: 4
+                                  },
+                                  text: '50',
+                                  position: 'left',
+                                  textAnchor: 'start'
+                                }
+                              },
+                              {
+                                y: 75,
+                                borderColor: '#94a3b8',
+                                borderWidth: 1,
+                                borderDash: 4,
+                                label: {
+                                  borderColor: '#94a3b8',
+                                  style: {
+                                    color: '#64748b',
+                                    background: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 500,
+                                    padding: { left: 4, right: 4, top: 2, bottom: 2 },
+                                    borderRadius: 4
+                                  },
+                                  text: '75',
+                                  position: 'left',
+                                  textAnchor: 'start'
+                                }
+                              }
+                            ]
+                          },
+                          markers: {
+                            size: 6,
+                            colors: ['#ffffff'],
+                            strokeColors: ['#6366f1'],
+                            strokeWidth: 2,
+                            hover: { size: 8 }
+                          }
                        }}
                        series={[{
                           name: 'Score de Performance',
@@ -571,28 +1031,7 @@ export default function DeveloperProfilePage() {
             </div>
           </div>
 
-          {/* Radar & Analysis */}
-          <div className="col-xl-4">
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header border-bottom">
-                <h4 className="card-title mb-0"><i className="ri-radar-line me-2 text-info"></i>Analyse Multidimensionnelle</h4>
-              </div>
-              <div className="card-body d-flex flex-column justify-content-center pt-0">
-                {summary ? (
-                  <ScoreRadarChart snapshot={snapshot || summary.latest_snapshot || summary} height={300} />
-                ) : (
-                  <div className="text-center py-5 text-muted opacity-50">
-                    <i className="ri-radar-line fs-1 d-block mb-2"></i>
-                    Données insuffisantes
-                  </div>
-                )}
-                <div className="text-center mt-3 p-3 bg-light rounded-3">
-                   <h4 className="fw-bold mb-0 text-primary">{Math.round((summary?.developer_score || 0) * 100)} pts</h4>
-                   <p className="text-muted fs-12 mb-0">Score de Compétences (All-Time)</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Radar & Analysis - REMOVED */}
         </div>
 
         {/* Alerts Section */}
@@ -724,6 +1163,30 @@ export default function DeveloperProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Review Details Modal */}
+      {showReviewsModal && (
+        <ReviewDetailModal
+          reviews={reviewsData}
+          loading={loadingReviews}
+          onClose={() => setShowReviewsModal(false)}
+          developerName={developer?.name || developer?.gitlab_username || "Développeur"}
+          projectName={projects.find(p => p.id === parseInt(selectedPid))?.name || "Projet"}
+          periodLabel={periods.find(p => p.id === selectedPeriodId)?.label || ""}
+        />
+      )}
+
+      {/* Comments Details Modal */}
+      {showCommentsModal && (
+        <CommentsDetailModal
+          comments={commentsData}
+          loading={loadingComments}
+          onClose={() => setShowCommentsModal(false)}
+          developerName={developer?.name || developer?.gitlab_username || "Développeur"}
+          projectName={projects.find(p => p.id === parseInt(selectedPid))?.name || "Projet"}
+          periodLabel={periods.find(p => p.id === selectedPeriodId)?.label || ""}
+        />
+      )}
 
       {/* Global & Print styles */}
       <style>{`

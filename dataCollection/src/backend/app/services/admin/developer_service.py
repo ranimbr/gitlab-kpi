@@ -22,10 +22,14 @@ Toutes les corrections v4 conservées.
 import csv
 import io
 import logging
+from datetime import datetime, date, timedelta
 from typing import List, Optional, Set, Dict
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from pydantic_core import PydanticUndefined as UNSET
+
+from app.database.session import current_db_var
 
 from app.models.developer import Developer
 from app.models.developer_import_log import ImportStatusEnum
@@ -36,7 +40,10 @@ from app.repositories.developer_repository import DeveloperRepository, Developer
 from app.repositories.developer_site_repository import DeveloperSiteRepository
 from app.repositories.site_repository import SiteRepository
 from app.repositories.project_repository import ProjectRepository
+from app.repositories.project_site_repository import ProjectSiteRepository
 from app.schemas.developer import DeveloperCreate, DeveloperUpdate, DeveloperValidate
+from app.models.period import Period
+from app.services.extraction.extraction_filters import build_period_window
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +60,7 @@ class DeveloperService:
         self.site_repo       = SiteRepository()
         self.project_repo    = ProjectRepository()
         self.group_repo      = DeveloperGroupRepository()
+        self.project_site_repo = ProjectSiteRepository()
         self.audit_repo      = AuditLogRepository()
 
     # =========================================================================
@@ -87,6 +95,15 @@ class DeveloperService:
                 updated_by=created_by, ip_address=ip_address
             )
 
+        # ── [RG-05] Validation des dates de cycle de vie ────────────────────
+        off_date = getattr(payload, "offboarding_date", None)
+        on_date  = getattr(payload, "onboarding_date",  None)
+        if on_date and off_date and on_date >= off_date:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="[RG-05] La date d'entrée doit être strictement antérieure à la date de départ.",
+            )
+
         dev_data = {
             "gitlab_user_id":  payload.gitlab_user_id,
             "gitlab_username": payload.gitlab_username,
@@ -96,6 +113,7 @@ class DeveloperService:
             "is_external":     payload.is_external,
             "onboarding_date": payload.onboarding_date,
             "is_bot":          False,
+            "is_validated":    True,
             "auto_created":    False,
             "source":          "manual",
             "created_by":      created_by,
@@ -104,20 +122,24 @@ class DeveloperService:
         developer = self.dev_repo.create(db, dev_data, group_ids=payload.group_ids)
         db.flush()
 
-        for site_assoc in payload.sites:
-            self.dev_site_repo.add(db, developer.id, site_assoc.site_id, site_assoc.is_primary)
+        self.dev_site_repo.sync_smart(
+            db, developer.id, payload.sites,
+            p_start=payload.onboarding_date,
+            mutation_date=payload.mutation_date
+        )
         
-        # ✅ FIX SENIOR : Si on crée manuellement, on peut vouloir l'affecter à une période
-        # Sinon on prend par défaut la période ouverte actuelle.
+        # ✅ LOGIQUE ENTERPRISE : Sync des projets
+        # On aligne la date de début de mission sur la date d'onboarding par défaut
+        # pour s'assurer que le dev est visible dès son premier jour dans les rapports.
         target_period_id = getattr(payload, "period_id", None)
-        if not target_period_id:
-            from app.models.period import Period, PeriodStatusEnum
-            p = db.query(Period).filter(Period.status == PeriodStatusEnum.open).order_by(Period.year.desc(), Period.month.desc()).first()
-            if p: target_period_id = p.id
-
-        if target_period_id:
-            for proj_assoc in payload.projects:
-                self.dev_proj_repo.add(db, developer.id, proj_assoc.project_id, target_period_id)
+        project_ids = [p.project_id for p in payload.projects]
+        
+        if project_ids:
+            self.dev_proj_repo.sync_smart(
+                db, developer.id, project_ids,
+                p_start=payload.onboarding_date,
+                mutation_date=payload.mutation_date
+            )
 
         self.audit_repo.log(
             db=db, user_id=created_by, action="CREATE_DEVELOPER",
@@ -126,6 +148,9 @@ class DeveloperService:
             new_value={"name": developer.name, "email": developer.email, "source": "manual", "period_id": target_period_id},
             ip_address=ip_address,
         )
+
+        # ✅ LOGIQUE AUTO-DISCOVERY : Maj des liens Projet-Site
+        self.sync_project_site_associations(db, developer.id)
 
         db.commit()
         db.refresh(developer)
@@ -172,6 +197,10 @@ class DeveloperService:
             new_value={"is_validated": payload.is_validated, "is_bot": payload.is_bot},
             ip_address=ip_address,
         )
+
+        # ✅ LOGIQUE AUTO-DISCOVERY : Maj des liens Projet-Site
+        self.sync_project_site_associations(db, developer_id)
+
         db.commit()
         db.refresh(developer)
         return developer
@@ -179,6 +208,22 @@ class DeveloperService:
     # =========================================================================
     # MISE À JOUR
     # =========================================================================
+
+    def _json_serializable(self, data: dict) -> dict:
+        """
+        Convertit les objets non-sérialisables (date, datetime) en strings ISO.
+        Évite les erreurs 500 lors de l'insertion en colonne JSON (AuditLog).
+        """
+        import datetime
+        clean = {}
+        for k, v in data.items():
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                clean[k] = v.isoformat()
+            elif isinstance(v, dict):
+                clean[k] = self._json_serializable(v)
+            else:
+                clean[k] = v
+        return clean
 
     def update_developer(
         self,
@@ -192,33 +237,475 @@ class DeveloperService:
         if not developer:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Développeur introuvable.")
 
-        update_data = payload.model_dump(exclude_unset=True, exclude={"sites", "projects", "group_ids", "period_id"})
+        # Résolution de la période cible pour la Smart-Sync (Priorité à la sélection UI)
+        target_period_id = getattr(payload, "period_id", None)
+        mutation_date = getattr(payload, "mutation_date", None)
+        p_start = None
+
+        from datetime import datetime
+        
+        if mutation_date:
+            # ✅ [PRIORITÉ 1] : Date d effet explicite du Modal
+            p_start = datetime.combine(mutation_date, datetime.min.time())
+        elif target_period_id:
+            # ✅ [PRIORITÉ 2] : Mois sélectionné dans le Dashboard
+            from app.models.period import Period
+            period = db.query(Period).get(target_period_id)
+            if period:
+                p_start = datetime(period.year, period.month, 1)
+        
+        # ✅ [PRIORITÉ 3] : L onboarding_date est un FALLBACK ultime
+        if not p_start and developer.onboarding_date:
+            p_start = datetime.combine(developer.onboarding_date, datetime.min.time())
+
+        # ✅ LOGIQUE ENTERPRISE : Offboarding-Sync
+        # Si un offboarding_date est présent (dans le payload ou l'existant), 
+        # les segments de mission doivent s'arrêter à cette date.
+        p_end = None
+        new_off_date = getattr(payload, "offboarding_date", UNSET)
+        off_date_to_use = new_off_date if new_off_date is not UNSET else developer.offboarding_date
+        
+        if off_date_to_use:
+            p_end = datetime.combine(off_date_to_use, datetime.min.time())
+
+        update_data = payload.model_dump(exclude_unset=True, exclude={"sites", "projects", "group_ids", "period_id", "mutation_date"})
+
+        # ── [RG-05] Validation des dates de cycle de vie ────────────────────
+        # La date d'entrée doit être strictement antérieure à la date de départ.
+        new_on_raw  = update_data.get("onboarding_date",  developer.onboarding_date)
+        new_off_raw = update_data.get("offboarding_date", developer.offboarding_date)
+        if new_on_raw and new_off_raw and new_on_raw >= new_off_raw:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="[RG-05] La date d'entrée doit être strictement antérieure à la date de départ.",
+            )
+
+        # ========================================================================
+        # [ENTERPRISE FIX] Détection du changement is_active → gestion SCD2
+        # Suspension temporaire (True→False) : Fermeture des segments site/projet
+        # Réactivation        (False→True)  : Réouverture des segments site/projet
+        # ========================================================================
+        new_is_active = update_data.get("is_active", None)
+        is_active_before = developer.is_active
+
+        if new_is_active is not None and new_is_active != is_active_before:
+            effect_date = mutation_date or off_date_to_use or date.today()
+
+            from app.models.developer_site import DeveloperSite
+            from app.models.developer_project import DeveloperProject
+            from app.models.developer_group import DeveloperGroupLink
+            from datetime import timedelta
+
+            if not new_is_active:
+                # ── SUSPENSION : Fermeture propre de la carrière à la veille de effect_date ──────
+                close_date = effect_date - timedelta(days=1)
+
+                # 1. Traitement des Sites
+                # Supprimer les segments qui commencent après la date de fermeture
+                future_sites = db.query(DeveloperSite).filter(
+                    DeveloperSite.developer_id == developer_id,
+                    DeveloperSite.start_date > close_date
+                ).all()
+                for seg in future_sites:
+                    logger.info("[SUSPENSION] Suppression segment site futur id=%d", seg.id)
+                    db.delete(seg)
+
+                # Fermer les segments actifs à la date de fermeture
+                active_sites = db.query(DeveloperSite).filter(
+                    DeveloperSite.developer_id == developer_id,
+                    DeveloperSite.start_date <= close_date,
+                    ((DeveloperSite.is_active.is_(True)) | (DeveloperSite.end_date > close_date))
+                ).all()
+                for seg in active_sites:
+                    seg.is_active = False
+                    seg.end_date  = close_date
+                    logger.info("[SUSPENSION] Fermeture segment site id=%d au %s", seg.id, close_date)
+
+                # 2. Traitement des Projets
+                future_projects = db.query(DeveloperProject).filter(
+                    DeveloperProject.developer_id == developer_id,
+                    DeveloperProject.start_date > close_date
+                ).all()
+                for seg in future_projects:
+                    logger.info("[SUSPENSION] Suppression segment projet futur id=%d", seg.id)
+                    db.delete(seg)
+
+                active_projects = db.query(DeveloperProject).filter(
+                    DeveloperProject.developer_id == developer_id,
+                    DeveloperProject.start_date <= close_date,
+                    ((DeveloperProject.is_active.is_(True)) | (DeveloperProject.end_date > close_date))
+                ).all()
+                for seg in active_projects:
+                    seg.is_active = False
+                    seg.end_date  = close_date
+                    logger.info("[SUSPENSION] Fermeture segment projet id=%d au %s", seg.id, close_date)
+
+                # 3. Traitement des Groupes
+                future_groups = db.query(DeveloperGroupLink).filter(
+                    DeveloperGroupLink.developer_id == developer_id,
+                    DeveloperGroupLink.start_date > close_date
+                ).all()
+                for seg in future_groups:
+                    logger.info("[SUSPENSION] Suppression segment groupe futur id=%d", seg.id)
+                    db.delete(seg)
+
+                active_groups = db.query(DeveloperGroupLink).filter(
+                    DeveloperGroupLink.developer_id == developer_id,
+                    DeveloperGroupLink.start_date <= close_date,
+                    ((DeveloperGroupLink.is_active.is_(True)) | (DeveloperGroupLink.end_date > close_date))
+                ).all()
+                for seg in active_groups:
+                    seg.is_active = False
+                    seg.end_date  = close_date
+                    logger.info("[SUSPENSION] Fermeture segment groupe id=%d au %s", seg.id, close_date)
+
+                db.flush()
+                logger.info(
+                    "[SUSPENSION] Dev_id=%d suspendu à compter du %s (fermeture au %s)",
+                    developer_id, effect_date, close_date
+                )
+
+            else:
+                # ── RÉACTIVATION : Réouverture des segments depuis effect_date ──
+                # Réouvrir les segments site fermés les plus récents
+                closed_sites = db.query(DeveloperSite).filter(
+                    DeveloperSite.developer_id == developer_id,
+                    DeveloperSite.is_active.is_(False),
+                ).order_by(DeveloperSite.end_date.desc()).all()
+
+                # On ne rouvre que les segments fermés lors de la suspension
+                # (ceux dont end_date = effect_date - 1 jour)
+                reactivation_close_date = None
+                # On cherche la date de fermeture la plus récente
+                if closed_sites:
+                    reactivation_close_date = max(
+                        (s.end_date for s in closed_sites if s.end_date), default=None
+                    )
+
+                reopened_site_ids = set()
+                for seg in closed_sites:
+                    if seg.end_date and seg.end_date == reactivation_close_date and seg.site_id not in reopened_site_ids:
+                        # Créer un nouveau segment ouvert à partir de effect_date
+                        db.add(DeveloperSite(
+                            developer_id=developer_id,
+                            site_id=seg.site_id,
+                            is_primary=seg.is_primary,
+                            is_active=True,
+                            start_date=effect_date,
+                            end_date=None,
+                        ))
+                        reopened_site_ids.add(seg.site_id)
+                        logger.info(
+                            "[RÉACTIVATION] Rouvert segment site_id=%d pour dev_id=%d à partir du %s",
+                            seg.site_id, developer_id, effect_date
+                        )
+
+                closed_projects = db.query(DeveloperProject).filter(
+                    DeveloperProject.developer_id == developer_id,
+                    DeveloperProject.is_active.is_(False),
+                ).order_by(DeveloperProject.end_date.desc()).all()
+
+                reopened_project_ids = set()
+                for seg in closed_projects:
+                    if seg.end_date and seg.end_date == reactivation_close_date and seg.project_id not in reopened_project_ids:
+                        db.add(DeveloperProject(
+                            developer_id=developer_id,
+                            project_id=seg.project_id,
+                            is_active=True,
+                            start_date=effect_date,
+                            end_date=None,
+                        ))
+                        reopened_project_ids.add(seg.project_id)
+                        logger.info(
+                            "[RÉACTIVATION] Rouvert segment project_id=%d pour dev_id=%d à partir du %s",
+                            seg.project_id, developer_id, effect_date
+                        )
+
+                closed_groups = db.query(DeveloperGroupLink).filter(
+                    DeveloperGroupLink.developer_id == developer_id,
+                    DeveloperGroupLink.is_active.is_(False),
+                ).order_by(DeveloperGroupLink.end_date.desc()).all()
+
+                reopened_group_ids = set()
+                for seg in closed_groups:
+                    if seg.end_date and seg.end_date == reactivation_close_date and seg.group_id not in reopened_group_ids:
+                        db.add(DeveloperGroupLink(
+                            developer_id=developer_id,
+                            group_id=seg.group_id,
+                            is_active=True,
+                            is_primary=getattr(seg, 'is_primary', False),
+                            start_date=effect_date,
+                            end_date=None,
+                        ))
+                        reopened_group_ids.add(seg.group_id)
+
+                db.flush()
+                logger.info(
+                    "[RÉACTIVATION] Dev_id=%d réactivé à partir du %s (sites=%s, projects=%s)",
+                    developer_id, effect_date, list(reopened_site_ids), list(reopened_project_ids)
+                )
+
         if update_data:
             self.dev_repo.update(db, developer, update_data)
-        
-        if payload.group_ids is not None:
-            self.dev_repo.sync_groups(db, developer, payload.group_ids)
-        if payload.sites is not None:
-            self.dev_site_repo.sync(
+
+        # ========================================================================
+        # [ENTERPRISE] DÉTECTION DES CHANGEMENTS SENSIBLES (Option B)
+        # Capture l'état AVANT synchronisation pour détecter les corrections
+        # qui nécessitent un recalcul des KPIs historiques.
+        # ========================================================================
+        changed_fields = []
+
+        # Snapshot AVANT
+        projects_before = set(
+            dp.project_id for dp in self.dev_proj_repo.get_by_developer(db, developer_id, active_only=True)
+        )
+        sites_before = set(
+            ds.site_id for ds in self.dev_site_repo.get_by_developer(db, developer_id)
+            if getattr(ds, 'is_active', True)
+        )
+        from app.models.developer_group import DeveloperGroupLink
+        groups_before = set(
+            gl.group_id for gl in db.query(DeveloperGroupLink).filter(
+                DeveloperGroupLink.developer_id == developer_id,
+                DeveloperGroupLink.is_active == True
+            ).all()
+        )
+
+        # ── [SCD2 FIX] Skip sync_smart si is_active vient de changer ───────────
+        # Quand is_active change (suspension/réactivation), nos segments SCD2 sont
+        # déjà créés correctement.
+        is_active_just_changed = (new_is_active is not None and new_is_active != is_active_before)
+        is_suspension = is_active_just_changed and not new_is_active
+
+        # 1. Sites
+        if is_suspension or is_active_just_changed:
+            pass # On ne recrée pas de segments pour un dev qu'on vient de suspendre ou réactiver !
+        elif payload.sites is not None:
+            self.dev_site_repo.sync_smart(db, developer_id, payload.sites, p_start=p_start, p_end=p_end, mutation_date=mutation_date)
+        elif not is_active_just_changed:
+            final_sites = [{"site_id": ds.site_id, "is_primary": ds.is_primary}
+                           for ds in self.dev_site_repo.get_by_developer(db, developer_id)
+                           if getattr(ds, 'is_active', True)]
+            self.dev_site_repo.sync_smart(db, developer_id, final_sites, p_start=p_start, p_end=p_end, mutation_date=mutation_date)
+
+        # 2. Projets
+        if is_suspension or is_active_just_changed:
+            pass
+        elif payload.projects is not None:
+            self.dev_proj_repo.sync_smart(
                 db, developer_id,
-                [{"site_id": s.site_id, "is_primary": s.is_primary} for s in payload.sites],
+                [p.project_id for p in payload.projects],
+                p_start=p_start, p_end=p_end, mutation_date=mutation_date
             )
+
+        # 3. Groupes
+        if is_suspension or is_active_just_changed:
+            pass
+        elif payload.group_ids is not None:
+            self.dev_repo.sync_groups_smart(
+                db, developer, payload.group_ids,
+                p_start=p_start.date() if p_start else None,
+                mutation_date=payload.mutation_date,
+                p_end=p_end.date() if p_end else None
+            )
+        elif not is_active_just_changed:
+            self.dev_repo.sync_groups_smart(
+                db, developer, list(groups_before),
+                p_start=p_start.date() if p_start else None,
+                mutation_date=payload.mutation_date,
+                p_end=p_end.date() if p_end else None
+            )
+
+        # Flush pour que les nouveaux états soient visibles
+        db.flush()
+
+        # Snapshot APRÈS
+        projects_after = set(
+            dp.project_id for dp in self.dev_proj_repo.get_by_developer(db, developer_id, active_only=True)
+        )
+        sites_after = set(
+            ds.site_id for ds in self.dev_site_repo.get_by_developer(db, developer_id)
+            if getattr(ds, 'is_active', True)
+        )
+        groups_after = set(
+            gl.group_id for gl in db.query(DeveloperGroupLink).filter(
+                DeveloperGroupLink.developer_id == developer_id,
+                DeveloperGroupLink.is_active == True
+            ).all()
+        )
+
+        # Détection des changements
+        if projects_before != projects_after:
+            changed_fields.append("projects")
+        if sites_before != sites_after:
+            changed_fields.append("sites")
+        if groups_before != groups_after:
+            changed_fields.append("groups")
+
+        # Champs RH sensibles (dates de cycle de vie)
+        sensitive_hr_fields = {"onboarding_date", "offboarding_date"}
+        if update_data and sensitive_hr_fields & set(update_data.keys()):
+            changed_fields.append("lifecycle_dates")
+
+        # ========================================================================
+        # [ENTERPRISE FIX] Détection des Corrections Rétroactives (Case A)
+        # Si mutation_date est NULL et qu'il y a un changement de site/groupe/projet,
+        # c'est une CORRECTION rétroactive qui affecte l'historique.
+        # On doit identifier les périodes impactées pour recalcul.
+        # ========================================================================
+        is_retroactive_correction = (
+            mutation_date is None and 
+            (payload.sites is not None or payload.group_ids is not None or payload.projects is not None)
+        )
         
-        # ✅ FIX SENIOR : Sync des projets pour une période donnée
-        if payload.projects is not None:
-            target_period_id = getattr(payload, "period_id", None)
-            if target_period_id:
-                self.dev_proj_repo.sync_for_period(db, developer_id, [p.project_id for p in payload.projects], target_period_id)
+        affected_periods = []
+        if is_retroactive_correction:
+            # Déterminer la plage temporelle affectée
+            # De l'onboarding (ou création) jusqu'à aujourd'hui
+            earliest_date = developer.onboarding_date if developer.onboarding_date else developer.created_at.date()
+            if hasattr(earliest_date, 'date'):
+                earliest_date = earliest_date.date()
+            
+            from app.repositories.period_repository import PeriodRepository
+            period_repo = PeriodRepository()
+            
+            # Récupérer toutes les périodes depuis l'arrivée du dev
+            all_periods_list = period_repo.get_all(db)
+            all_periods = [
+                p for p in all_periods_list
+                if (p.year > earliest_date.year) or 
+                   (p.year == earliest_date.year and p.month >= earliest_date.month)
+            ]
+            
+            affected_periods = [
+                {"period_id": p.id, "year": p.year, "month": p.month}
+                for p in all_periods
+                if not p.status or p.status != "closed"  # Ne recalculer que les périodes ouvertes
+            ]
+            
+            if affected_periods:
+                changed_fields.append("retroactive_correction")
+                logger.info(
+                    f"[RETROACTIVE CORRECTION] Dev {developer_id} ({developer.name}) : "
+                    f"{len(affected_periods)} périodes impactées par correction rétroactive"
+                )
+
+        recalculation_needed = len(changed_fields) > 0
+
+        # Log d'audit enrichi avec les champs modifiés
+        audit_detail = {**self._json_serializable(update_data)}
+        if changed_fields:
+            audit_detail["_changed_associations"] = changed_fields
 
         self.audit_repo.log(
             db=db, user_id=updated_by, action="UPDATE_DEVELOPER",
             entity_type="Developer", entity_id=developer_id,
             entity_name=developer.name,
-            new_value=update_data, ip_address=ip_address,
+            new_value=audit_detail, ip_address=ip_address,
         )
+
+        # ✅ LOGIQUE AUTO-DISCOVERY : Maj des liens Projet-Site
+        self.sync_project_site_associations(db, developer_id)
+
+        # ========================================================================
+        # [ENTERPRISE FIX] Recalcul automatique des KPIs pour corrections rétroactives
+        # Si une correction rétroactive est détectée, on recalcule les KPIs des périodes ouvertes
+        # ========================================================================
+        if is_retroactive_correction and affected_periods:
+            try:
+                from app.services.kpi.kpi_aggregator import KpiAggregator
+                aggregator = KpiAggregator(db)
+                
+                # Récupérer tous les projets du développeur pour recalculer
+                dev_projects = self.dev_proj_repo.get_by_developer(db, developer_id)
+                project_ids = [dp.project_id for dp in dev_projects]
+                
+                recalculated_count = 0
+                for period_info in affected_periods:
+                    for project_id in project_ids:
+                        try:
+                            aggregator.recalculate_period(
+                                period_id=period_info["period_id"],
+                                project_id=project_id
+                            )
+                            recalculated_count += 1
+                            logger.info(
+                                f"[RETROACTIVE RECALC] Recalcul KPIs : "
+                                f"Dev {developer_id}, Period {period_info['year']}/{period_info['month']}, "
+                                f"Project {project_id}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"[RETROACTIVE RECALC] Erreur recalcul period {period_info['period_id']} "
+                                f"project {project_id}: {e}"
+                            )
+                
+                logger.info(
+                    f"[RETROACTIVE RECALC] Dev {developer_id} : "
+                    f"{recalculated_count} recalculs KPIs terminés"
+                )
+            except Exception as e:
+                logger.error(f"[RETROACTIVE RECALC] Erreur globale recalcul KPIs: {e}")
+
         db.commit()
         db.refresh(developer)
-        return developer
+
+        return {
+            "developer": developer,
+            "recalculation_needed": recalculation_needed,
+            "changed_fields": changed_fields,
+            "affected_periods": affected_periods if is_retroactive_correction else [],
+        }
+
+    # =========================================================================
+    # AUTO-DISCOVERY DES LIENS PROJET-SITE
+    # =========================================================================
+
+    def sync_project_site_associations(self, db: Session, developer_id: int):
+        """
+        [SENIOR LOGIQUE ENTERPRISE]
+        Synchronise la table project_site en fonction des affectations du développeur.
+        Si un dev est sur Projet P et Site S, alors (P, S) doit exister.
+        """
+        try:
+            # On récupère les IDs des projets et sites actifs du dev
+            p_ids = [p.project_id for p in self.dev_proj_repo.get_by_developer(db, developer_id)]
+            s_ids = [s.site_id for s in self.dev_site_repo.get_by_developer(db, developer_id)]
+
+            if not p_ids or not s_ids:
+                return
+
+            for pid in p_ids:
+                for sid in s_ids:
+                    # Ajout idempotent (le repo gère déjà le check exists)
+                    self.project_site_repo.add(db, pid, sid)
+            db.flush()
+        except Exception as e:
+            logger.error("Erreur sync_project_site_associations pour dev %d: %s", developer_id, str(e))
+
+    def _update_developer_project_period_id(
+        self, db: Session, developer_id: int, project_ids: List[int], period_id: Optional[int]
+    ):
+        """
+        [FIX] Met à jour period_id des certifications developer_project créées.
+        Cette méthode est appelée après sync_smart pour lier les certifications à une période spécifique.
+        """
+        logger.info(f"[FIX] _update_developer_project_period_id appelée: dev_id={developer_id}, project_ids={project_ids}, period_id={period_id}")
+        if not period_id:
+            logger.warning(f"[FIX] period_id est None, abandon de la mise à jour pour dev {developer_id}")
+            return
+
+        try:
+            # Mettre à jour period_id des certifications actives pour les projets spécifiés
+            result = db.query(DeveloperProject).filter(
+                DeveloperProject.developer_id == developer_id,
+                DeveloperProject.project_id.in_(project_ids),
+                DeveloperProject.is_active == True
+            ).update({"period_id": period_id})
+            logger.info(f"[FIX] Mise à jour period_id: {result.rowcount} certifications mises à jour pour dev {developer_id}")
+            db.flush()
+        except Exception as e:
+            logger.error("Erreur _update_developer_project_period_id pour dev %d: %s", developer_id, str(e))
 
     # =========================================================================
     # FUSION DE DOUBLONS (MERGE)
@@ -343,7 +830,7 @@ class DeveloperService:
         db:                      Session,
         file_content:            bytes,
         file_name:               str,
-        period_id:               int,  # ✅ REQUIS POUR ENTERPRISE SYNC
+        period_id:               Optional[int] = None,  # ✅ OPTIONNEL POUR PERSISTENCE
         imported_by:             Optional[int] = None,
         default_site_id:         Optional[int] = None,
         default_group_id:        Optional[int] = None,
@@ -369,8 +856,11 @@ class DeveloperService:
         """
         file_type = "xlsx" if file_name.lower().endswith((".xlsx", ".xls")) else "csv"
 
-        import_log = self.import_log_repo.create_log(
-            db, file_name=file_name, imported_by=imported_by, file_type=file_type
+        # ✅ AJOUT: Récupérer la base de données cible pour l'audit
+        target_db = current_db_var.get() or "unknown"
+
+        import_log_id = self.import_log_repo.create_log(
+            db, file_name=file_name, imported_by=imported_by, target_database=target_db, file_type=file_type
         )
         db.flush()
 
@@ -379,12 +869,21 @@ class DeveloperService:
         except HTTPException:
             raise
         except Exception as e:
-            self.import_log_repo.fail(db, import_log, str(e))
+            self.import_log_repo.fail(db, import_log_id, str(e))
             db.commit()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Erreur de lecture du fichier : {e}",
             )
+
+        # ── [SENIOR] Préparation de la Fenêtre Temporelle ────────────────────
+        p_start = p_end = None
+        if period_id:
+            period = db.query(Period).filter(Period.id == period_id).first()
+            if period:
+                from app.services.extraction.extraction_filters import build_period_window
+                _, _, p_start, p_end = build_period_window(period)
+
 
         # ── Pré-chargement O(1) des référentiels ────────────────────────────
         all_sites    = {s.name.lower().strip(): s for s in self.site_repo.get_all(db)}
@@ -437,9 +936,10 @@ class DeveloperService:
             # Détection flexible de la colonne Groupe
             group_csv_raw = get_val(["group", "groups", "groupe", "groupes", "equipe", "équipe", "team"])
             
-            #  AJOUT SENIOR : Dates de cycle de vie historiques
             onboarding_csv_raw  = get_val(["onboarding_date", "date_entree", "date_arrivee", "join_date"])
             offboarding_csv_raw = get_val(["offboarding_date", "date_sortie", "date_depart", "leave_date"])
+            mission_start_raw   = get_val(["mission_start", "start_date", "debut_mission", "date_debut"])
+            mission_end_raw     = get_val(["mission_end", "end_date", "fin_mission", "date_fin"])
 
             from datetime import datetime
             def parse_csv_date(val):
@@ -453,6 +953,10 @@ class DeveloperService:
 
             onboarding_date  = parse_csv_date(onboarding_csv_raw)
             offboarding_date = parse_csv_date(offboarding_csv_raw)
+            
+            # Mission dates default to onboarding/offboarding if not explicitly provided
+            mission_start = parse_csv_date(mission_start_raw) or onboarding_date
+            mission_end   = parse_csv_date(mission_end_raw) or offboarding_date
 
             # ── Validation champs obligatoires ────────────────────────────────
             if not name or not email or not username:
@@ -586,14 +1090,7 @@ class DeveloperService:
                 
                 if group is None:
                     if create_missing_groups:
-                        # On cherche un site_id pour le groupe (le premier trouvé ou default)
-                        site_id_for_group = resolved_sites[0]["site"].id if resolved_sites else default_site_id
-                        if not site_id_for_group:
-                            # Fallback ultime sur n'importe quel site existant
-                            first_s = db.query(Site).first()
-                            site_id_for_group = first_s.id if first_s else None
-                            
-                        group = self.group_repo.create_from_import(db, gname, site_id=site_id_for_group)
+                        group = self.group_repo.create_from_import(db, gname)
                         db.flush() # Pour avoir l'ID
                         all_groups[gname_clean] = group
                         created_groups_names.add(gname)
@@ -611,6 +1108,18 @@ class DeveloperService:
 
             # ── UPSERT du développeur ─────────────────────────────────────────
             try:
+                # Définir le start_date effectif pour la synchronisation
+                # ✅ SOLUTION SOLIDE : La date d'effet est la MAX(période, onboarding)
+                # pour garantir qu'un dev ne démarre jamais AVANT son onboarding
+                # et ne démarre JAMAIS après aujourd'hui par accident.
+                from datetime import datetime, timezone
+                effective_p_start = p_start  # date de la période sélectionnée (ex: 01/01/2026)
+                if onboarding_date:
+                    # On prend le MAX : si le dev arrive en cours de période, sa mission commence à son arrivée
+                    onboarding_as_dt = datetime.combine(onboarding_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+                    if not effective_p_start or onboarding_as_dt > effective_p_start:
+                        effective_p_start = onboarding_as_dt
+
                 if existing_dev:
                     # ── [SENIOR] Politique de réactivation Enterprise ──────────
                     # Cas 1 : offboarding_date fixée → Départ délibéré RH → BLOQUER l'import
@@ -619,19 +1128,30 @@ class DeveloperService:
                     # Cas 2 : is_active=False SANS offboarding_date → Bug ou erreur système
                     #          → Réactivation automatique tolérée (correction de données)
                     if existing_dev.offboarding_date is not None:
-                        error_list.append({
-                            "row": row_num, "status": "skipped",
-                            "name": name, "email": email,
-                            "reason": (
-                                f"Développeur officiellement offboardé le {existing_dev.offboarding_date}. "
-                                "Action manuelle admin requise pour réintégration."
-                            ),
-                        })
-                        logger.warning(
-                            "Import Ligne %d: DEV_OFFBOARDED_SKIP — %s a une date de départ (%s), import ignoré.",
+                        # ── [CORRECTION CHIRURGICALE] Politique RH Enterprise ──────────
+                        # RÈGLE : Un dev offboardé NE DOIT PAS être réactivé par un import CSV.
+                        # MAIS : On doit quand même corriger son AFFECTATION (groupe/équipe)
+                        # pour éviter l'anomalie "Aucun" sur la page Validation Profils.
+                        # → On fait UNIQUEMENT la resynchronisation des groupes, rien d'autre.
+                        logger.info(
+                            "Import Ligne %d: DEV_OFFBOARDED_GROUP_SYNC — %s a une date de départ (%s), "
+                            "correction groupe uniquement (pas de réactivation).",
                             row_num, name, existing_dev.offboarding_date
                         )
-                        continue  # Ne pas traiter ce dev — action RH requise
+                        if resolved_group_ids:
+                            self.dev_repo.sync_groups_smart(
+                                db, existing_dev, resolved_group_ids,
+                                p_start=effective_p_start,
+                                p_end=existing_dev.offboarding_date  # La fin = offboarding
+                            )
+                        success_list.append({
+                            "row": row_num, "status": "updated",
+                            "name": name, "email": email,
+                            "reason": f"Groupe corrigé (dev offboardé le {existing_dev.offboarding_date}, statut RH conservé)."
+                        })
+                        processed_ids.add(existing_dev.id)
+                        db.flush()
+                        continue  # On s'arrête là : pas de mise à jour des autres champs
 
                     elif not existing_dev.is_active:
                         # is_active=False sans offboarding_date → erreur système, on corrige
@@ -651,26 +1171,42 @@ class DeveloperService:
                     if hist_updates:
                         self.dev_repo.update(db, existing_dev, hist_updates)
 
-                    # Synchronisation des groupes
+                    # [SCD TYPE 2] Synchronisation INTELLIGENTE des équipes
                     if resolved_group_ids:
-                        self.dev_repo.sync_groups(db, existing_dev, resolved_group_ids)
-                        
-                    # [STRICT MISSION] Synchronisation des sites (remplace l'ancien par le nouveau)
+                        self.dev_repo.sync_groups_smart(
+                            db, existing_dev, resolved_group_ids, p_start=effective_p_start
+                        )
+
+                    # [SCD TYPE 2] Synchronisation INTELLIGENTE des sites
                     if resolved_sites:
-                        self.dev_site_repo.sync(
-                            db, existing_dev.id, 
-                            [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites]
+                        self.dev_site_repo.sync_smart(
+                            db, existing_dev.id,
+                            [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites],
+                            p_start=effective_p_start
                         )
                     elif default_site_id:
-                        self.dev_site_repo.sync(db, existing_dev.id, [{"site_id": default_site_id, "is_primary": True}])
+                        self.dev_site_repo.sync_smart(
+                            db, existing_dev.id,
+                            [{"site_id": default_site_id, "is_primary": True}],
+                            p_start=effective_p_start
+                        )
+
                         
-                    # [STRICT MISSION] Synchronisation des projets POUR LA PÉRIODE CIBLÉE
+                    # [STRICT MISSION] Synchronisation INTELLIGENTE (SCD Type 2)
                     if resolved_projects:
                         project_ids = [p.id for p in resolved_projects]
-                        self.dev_proj_repo.sync_for_period(db, existing_dev.id, project_ids, period_id)
+                        self.dev_proj_repo.sync_smart(
+                            db, existing_dev.id, project_ids,
+                            p_start=effective_p_start
+                        )
+                        # ✅ FIX: Mettre à jour period_id des certifications créées
+                        self._update_developer_project_period_id(
+                            db, existing_dev.id, project_ids, period_id
+                        )
                     else:
-                        # Si aucun projet dans le CSV, on vide les missions actives pour ce mois
-                        self.dev_proj_repo.sync_for_period(db, existing_dev.id, [], period_id)
+                        # Si aucun projet dans le CSV, on clôture les missions actives
+                        self.dev_proj_repo.sync_smart(db, existing_dev.id, [], p_start=effective_p_start)
+
                         
                     db.flush()
                     
@@ -686,6 +1222,9 @@ class DeveloperService:
                     
                     success_list.append(row_result)
                     processed_ids.add(existing_dev.id)
+
+                    # ✅ LOGIQUE AUTO-DISCOVERY
+                    self.sync_project_site_associations(db, existing_dev.id)
                     
                 else:
                     # Création standard
@@ -703,20 +1242,37 @@ class DeveloperService:
                         "offboarding_date": offboarding_date,
                     }
 
-                    developer = self.dev_repo.create(db, dev_data, group_ids=resolved_group_ids)
+                    developer = self.dev_repo.create(
+                        db, dev_data, 
+                        group_ids=resolved_group_ids,
+                        p_start=effective_p_start,
+                        p_end=p_end
+                    )
                     db.flush()
 
+                    # [SCD TYPE 2] Synchronisation INTELLIGENTE des sites (nouveau dev)
                     if resolved_sites:
-                        self.dev_site_repo.sync(
+                        self.dev_site_repo.sync_smart(
                             db, developer.id,
-                            [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites]
+                            [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites],
+                            p_start=effective_p_start
                         )
                     elif default_site_id:
-                        self.dev_site_repo.sync(db, developer.id, [{"site_id": default_site_id, "is_primary": True}])
+                        self.dev_site_repo.sync_smart(
+                            db, developer.id,
+                            [{"site_id": default_site_id, "is_primary": True}],
+                            p_start=effective_p_start
+                        )
 
+
+                    # [STRICT MISSION] Synchronisation INTELLIGENTE
                     if resolved_projects:
                         project_ids = [p.id for p in resolved_projects]
-                        self.dev_proj_repo.sync_for_period(db, developer.id, project_ids, period_id)
+                        self.dev_proj_repo.sync_smart(
+                            db, developer.id, project_ids,
+                            p_start=effective_p_start
+                        )
+
 
 
                     row_result: dict = {
@@ -730,6 +1286,9 @@ class DeveloperService:
 
                     success_list.append(row_result)
                     processed_ids.add(developer.id)
+
+                    # ✅ LOGIQUE AUTO-DISCOVERY
+                    self.sync_project_site_associations(db, developer.id)
 
             except Exception as e:
                 db.rollback()
@@ -770,12 +1329,16 @@ class DeveloperService:
                 dev = self.dev_repo.get_by_id(db, d_id)
                 if dev:
                     if not dry_run:
+                        # ✅ DESACTIVATION RÉELLE (Hard Sync)
+                        # On retire le dev des projets présents dans le CSV pour lesquels il était actif
+                        self.dev_proj_repo.deactivate_from_projects(db, d_id, list(csv_project_ids), p_start=p_start)
+                        
                         self.audit_repo.log(
                             db=db, user_id=imported_by, action="DEV_REMOVED_FROM_PERIOD",
                             entity_type="Developer", entity_id=d_id,
                             entity_name=dev.name or dev.gitlab_username or dev.email,
                             old_value={"period_id": period_id, "project_ids": list(csv_project_ids)},
-                            new_value={"reason": "Absent du fichier CSV pour cette période — retiré de la mission"},
+                            new_value={"reason": "Absent du fichier CSV pour cette période — mission CLÔTURÉE"},
                         )
                     deactivated_list.append({"id": d_id, "name": dev.name, "email": dev.email})
 
@@ -786,7 +1349,7 @@ class DeveloperService:
 
         # ── Finalisation ──────────────────────────────────────────────────────
         self.import_log_repo.complete(
-            db, import_log,
+            db, import_log_id,
             total_rows      = len(rows),
             success_count   = len(success_list),
             error_count     = len(error_list),
@@ -814,7 +1377,7 @@ class DeveloperService:
         )
 
         return {
-            "lot_id":            import_log.id,
+            "lot_id":            import_log_id,
             "status":            ImportStatusEnum.completed.value,
             "file_name":         file_name,
             "total_rows":        len(rows),
@@ -831,6 +1394,7 @@ class DeveloperService:
             "created_sites":     sorted(created_sites_names)    or None,
             "created_projects":  sorted(created_projects_names) or None,
             "created_groups":    sorted(created_groups_names)   or None,
+            "processed_ids":     list(processed_ids), # ✅ [ENTERPRISE] For background recalculation
         }
 
     # =========================================================================

@@ -19,7 +19,6 @@ from app.services.extraction.extraction_filters import (
     mr_matches_target_devs,
 )
 from app.services.extraction.gitlab_fetch_strategy import (
-    build_api_author_filters,
     discover_target_branches,
     fetch_unique_commits,
 )
@@ -64,6 +63,7 @@ def test_resolve_developer_strict_mode_does_not_create_unknown():
     result = resolve_developer(
         db=db,
         project_id=10,
+        period_id=1,
         developer_repo=developer_repo,
         dev_project_repo=dev_project_repo,
         logger=logger,
@@ -118,26 +118,17 @@ def test_build_target_vectors_scoped_and_fallback():
 @pytest.mark.asyncio
 async def test_fetch_strategy_discovers_branches_and_deduplicates_commits():
     class FakeClient:
-        async def get_project(self, project_id):
-            return {"default_branch": "main"}
-
         async def get_project_events(self, **kwargs):
             return [{"push_data": {"ref": "refs/heads/feature/a"}}]
 
-        async def get_project_branches(self, project_id):
-            return [{"name": "main"}]
-
         async def get_project_commits(self, **kwargs):
-            if kwargs.get("ref_name") == "main":
-                return [{"id": "c1"}, {"id": "c2"}]
-            return [{"id": "c2"}, {"id": "c3"}]
+            return [{"id": "c1"}, {"id": "c2"}]
 
     client = FakeClient()
     logger = MagicMock()
     branches = await discover_target_branches(client, 1, "2026-01-01T00:00:00Z", "2026-01-31T23:59:59Z", logger)
-    assert "main" in branches
-    assert "feature/a" in branches
+    assert "refs/heads/feature/a" in branches
 
-    filters = build_api_author_filters([_dev(1, email="x@corp.com", username="xdev")])
-    commits = await fetch_unique_commits(client, 1, branches, filters, None, None)
-    assert sorted([c["id"] for c in commits]) == ["c1", "c2", "c3"]
+    commits = await fetch_unique_commits(client, 1, "2026-01-01T00:00:00Z", "2026-01-31T23:59:59Z")
+    assert sorted([c["id"] for c in commits]) == ["c1", "c2"]
+

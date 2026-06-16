@@ -23,12 +23,30 @@ def create_scheduler() -> AsyncIOScheduler:
 async def _run_monthly_job() -> None:
     from app.database.session import SessionLocal
     from app.services.scheduler.team_monthly_dump_service import TeamMonthlyDumpService
+    from app.services.notification_service import get_notification_service
+    
     db = SessionLocal()
+    notification_service = get_notification_service()
+    
     try:
         service = TeamMonthlyDumpService(db)
         result  = await service.run()
         logger.info(f"[Scheduler] Monthly Team-Centric job success: {result}")
+        
+        # Send monthly report notification
+        notification_service.send_monthly_extraction_report(
+            period=result.get("period", "Unknown"),
+            summary=result
+        )
+        
     except Exception as e:
         logger.error(f"[Scheduler] Monthly Team-Centric job failed: {e}", exc_info=True)
+        
+        # Send alert notification
+        notification_service.send_scheduler_error_alert(
+            error_message=str(e),
+            job_name="monthly_kpi_job"
+        )
+        
     finally:
         db.close()

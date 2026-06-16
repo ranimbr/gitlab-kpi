@@ -81,7 +81,7 @@ from app.schemas.developer import (
     # Associations M2M
     DeveloperSiteAssociation, DeveloperProjectAssociation,
     # Réponses enrichies
-    DeveloperSummary,
+    DeveloperSummary, DeveloperKpiSummary,
     # Import CSV/Excel
     DeveloperImportRequest, DeveloperImportResponse,
     DeveloperImportLogResponse, DeveloperImportRowResult,
@@ -149,4 +149,16 @@ from app.schemas.dashboard import (
 # ── Audit Log ─────────────────────────────────────────────────────────────────
 from app.schemas.audit_log import (
     AuditLogResponse, AuditLogFilterParams,
+)
+
+# ── Profile & Menu Management ──────────────────────────────────────────────────
+from app.schemas.profile import (
+    ProfileCreate, ProfileUpdate, ProfileResponse, ProfileWithMenus,
+)
+from app.schemas.menu_item import (
+    MenuItemCreate, MenuItemUpdate, MenuItemResponse,
+    MenuItemTree, MenuItemWithAccess,
+)
+from app.schemas.profile_menu_item import (
+    ProfileMenuItemAccess, ProfileMenuItemBatchUpdate,
 )

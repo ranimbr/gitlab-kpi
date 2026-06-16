@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column, Integer, DateTime, UniqueConstraint,
     CheckConstraint, Enum, Index, ForeignKey, JSON
 )
+from typing import Optional
 from sqlalchemy.orm import relationship
 import enum
 
@@ -44,7 +45,21 @@ class Period(Base):
         comment="Nombre de devs actifs figé au moment de la clôture (règle 15j appliquée)"
     )
 
-    closed_by       = relationship("AppUser")
+    closed_by       = relationship("AppUser", foreign_keys=[closed_by_id])
+
+    @property
+    def start_date(self):
+        """Retourne le premier jour du mois de la période."""
+        from datetime import date
+        return date(self.year, self.month, 1)
+
+    @property
+    def end_date(self):
+        """Retourne le dernier jour du mois de la période."""
+        from datetime import date
+        import calendar
+        last_day = calendar.monthrange(self.year, self.month)[1]
+        return date(self.year, self.month, last_day)
     # ──────────────────────────────────────────────────────────────────────────
 
     extraction_lots = relationship("ExtractionLot", back_populates="period", cascade="all, delete-orphan")

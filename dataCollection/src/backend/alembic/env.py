@@ -18,7 +18,9 @@ import app.models  # noqa: F401 — charge les 14 tables
 
 # ── Config Alembic ────────────────────────────────────────────────────────────
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Permet de spécifier la base de données via variable d'environnement pour les migrations
+db_url = os.environ.get("DATABASE_URL", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

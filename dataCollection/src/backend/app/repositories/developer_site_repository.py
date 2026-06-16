@@ -2,9 +2,10 @@
 repositories/developer_site_repository.py
 
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from typing import List, Optional
 
+import sqlalchemy as sa
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.developer_site import DeveloperSite
@@ -82,187 +83,189 @@ class DeveloperSiteRepository(BaseRepository[DeveloperSite]):
         assoc = self.get_primary_site(db, developer_id)
         return assoc.site_id if assoc else None
 
-    def get_site_ids_for_developer(
-        self,
-        db:           Session,
-        developer_id: int,
-    ) -> List[int]:
-        """IDs de tous les sites d'un développeur."""
-        return [
-            row.site_id
-            for row in db.query(DeveloperSite.site_id)
-            .filter(DeveloperSite.developer_id == developer_id)
-            .all()
-        ]
-
-    def get_developer_ids_for_site(
-        self,
-        db:      Session,
-        site_id: int,
-    ) -> List[int]:
-        """
-        IDs de tous les développeurs affectés à un site.
-        Utilisé pour les filtres KPI par site.
-        """
-        return [
-            row.developer_id
-            for row in db.query(DeveloperSite.developer_id)
-            .filter(DeveloperSite.site_id == site_id)
-            .all()
-        ]
-
-    def count_active_for_site(
-        self,
-        db:          Session,
-        site_id:     int,
-        primary_only: bool = False,
-    ) -> int:
-        """
-        Nombre de développeurs actifs, validés, non-bots d'un site.
-        Utilisé comme dénominateur dans KPI #1 (MR Rate) et #5 (Commit Rate).
-
-        primary_only=True → compte uniquement les devs dont ce site est primaire
-        primary_only=False → compte tous les devs associés au site (primaire ou non)
-        """
-        q = (
-            db.query(DeveloperSite)
-            .join(Developer, DeveloperSite.developer_id == Developer.id)
-            .filter(
-                DeveloperSite.site_id == site_id,
-                Developer.is_active.is_(True),
-                Developer.is_validated.is_(True),
-                Developer.is_bot.is_(False),
-            )
-        )
-        if primary_only:
-            q = q.filter(DeveloperSite.is_primary.is_(True))
-        return q.count()
-
-    def exists(
-        self,
-        db:           Session,
-        developer_id: int,
-        site_id:      int,
-    ) -> bool:
-        return (
-            db.query(DeveloperSite.developer_id)
-            .filter(
-                DeveloperSite.developer_id == developer_id,
-                DeveloperSite.site_id      == site_id,
-            )
-            .first() is not None
-        )
-
     # ── WRITE ─────────────────────────────────────────────────────────────────
 
-    def add(
+    def sync_smart(
         self,
-        db:           Session,
-        developer_id: int,
-        site_id:      int,
-        is_primary:   bool = False,
-    ) -> DeveloperSite:
+        db:                Session,
+        developer_id:      int,
+        site_associations: list,
+        p_start=None,
+        p_end=None,
+        mutation_date:     Optional[date] = None,
+    ) -> None:
         """
-        Ajoute un développeur à un site.
-        Si is_primary=True → retire d'abord is_primary des autres sites.
-        Si l'association existe déjà → met à jour is_primary.
+        [ENTERPRISE SCD TYPE 2] Synchronisation intelligente avec gestion des MUTATIONS.
         """
-        if is_primary:
-            # Retirer is_primary des autres associations
-            self._clear_primary(db, developer_id)
+        #  [SMART-DECISION] : Si aucune date n'est fournie, on favorisera une Correction (Case A)
+        has_explicit_mutation_date = (mutation_date is not None)
+        
+        today = date.today()
+        p_start_date = p_start
+        if p_start and hasattr(p_start, "date"):
+            p_start_date = p_start.date()
 
-        existing = self.get_association(db, developer_id, site_id)
-        if existing:
-            existing.is_primary = is_primary
-            db.flush()
-            return existing
+        # Fallback pour la date technique de l'opération
+        mutation_date = mutation_date if mutation_date else (p_start_date if p_start_date else today)
+        
+        #  Onboarding Floor
+        dev = db.get(Developer, developer_id)
+        if dev and dev.onboarding_date:
+            if mutation_date < dev.onboarding_date:
+                mutation_date = dev.onboarding_date
+        
+        m_date = mutation_date
+        close_date    = mutation_date - timedelta(days=1)
 
-        assoc = DeveloperSite(
-            developer_id = developer_id,
-            site_id      = site_id,
-            is_primary   = is_primary,
-        )
-        db.add(assoc)
-        db.flush()
-        return assoc
+        # 1. Identification du site primaire actuel
+        current_primary = db.query(DeveloperSite).filter(
+            DeveloperSite.developer_id == developer_id,
+            DeveloperSite.is_primary == True,
+            (DeveloperSite.is_active == True) | (DeveloperSite.is_active == None)
+        ).first()
 
-    def remove(
-        self,
-        db:           Session,
-        developer_id: int,
-        site_id:      int,
-    ) -> bool:
-        """Supprime l'association (DELETE physique pour les sites — pas d'historique métier)."""
-        assoc = self.get_association(db, developer_id, site_id)
-        if not assoc:
-            return False
-        db.delete(assoc)
-        db.flush()
-        return True
+        # 2. Récupération de la nouvelle configuration souhaitée
+        new_primary_site_id = None
+        for a in site_associations:
+            is_p = a["is_primary"] if isinstance(a, dict) else getattr(a, "is_primary", False)
+            if is_p:
+                new_primary_site_id = a["site_id"] if isinstance(a, dict) else getattr(a, "site_id")
+                break
 
-    def set_primary(
-        self,
-        db:           Session,
-        developer_id: int,
-        site_id:      int,
-    ) -> Optional[DeveloperSite]:
-        """
-        Définit un site comme site primaire d'un développeur.
-        Retire automatiquement is_primary des autres sites.
-        """
-        self._clear_primary(db, developer_id)
-        assoc = self.get_association(db, developer_id, site_id)
-        if not assoc:
-            return None
-        assoc.is_primary = True
-        db.flush()
-        return assoc
+        # 3. GESTION DE LA MUTATION / CORRECTION
+        if new_primary_site_id:
+            if current_primary:
+                dev = db.get(Developer, developer_id)
+                dev_onboarding = dev.onboarding_date if dev else today
+                s_start = current_primary.start_date or dev_onboarding
 
-    def sync(
-        self,
-        db:           Session,
-        developer_id: int,
-        site_associations: List[dict],
-    ) -> List[DeveloperSite]:
-        """
-        Synchronise la liste des sites d'un développeur.
-        site_associations = [{"site_id": 1, "is_primary": True}, ...]
-
-        - Ajoute les nouveaux sites
-        - Supprime ceux qui ne sont plus dans la liste
-        - Met à jour is_primary
-        Retourne la liste finale des associations.
-        """
-        desired_map = {a["site_id"]: a.get("is_primary", False) for a in site_associations}
-        current     = self.get_by_developer(db, developer_id)
-        current_ids = {a.site_id for a in current}
-
-        # Supprimer les sites retirés
-        for assoc in current:
-            if assoc.site_id not in desired_map:
-                db.delete(assoc)
-
-        # Ajouter ou mettre à jour
-        has_primary = any(v for v in desired_map.values())
-        for site_id, is_primary in desired_map.items():
-            existing = next((a for a in current if a.site_id == site_id), None)
-            if existing:
-                existing.is_primary = is_primary
+                if current_primary.site_id != new_primary_site_id:
+                    #  Mutation seulement si une date a été fournie ET qu'on est après le début
+                    is_mutation = has_explicit_mutation_date and m_date > s_start
+                    
+                    if is_mutation:
+                        current_primary.is_active = False
+                        current_primary.end_date = close_date
+                        db.add(DeveloperSite(
+                            developer_id=developer_id,
+                            site_id=new_primary_site_id,
+                            is_primary=True,
+                            is_active=True,
+                            start_date=mutation_date,
+                            end_date=None
+                        ))
+                    else:
+                        current_primary.site_id = new_primary_site_id
+                        if not current_primary.start_date or mutation_date < current_primary.start_date:
+                            current_primary.start_date = mutation_date
+                else:
+                    current_primary.is_active = True
+                    if not current_primary.start_date:
+                        current_primary.start_date = s_start
             else:
                 db.add(DeveloperSite(
-                    developer_id = developer_id,
-                    site_id      = site_id,
-                    is_primary   = is_primary,
+                    developer_id=developer_id, site_id=new_primary_site_id,
+                    is_primary=True, is_active=True, start_date=mutation_date, end_date=None
                 ))
 
-        db.flush()
-        return self.get_by_developer(db, developer_id)
-
-    # ── PRIVATE ───────────────────────────────────────────────────────────────
-
-    def _clear_primary(self, db: Session, developer_id: int) -> None:
-        """Retire is_primary=True de tous les sites d'un développeur."""
-        db.query(DeveloperSite).filter(
+        # 4. Gestion des sites secondaires
+        desired_site_ids = {a["site_id"] if isinstance(a, dict) else getattr(a, "site_id") for a in site_associations}
+        current_sites = db.query(DeveloperSite).filter(
             DeveloperSite.developer_id == developer_id,
-            DeveloperSite.is_primary.is_(True),
-        ).update({"is_primary": False}, synchronize_session="fetch")
+            DeveloperSite.is_active == True
+        ).all()
+
+        # 1. Clôture des anciens sites (Mutation)
+        dev = db.get(Developer, developer_id)
+        dev_onboarding = dev.onboarding_date if dev else today
+
+        for s in current_sites:
+            if s.site_id not in desired_site_ids:
+                s_start = s.start_date or dev_onboarding
+                if m_date > s_start:
+                    s.is_active = False
+                    s.end_date = close_date
+                else:
+                    # On ne supprime que si c'est vraiment un doublon créé aujourd'hui
+                    db.delete(s)
+
+        #  Reconstruction de la Timeline
+        self._normalize_history(db, developer_id)
+        
+        db.flush()
+
+    def _normalize_history(self, db: Session, developer_id: int) -> None:
+        """
+         Reconstruction et Normalisation de la Timeline.
+        Assure une continuité parfaite (Zéro Gap) et fusionne les fragments.
+        """
+        # 1. Nettoyage initial des segments invalides
+        db.execute(
+            sa.text("DELETE FROM developer_site WHERE developer_id = :d_id AND (end_date < start_date OR site_id IS NULL)"),
+            {"d_id": developer_id}
+        )
+        
+        # 2. Récupération de l'historique primaire
+        segments = db.query(DeveloperSite).filter(
+            DeveloperSite.developer_id == developer_id,
+            DeveloperSite.is_primary == True
+        ).order_by(DeveloperSite.start_date.asc()).all()
+
+        if not segments: return
+
+        # Onboarding Floor (Ramener le premier segment à la date d'arrivée)
+        dev = db.get(Developer, developer_id)
+        if dev and dev.onboarding_date:
+            first = segments[0]
+            if first.start_date != dev.onboarding_date:
+                first.start_date = dev.onboarding_date
+
+        # 3. Réparation des Gaps et Fusion
+        i = 0
+        while i < len(segments) - 1:
+            curr = segments[i]
+            nxt  = segments[i+1]
+
+            # Cas 1 : Même site ET segments contigus → On fusionne (Zéro fragmentation)
+            # IMPORTANT : On ne fusionne QUE si les segments sont contigus (gap <= 1 jour).
+            # Un gap > 1 jour = période de suspension intentionnelle → NE PAS fusionner.
+            if curr.site_id == nxt.site_id:
+                is_contiguous = (
+                    curr.end_date is not None and
+                    nxt.start_date is not None and
+                    (nxt.start_date - curr.end_date).days <= 1
+                )
+                if is_contiguous:
+                    curr.end_date = nxt.end_date
+                    curr.is_active = nxt.is_active or curr.is_active
+                    db.delete(nxt)
+                    segments.pop(i+1)
+                    continue
+                # Sinon : gap de suspension → on laisse les deux segments séparés
+
+            # Cas 2 : Site différent mais Trou (Gap) entre les deux
+            # On ne ferme le gap QUE si c'est une mutation (changement de site).
+            # Si c'est le même site, c'est une suspension intentionnelle, on préserve le gap !
+            elif curr.site_id != nxt.site_id:
+                gap_date = nxt.start_date - timedelta(days=1)
+                # On ne comble le gap que s'il est petit, sinon c'est aussi une suspension
+                if curr.end_date is None or (nxt.start_date - curr.end_date).days <= 30:
+                    if curr.end_date != gap_date:
+                        curr.end_date = gap_date
+            
+            i += 1
+
+        # 4.  Fermeture de la boucle temporelle (Extension vers le futur)
+        last = segments[-1]
+        dev = db.get(Developer, developer_id)
+        
+        if dev and not dev.offboarding_date:
+            #  On ne force la continuité QUE si le segment est déjà actif.
+            if last.is_active and last.end_date is not None:
+                last.end_date = None
+        elif dev and dev.offboarding_date:
+            if last.end_date != dev.offboarding_date:
+                last.end_date = dev.offboarding_date
+            last.is_active = False
+
+        db.flush()

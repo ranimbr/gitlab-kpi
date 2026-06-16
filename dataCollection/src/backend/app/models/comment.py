@@ -13,7 +13,6 @@ class Comment(Base):
     id           = Column(Integer, primary_key=True)
     gitlab_id    = Column(BigInteger, nullable=False) # ID Note GitLab (BigInt requis)
     body         = Column(Text,        nullable=True)
-    created_at   = Column(DateTime(timezone=True), nullable=False)
     
     # ── Clés étrangères ──────────────────────────────────────────────────────
     developer_id = Column(

@@ -82,7 +82,7 @@ def test_kpis_dashboard_contract_ok(monkeypatch):
 def test_kpis_leaderboard_contract_ok(monkeypatch):
     client = _build_client()
 
-    def fake_leaderboard(self, **kwargs):
+    def fake_leaderboard(self, *args, **kwargs):
         return {"site_id": None, "group_id": None, "period_label": "2026/01", "total_devs": 0, "entries": []}
 
     monkeypatch.setattr(kpis.AnalyticsService, "get_leaderboard", fake_leaderboard)
@@ -106,7 +106,7 @@ def test_kpis_compare_lot_mode_contract_ok(monkeypatch):
 def test_kpis_top_developers_lot_mode_contract_ok(monkeypatch):
     client = _build_client()
 
-    def fake_leaderboard(self, **kwargs):
+    def fake_leaderboard(self, *args, **kwargs):
         return {"entries": []}
 
     monkeypatch.setattr(kpis.AnalyticsService, "get_leaderboard", fake_leaderboard)

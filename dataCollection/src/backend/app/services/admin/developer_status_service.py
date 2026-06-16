@@ -102,10 +102,24 @@ class DeveloperStatusService:
         from app.models.developer import Developer as DevModel
         from sqlalchemy import or_, and_
 
+        from app.models.developer_site import DeveloperSite
+        from sqlalchemy import exists
+
         count = (
             db.query(DevModel)
             .filter(
                 DevModel.is_bot.is_(False),
+                # Doit avoir un segment de site actif durant la période (SCD2/Suspensions)
+                exists().where(
+                    and_(
+                        DeveloperSite.developer_id == DevModel.id,
+                        DeveloperSite.start_date <= p_end,
+                        or_(
+                            DeveloperSite.end_date.is_(None),
+                            DeveloperSite.end_date >= p_start
+                        )
+                    )
+                ),
                 # Doit avoir rejoint avant ou pendant la période
                 or_(
                     DevModel.onboarding_date.is_(None),

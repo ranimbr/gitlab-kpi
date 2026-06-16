@@ -1,0 +1,2210 @@
+[
+  {
+    "id": "8a91c4538ee7067b2bced8f7ad9cccd89986a282",
+    "short_id": "8a91c453",
+    "created_at": "2026-01-05T18:08:10.000-03:00",
+    "parent_ids": [
+      "312937eda6078e4081892cc6544930845f80070b"
+    ],
+    "title": "Remove 2.0 dev cruft",
+    "message": "Remove 2.0 dev cruft\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:08:10.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:08:10.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/8a91c4538ee7067b2bced8f7ad9cccd89986a282",
+    "stats": {
+      "additions": 1379,
+      "deletions": 3,
+      "total": 1382
+    }
+  },
+  {
+    "id": "1e53cb28dbdbe62718c22a0eb929af9c86737c86",
+    "short_id": "1e53cb28",
+    "created_at": "2026-01-05T18:35:19.000-03:00",
+    "parent_ids": [
+      "8a91c4538ee7067b2bced8f7ad9cccd89986a282"
+    ],
+    "title": "Allow one more year of SHA1 in index v1 tests",
+    "message": "Allow one more year of SHA1 in index v1 tests\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:35:19.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:35:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/1e53cb28dbdbe62718c22a0eb929af9c86737c86",
+    "stats": {
+      "additions": 1,
+      "deletions": 1,
+      "total": 2
+    }
+  },
+  {
+    "id": "dd3d4c532d4b28a42a43473293e2d673e6778d0c",
+    "short_id": "dd3d4c53",
+    "created_at": "2026-01-05T18:59:42.000-03:00",
+    "parent_ids": [
+      "312937eda6078e4081892cc6544930845f80070b"
+    ],
+    "title": "Remove 2.0 dev cruft",
+    "message": "Remove 2.0 dev cruft\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:08:10.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:59:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/dd3d4c532d4b28a42a43473293e2d673e6778d0c",
+    "stats": {
+      "additions": 1380,
+      "deletions": 4,
+      "total": 1384
+    }
+  },
+  {
+    "id": "6ede37119a7e3351ef23d71918c50d68783d2498",
+    "short_id": "6ede3711",
+    "created_at": "2026-01-05T18:59:42.000-03:00",
+    "parent_ids": [
+      "dd3d4c532d4b28a42a43473293e2d673e6778d0c"
+    ],
+    "title": "Allow one more year of SHA1 in index v1 tests",
+    "message": "Allow one more year of SHA1 in index v1 tests\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:35:19.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:59:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/6ede37119a7e3351ef23d71918c50d68783d2498",
+    "stats": {
+      "additions": 1,
+      "deletions": 1,
+      "total": 2
+    }
+  },
+  {
+    "id": "4cdf79751540681db4472db0387b2888c07d34a9",
+    "short_id": "4cdf7975",
+    "created_at": "2026-01-05T18:59:42.000-03:00",
+    "parent_ids": [
+      "6ede37119a7e3351ef23d71918c50d68783d2498"
+    ],
+    "title": "Ignore failing test testGetReportingWeekStart()",
+    "message": "Ignore failing test testGetReportingWeekStart()\n\nas this doesn't get fixed for years and keeps coming up.\n\nSee #2339\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:55:25.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:59:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/4cdf79751540681db4472db0387b2888c07d34a9",
+    "stats": {
+      "additions": 2,
+      "deletions": 0,
+      "total": 2
+    }
+  },
+  {
+    "id": "16dec72976df397b88209af8eff040a9bf759887",
+    "short_id": "16dec729",
+    "created_at": "2026-01-06T10:27:42.000-03:00",
+    "parent_ids": [
+      "4cdf79751540681db4472db0387b2888c07d34a9"
+    ],
+    "title": "Adapt nightly builds to 2.0 basic",
+    "message": "Adapt nightly builds to 2.0 basic\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-06T10:27:42.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-06T10:27:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/16dec72976df397b88209af8eff040a9bf759887",
+    "stats": {
+      "additions": 16,
+      "deletions": 3,
+      "total": 19
+    }
+  },
+  {
+    "id": "be67dba0264a3708a1ab63c3d34c3212403d66c8",
+    "short_id": "be67dba0",
+    "created_at": "2026-01-07T10:07:30.000-03:00",
+    "parent_ids": [
+      "16dec72976df397b88209af8eff040a9bf759887"
+    ],
+    "title": "Don't claim no apps installed when all apps have issues",
+    "message": "Don't claim no apps installed when all apps have issues\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-07T09:49:44.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-07T10:07:30.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/be67dba0264a3708a1ab63c3d34c3212403d66c8",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "32e4a04cd6544f14e3d567e81cf81aa08ece045f",
+    "short_id": "32e4a04c",
+    "created_at": "2026-01-07T10:07:30.000-03:00",
+    "parent_ids": [
+      "be67dba0264a3708a1ab63c3d34c3212403d66c8"
+    ],
+    "title": "Handle disabled pre-approval",
+    "message": "Handle disabled pre-approval\n\nPre-approval can be disabled and we get STATUS_FAILURE_BLOCKED which should be sufficient. There's also a hidden official error code we don't use for now:\nhttps://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/base/core/java/android/content/pm/PackageManager.java;l=2644;drc=905556173324d48059d4bae77408748a76497ac9\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-07T10:04:41.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-07T10:07:30.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/32e4a04cd6544f14e3d567e81cf81aa08ece045f",
+    "stats": {
+      "additions": 6,
+      "deletions": 5,
+      "total": 11
+    }
+  },
+  {
+    "id": "b928235af2dfe18a59e68df749344e3ebc74ea01",
+    "short_id": "b928235a",
+    "created_at": "2026-01-07T17:06:13.000-03:00",
+    "parent_ids": [
+      "32e4a04cd6544f14e3d567e81cf81aa08ece045f"
+    ],
+    "title": "Fix top spacer when changing repos in app details",
+    "message": "Fix top spacer when changing repos in app details\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-07T17:05:59.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-07T17:06:13.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/b928235af2dfe18a59e68df749344e3ebc74ea01",
+    "stats": {
+      "additions": 1,
+      "deletions": 1,
+      "total": 2
+    }
+  },
+  {
+    "id": "f65f355e953f159662e7ec831ff33e903ea9a588",
+    "short_id": "f65f355e",
+    "created_at": "2026-01-12T15:41:08.000-03:00",
+    "parent_ids": [
+      "b928235af2dfe18a59e68df749344e3ebc74ea01"
+    ],
+    "title": "Show changelog of update (if existing) in app details",
+    "message": "Show changelog of update (if existing) in app details\n\npreviously only the changelog of the last installed version would get shown\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-09T16:07:02.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/f65f355e953f159662e7ec831ff33e903ea9a588",
+    "stats": {
+      "additions": 2,
+      "deletions": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "b5a97911d949cebcf940e5a48469838479da65f7",
+    "short_id": "b5a97911",
+    "created_at": "2026-01-12T15:41:08.000-03:00",
+    "parent_ids": [
+      "f65f355e953f159662e7ec831ff33e903ea9a588"
+    ],
+    "title": "Don't keep retrying sending ACRA reports",
+    "message": "Don't keep retrying sending ACRA reports\n\nwe send via email intent. this typically doesn't fail. if it fails, usually because there's no email program installed and then we shouldn't keep trying\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-09T16:08:36.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/b5a97911d949cebcf940e5a48469838479da65f7",
+    "stats": {
+      "additions": 16,
+      "deletions": 0,
+      "total": 16
+    }
+  },
+  {
+    "id": "dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0",
+    "short_id": "dba20832",
+    "created_at": "2026-01-12T15:41:08.000-03:00",
+    "parent_ids": [
+      "b5a97911d949cebcf940e5a48469838479da65f7"
+    ],
+    "title": "Use proper Litecoin icon",
+    "message": "Use proper Litecoin icon\n\notherwise it looks strange if Bitcoin and Litecoin use the same icon\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-09T16:17:44.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0",
+    "stats": {
+      "additions": 67,
+      "deletions": 1,
+      "total": 68
+    }
+  },
+  {
+    "id": "88c32b0b0029a3863d8c9fc3221664b8feee7c4d",
+    "short_id": "88c32b0b",
+    "created_at": "2026-01-12T15:41:09.000-03:00",
+    "parent_ids": [
+      "dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0"
+    ],
+    "title": "Only show repo errors if the repo is enabled",
+    "message": "Only show repo errors if the repo is enabled\n\nthis allows \"ignoring\" repo errors by disabling the repo\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-12T15:31:42.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:09.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/88c32b0b0029a3863d8c9fc3221664b8feee7c4d",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "46634ce38d7786f7a77138717dd03635044e167f",
+    "short_id": "46634ce3",
+    "created_at": "2026-01-12T15:41:09.000-03:00",
+    "parent_ids": [
+      "88c32b0b0029a3863d8c9fc3221664b8feee7c4d"
+    ],
+    "title": "Make repo error text selectable",
+    "message": "Make repo error text selectable\n\nso it can easily get copy and pasted\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-12T15:32:49.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:09.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/46634ce38d7786f7a77138717dd03635044e167f",
+    "stats": {
+      "additions": 8,
+      "deletions": 5,
+      "total": 13
+    }
+  },
+  {
+    "id": "189c697e5f761c64867bad38f1d0e39f896bfa85",
+    "short_id": "189c697e",
+    "created_at": "2026-01-12T15:42:25.000-03:00",
+    "parent_ids": [
+      "46634ce38d7786f7a77138717dd03635044e167f"
+    ],
+    "title": "Remove int preferences hack, because library now supports Long",
+    "message": "Remove int preferences hack, because library now supports Long\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-12T15:40:36.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:42:25.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/189c697e5f761c64867bad38f1d0e39f896bfa85",
+    "stats": {
+      "additions": 20,
+      "deletions": 9,
+      "total": 29
+    }
+  },
+  {
+    "id": "e337cf031ea249b4dde5406cbca6161d4696bee6",
+    "short_id": "e337cf03",
+    "created_at": "2026-01-15T10:43:23.000-03:00",
+    "parent_ids": [
+      "189c697e5f761c64867bad38f1d0e39f896bfa85"
+    ],
+    "title": "Take signer into account when finding installed version in app details",
+    "message": "Take signer into account when finding installed version in app details\n\nand multiple candidates with the same version code exist\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-15T10:40:27.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-15T10:43:23.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/e337cf031ea249b4dde5406cbca6161d4696bee6",
+    "stats": {
+      "additions": 20,
+      "deletions": 5,
+      "total": 25
+    }
+  },
+  {
+    "id": "7dfe86eea51a16cb86d435c2766a226ef6cda237",
+    "short_id": "7dfe86ee",
+    "created_at": "2026-01-15T18:02:58.000-03:00",
+    "parent_ids": [
+      "e337cf031ea249b4dde5406cbca6161d4696bee6"
+    ],
+    "title": "Improve behavior of updating our own app last",
+    "message": "Improve behavior of updating our own app last\n\nNow our own app will show as in progress of getting updated. No more 'Update all' button will be shown after it has been pressed already.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-15T18:02:31.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-15T18:02:58.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/7dfe86eea51a16cb86d435c2766a226ef6cda237",
+    "stats": {
+      "additions": 45,
+      "deletions": 3,
+      "total": 48
+    }
+  },
+  {
+    "id": "b55babcdce5ec4c879447ac5c6a221d2eb04026a",
+    "short_id": "b55babcd",
+    "created_at": "2026-01-20T10:13:21.000-03:00",
+    "parent_ids": [
+      "7dfe86eea51a16cb86d435c2766a226ef6cda237"
+    ],
+    "title": "Move new strings into a separate file",
+    "message": "Move new strings into a separate file\n\nso they are not exposed to translators until they've undergone review\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T10:13:21.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-20T10:13:21.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/b55babcdce5ec4c879447ac5c6a221d2eb04026a",
+    "stats": {
+      "additions": 179,
+      "deletions": 180,
+      "total": 359
+    }
+  },
+  {
+    "id": "52432777eb7efac7acf1a35a042e3b853c25f903",
+    "short_id": "52432777",
+    "created_at": "2026-01-20T15:13:41.000-03:00",
+    "parent_ids": [
+      "8793bd78764da659cdfb586a472359cb81bf5817"
+    ],
+    "title": "Reload updates after deleting a repository",
+    "message": "Reload updates after deleting a repository\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T15:13:41.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-20T15:13:41.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/52432777eb7efac7acf1a35a042e3b853c25f903",
+    "stats": {
+      "additions": 3,
+      "deletions": 0,
+      "total": 3
+    }
+  },
+  {
+    "id": "d35aad749da2b34b8a9fe628e68d2372004937c8",
+    "short_id": "d35aad74",
+    "created_at": "2026-01-20T15:36:05.000-03:00",
+    "parent_ids": [
+      "52432777eb7efac7acf1a35a042e3b853c25f903"
+    ],
+    "title": "Adapt strings according to material design 3 guidelines",
+    "message": "Adapt strings according to material design 3 guidelines\n\nsee: https://m3.material.io/foundations/content-design/\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T15:36:05.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-20T15:36:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/d35aad749da2b34b8a9fe628e68d2372004937c8",
+    "stats": {
+      "additions": 58,
+      "deletions": 41,
+      "total": 99
+    }
+  },
+  {
+    "id": "f398bc449d229859e46d6d42e1e692464794f3af",
+    "short_id": "f398bc44",
+    "created_at": "2026-01-21T11:16:00.000-03:00",
+    "parent_ids": [
+      "2cd6b29c6e72d4c031d504bb975abc2d007f8b0f"
+    ],
+    "title": "Reload updates after deleting a repository",
+    "message": "Reload updates after deleting a repository\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T15:13:41.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-21T11:16:00.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/f398bc449d229859e46d6d42e1e692464794f3af",
+    "stats": {
+      "additions": 3,
+      "deletions": 0,
+      "total": 3
+    }
+  },
+  {
+    "id": "887e378cf602dcc1bfb89d076e5657f99ab97d19",
+    "short_id": "887e378c",
+    "created_at": "2026-01-21T11:16:03.000-03:00",
+    "parent_ids": [
+      "f398bc449d229859e46d6d42e1e692464794f3af"
+    ],
+    "title": "Warn when we ignore external intent",
+    "message": "Warn when we ignore external intent\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T17:37:06.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-21T11:16:03.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/887e378cf602dcc1bfb89d076e5657f99ab97d19",
+    "stats": {
+      "additions": 4,
+      "deletions": 2,
+      "total": 6
+    }
+  },
+  {
+    "id": "eb710bbd6113c53ec4bba920929f40dc0f4177c6",
+    "short_id": "eb710bbd",
+    "created_at": "2026-01-21T11:17:54.000-03:00",
+    "parent_ids": [
+      "887e378cf602dcc1bfb89d076e5657f99ab97d19"
+    ],
+    "title": "Fix versionCode of nightly builds",
+    "message": "Fix versionCode of nightly builds\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T11:17:54.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-21T11:17:54.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/eb710bbd6113c53ec4bba920929f40dc0f4177c6",
+    "stats": {
+      "additions": 2,
+      "deletions": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "604429a9a1ace91215aa42d72c206056c1e0f74e",
+    "short_id": "604429a9",
+    "created_at": "2026-01-22T16:07:06.000-03:00",
+    "parent_ids": [
+      "eb710bbd6113c53ec4bba920929f40dc0f4177c6"
+    ],
+    "title": "Don't show an 'Open' button for ourselves",
+    "message": "Don't show an 'Open' button for ourselves\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T11:28:18.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:06.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/604429a9a1ace91215aa42d72c206056c1e0f74e",
+    "stats": {
+      "additions": 5,
+      "deletions": 1,
+      "total": 6
+    }
+  },
+  {
+    "id": "c2d68519f932e75c84fb760b8d68255b480d8e4d",
+    "short_id": "c2d68519",
+    "created_at": "2026-01-22T16:07:06.000-03:00",
+    "parent_ids": [
+      "604429a9a1ace91215aa42d72c206056c1e0f74e"
+    ],
+    "title": "Don't show an 'More' button for short descriptions",
+    "message": "Don't show an 'More' button for short descriptions\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T11:48:11.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:06.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c2d68519f932e75c84fb760b8d68255b480d8e4d",
+    "stats": {
+      "additions": 49,
+      "deletions": 27,
+      "total": 76
+    }
+  },
+  {
+    "id": "06551796e8605e7496e243ecdaf988faa25b1bfe",
+    "short_id": "06551796",
+    "created_at": "2026-01-22T16:07:07.000-03:00",
+    "parent_ids": [
+      "c2d68519f932e75c84fb760b8d68255b480d8e4d"
+    ],
+    "title": "Simplify dynamic feature graphic handling",
+    "message": "Simplify dynamic feature graphic handling\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T13:21:53.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:07.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/06551796e8605e7496e243ecdaf988faa25b1bfe",
+    "stats": {
+      "additions": 28,
+      "deletions": 36,
+      "total": 64
+    }
+  },
+  {
+    "id": "cb9667c917962db2b5db482dff62612e79799742",
+    "short_id": "cb9667c9",
+    "created_at": "2026-01-22T16:07:07.000-03:00",
+    "parent_ids": [
+      "06551796e8605e7496e243ecdaf988faa25b1bfe"
+    ],
+    "title": "Close search results when selecting an app",
+    "message": "Close search results when selecting an app\n\nworkaround for https://issuetracker.google.com/issues/471730911\nstill crashes sometimes, but at least back gesture works\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T14:03:36.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:07.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/cb9667c917962db2b5db482dff62612e79799742",
+    "stats": {
+      "additions": 8,
+      "deletions": 0,
+      "total": 8
+    }
+  },
+  {
+    "id": "afb8912cc76bed835e6a2396b1d93c52437c85f6",
+    "short_id": "afb8912c",
+    "created_at": "2026-01-22T16:07:07.000-03:00",
+    "parent_ids": [
+      "cb9667c917962db2b5db482dff62612e79799742"
+    ],
+    "title": "Treat old crash reports differently",
+    "message": "Treat old crash reports differently\n\nthese may have happened when the user didn't interact with the app.\n\nAlso dismiss the crash report when user navigates back from crash screen.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T18:06:09.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:07.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/afb8912cc76bed835e6a2396b1d93c52437c85f6",
+    "stats": {
+      "additions": 41,
+      "deletions": 7,
+      "total": 48
+    }
+  },
+  {
+    "id": "fba9f03a0b1520ed654616f5abe4ff859f309789",
+    "short_id": "fba9f03a",
+    "created_at": "2026-01-22T16:07:08.000-03:00",
+    "parent_ids": [
+      "afb8912cc76bed835e6a2396b1d93c52437c85f6"
+    ],
+    "title": "Implement custom search screen",
+    "message": "Implement custom search screen\n\nbecause the other one is still experimental and has severe crash bugs\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-22T15:53:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/fba9f03a0b1520ed654616f5abe4ff859f309789",
+    "stats": {
+      "additions": 583,
+      "deletions": 433,
+      "total": 1016
+    }
+  },
+  {
+    "id": "aff0eca22a95166e359b38f5d9c28efc6f7806a2",
+    "short_id": "aff0eca2",
+    "created_at": "2026-01-23T09:51:24.000-03:00",
+    "parent_ids": [
+      "15f03fef37554864dc343922f15334c7f0d4236b"
+    ],
+    "title": "update start-alpha-cycle.py for 2.0",
+    "message": "update start-alpha-cycle.py for 2.0\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-23T09:51:24.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-23T09:51:24.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/aff0eca22a95166e359b38f5d9c28efc6f7806a2",
+    "stats": {
+      "additions": 4,
+      "deletions": 4,
+      "total": 8
+    }
+  },
+  {
+    "id": "ed5995a16fd0ed2cc220b85107f17e75949dded1",
+    "short_id": "ed5995a1",
+    "created_at": "2026-01-23T09:55:46.000-03:00",
+    "parent_ids": [
+      "aff0eca22a95166e359b38f5d9c28efc6f7806a2"
+    ],
+    "title": "Add changelog",
+    "message": "Add changelog\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-23T09:55:46.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-23T09:55:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/ed5995a16fd0ed2cc220b85107f17e75949dded1",
+    "stats": {
+      "additions": 8,
+      "deletions": 0,
+      "total": 8
+    }
+  },
+  {
+    "id": "28db65f1088a8f3db1e8122d5100697b432eeb3a",
+    "short_id": "28db65f1",
+    "created_at": "2026-01-23T11:45:15.000-03:00",
+    "parent_ids": [
+      "ed5995a16fd0ed2cc220b85107f17e75949dded1"
+    ],
+    "title": "Clean up top app bar search bar",
+    "message": "Clean up top app bar search bar\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-23T11:25:46.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-23T11:45:15.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/28db65f1088a8f3db1e8122d5100697b432eeb3a",
+    "stats": {
+      "additions": 74,
+      "deletions": 143,
+      "total": 217
+    }
+  },
+  {
+    "id": "0a72ab4573c4733dc303ef35b754d5421240e623",
+    "short_id": "0a72ab45",
+    "created_at": "2026-01-26T14:33:19.000-03:00",
+    "parent_ids": [
+      "f9f4eb715fa84d2217c80c2a62adcd5023cfda93"
+    ],
+    "title": "Fix firstStart flag for people upgrading from 1.x",
+    "message": "Fix firstStart flag for people upgrading from 1.x\n\nAlso if first start is on, then just don't flag issues, but check for updates. This lowers the impact of the flag being wrong.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T11:34:42.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/0a72ab4573c4733dc303ef35b754d5421240e623",
+    "stats": {
+      "additions": 10,
+      "deletions": 6,
+      "total": 16
+    }
+  },
+  {
+    "id": "55e7047671ef10bcc4e1df7132e30c0163fa501f",
+    "short_id": "55e70476",
+    "created_at": "2026-01-26T14:33:19.000-03:00",
+    "parent_ids": [
+      "0a72ab4573c4733dc303ef35b754d5421240e623"
+    ],
+    "title": "Show signer of installed version in technical info",
+    "message": "Show signer of installed version in technical info\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T11:40:55.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/55e7047671ef10bcc4e1df7132e30c0163fa501f",
+    "stats": {
+      "additions": 19,
+      "deletions": 0,
+      "total": 19
+    }
+  },
+  {
+    "id": "f8a3610fa685992ce25306f1e6e81719027e183c",
+    "short_id": "f8a3610f",
+    "created_at": "2026-01-26T14:33:19.000-03:00",
+    "parent_ids": [
+      "55e7047671ef10bcc4e1df7132e30c0163fa501f"
+    ],
+    "title": "Don't get version name from git tag",
+    "message": "Don't get version name from git tag\n\nas full and basic are out of sync and this would give full the version name of basic\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T13:43:34.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/f8a3610fa685992ce25306f1e6e81719027e183c",
+    "stats": {
+      "additions": 1,
+      "deletions": 11,
+      "total": 12
+    }
+  },
+  {
+    "id": "006f03679523f0d8ef3350450965409e96eb0a00",
+    "short_id": "006f0367",
+    "created_at": "2026-01-26T14:33:20.000-03:00",
+    "parent_ids": [
+      "f8a3610fa685992ce25306f1e6e81719027e183c"
+    ],
+    "title": "Add version code to app details version item",
+    "message": "Add version code to app details version item\n\nand improve some other version info, making it selectable, etc.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T13:54:39.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:20.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/006f03679523f0d8ef3350450965409e96eb0a00",
+    "stats": {
+      "additions": 33,
+      "deletions": 18,
+      "total": 51
+    }
+  },
+  {
+    "id": "c1efc6f6f1245952fc848ab6930a309111d0dd97",
+    "short_id": "c1efc6f6",
+    "created_at": "2026-01-26T14:33:20.000-03:00",
+    "parent_ids": [
+      "006f03679523f0d8ef3350450965409e96eb0a00"
+    ],
+    "title": "Don't show issue for apps with incompatible signer installed by other stores",
+    "message": "Don't show issue for apps with incompatible signer installed by other stores\n\nThe other store is likely to provide updates and this is a common use case with Aurora or Google Play, so people get flagged false positives.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:27:18.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:20.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c1efc6f6f1245952fc848ab6930a309111d0dd97",
+    "stats": {
+      "additions": 79,
+      "deletions": 37,
+      "total": 116
+    }
+  },
+  {
+    "id": "c982ec77332055ebe46012566e0d004d8d359b39",
+    "short_id": "c982ec77",
+    "created_at": "2026-01-26T14:40:22.000-03:00",
+    "parent_ids": [
+      "c1efc6f6f1245952fc848ab6930a309111d0dd97"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:40:22.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c982ec77332055ebe46012566e0d004d8d359b39",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+    "short_id": "bdbc64d1",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "c1efc6f6f1245952fc848ab6930a309111d0dd97"
+    ],
+    "title": "Try to get changelog picked up",
+    "message": "Try to get changelog picked up\n\ndefault.txt changelog for the basic flavor isn't getting picked up by fdroidserver, so we try the version code instead\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:44:58.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+    "stats": {
+      "additions": 0,
+      "deletions": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+    "short_id": "bd4e993f",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed"
+    ],
+    "title": "Improve manual repo update icon",
+    "message": "Improve manual repo update icon\n\nInstead of the 'Update' icon, we now use 'Sync' which people are more familiar with\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:47:33.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "73bcc3ce419853842b2c5886feb326bffde7513c",
+    "short_id": "73bcc3ce",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/73bcc3ce419853842b2c5886feb326bffde7513c",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+    "short_id": "a9f5e325",
+    "created_at": "2026-01-26T15:17:05.000-03:00",
+    "parent_ids": [
+      "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1"
+    ],
+    "title": "Show issue for apps we had installed with different signer",
+    "message": "Show issue for apps we had installed with different signer\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T15:13:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T15:17:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+    "stats": {
+      "additions": 3,
+      "deletions": 1,
+      "total": 4
+    }
+  },
+  {
+    "id": "6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+    "short_id": "6cfe6934",
+    "created_at": "2026-01-26T15:17:05.000-03:00",
+    "parent_ids": [
+      "a9f5e325fea2ecfa6665a6e8674035d9324b0a06"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T15:17:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "8a91c4538ee7067b2bced8f7ad9cccd89986a282",
+    "short_id": "8a91c453",
+    "created_at": "2026-01-05T18:08:10.000-03:00",
+    "parent_ids": [
+      "312937eda6078e4081892cc6544930845f80070b"
+    ],
+    "title": "Remove 2.0 dev cruft",
+    "message": "Remove 2.0 dev cruft\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:08:10.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:08:10.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/8a91c4538ee7067b2bced8f7ad9cccd89986a282",
+    "stats": {
+      "additions": 1379,
+      "deletions": 3,
+      "total": 1382
+    }
+  },
+  {
+    "id": "1e53cb28dbdbe62718c22a0eb929af9c86737c86",
+    "short_id": "1e53cb28",
+    "created_at": "2026-01-05T18:35:19.000-03:00",
+    "parent_ids": [
+      "8a91c4538ee7067b2bced8f7ad9cccd89986a282"
+    ],
+    "title": "Allow one more year of SHA1 in index v1 tests",
+    "message": "Allow one more year of SHA1 in index v1 tests\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:35:19.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:35:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/1e53cb28dbdbe62718c22a0eb929af9c86737c86",
+    "stats": {
+      "additions": 1,
+      "deletions": 1,
+      "total": 2
+    }
+  },
+  {
+    "id": "dd3d4c532d4b28a42a43473293e2d673e6778d0c",
+    "short_id": "dd3d4c53",
+    "created_at": "2026-01-05T18:59:42.000-03:00",
+    "parent_ids": [
+      "312937eda6078e4081892cc6544930845f80070b"
+    ],
+    "title": "Remove 2.0 dev cruft",
+    "message": "Remove 2.0 dev cruft\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:08:10.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:59:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/dd3d4c532d4b28a42a43473293e2d673e6778d0c",
+    "stats": {
+      "additions": 1380,
+      "deletions": 4,
+      "total": 1384
+    }
+  },
+  {
+    "id": "6ede37119a7e3351ef23d71918c50d68783d2498",
+    "short_id": "6ede3711",
+    "created_at": "2026-01-05T18:59:42.000-03:00",
+    "parent_ids": [
+      "dd3d4c532d4b28a42a43473293e2d673e6778d0c"
+    ],
+    "title": "Allow one more year of SHA1 in index v1 tests",
+    "message": "Allow one more year of SHA1 in index v1 tests\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:35:19.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:59:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/6ede37119a7e3351ef23d71918c50d68783d2498",
+    "stats": {
+      "additions": 1,
+      "deletions": 1,
+      "total": 2
+    }
+  },
+  {
+    "id": "4cdf79751540681db4472db0387b2888c07d34a9",
+    "short_id": "4cdf7975",
+    "created_at": "2026-01-05T18:59:42.000-03:00",
+    "parent_ids": [
+      "6ede37119a7e3351ef23d71918c50d68783d2498"
+    ],
+    "title": "Ignore failing test testGetReportingWeekStart()",
+    "message": "Ignore failing test testGetReportingWeekStart()\n\nas this doesn't get fixed for years and keeps coming up.\n\nSee #2339\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-05T18:55:25.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-05T18:59:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/4cdf79751540681db4472db0387b2888c07d34a9",
+    "stats": {
+      "additions": 2,
+      "deletions": 0,
+      "total": 2
+    }
+  },
+  {
+    "id": "16dec72976df397b88209af8eff040a9bf759887",
+    "short_id": "16dec729",
+    "created_at": "2026-01-06T10:27:42.000-03:00",
+    "parent_ids": [
+      "4cdf79751540681db4472db0387b2888c07d34a9"
+    ],
+    "title": "Adapt nightly builds to 2.0 basic",
+    "message": "Adapt nightly builds to 2.0 basic\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-06T10:27:42.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-06T10:27:42.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/16dec72976df397b88209af8eff040a9bf759887",
+    "stats": {
+      "additions": 16,
+      "deletions": 3,
+      "total": 19
+    }
+  },
+  {
+    "id": "be67dba0264a3708a1ab63c3d34c3212403d66c8",
+    "short_id": "be67dba0",
+    "created_at": "2026-01-07T10:07:30.000-03:00",
+    "parent_ids": [
+      "16dec72976df397b88209af8eff040a9bf759887"
+    ],
+    "title": "Don't claim no apps installed when all apps have issues",
+    "message": "Don't claim no apps installed when all apps have issues\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-07T09:49:44.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-07T10:07:30.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/be67dba0264a3708a1ab63c3d34c3212403d66c8",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "32e4a04cd6544f14e3d567e81cf81aa08ece045f",
+    "short_id": "32e4a04c",
+    "created_at": "2026-01-07T10:07:30.000-03:00",
+    "parent_ids": [
+      "be67dba0264a3708a1ab63c3d34c3212403d66c8"
+    ],
+    "title": "Handle disabled pre-approval",
+    "message": "Handle disabled pre-approval\n\nPre-approval can be disabled and we get STATUS_FAILURE_BLOCKED which should be sufficient. There's also a hidden official error code we don't use for now:\nhttps://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/base/core/java/android/content/pm/PackageManager.java;l=2644;drc=905556173324d48059d4bae77408748a76497ac9\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-07T10:04:41.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-07T10:07:30.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/32e4a04cd6544f14e3d567e81cf81aa08ece045f",
+    "stats": {
+      "additions": 6,
+      "deletions": 5,
+      "total": 11
+    }
+  },
+  {
+    "id": "b928235af2dfe18a59e68df749344e3ebc74ea01",
+    "short_id": "b928235a",
+    "created_at": "2026-01-07T17:06:13.000-03:00",
+    "parent_ids": [
+      "32e4a04cd6544f14e3d567e81cf81aa08ece045f"
+    ],
+    "title": "Fix top spacer when changing repos in app details",
+    "message": "Fix top spacer when changing repos in app details\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-07T17:05:59.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-07T17:06:13.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/b928235af2dfe18a59e68df749344e3ebc74ea01",
+    "stats": {
+      "additions": 1,
+      "deletions": 1,
+      "total": 2
+    }
+  },
+  {
+    "id": "f65f355e953f159662e7ec831ff33e903ea9a588",
+    "short_id": "f65f355e",
+    "created_at": "2026-01-12T15:41:08.000-03:00",
+    "parent_ids": [
+      "b928235af2dfe18a59e68df749344e3ebc74ea01"
+    ],
+    "title": "Show changelog of update (if existing) in app details",
+    "message": "Show changelog of update (if existing) in app details\n\npreviously only the changelog of the last installed version would get shown\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-09T16:07:02.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/f65f355e953f159662e7ec831ff33e903ea9a588",
+    "stats": {
+      "additions": 2,
+      "deletions": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "b5a97911d949cebcf940e5a48469838479da65f7",
+    "short_id": "b5a97911",
+    "created_at": "2026-01-12T15:41:08.000-03:00",
+    "parent_ids": [
+      "f65f355e953f159662e7ec831ff33e903ea9a588"
+    ],
+    "title": "Don't keep retrying sending ACRA reports",
+    "message": "Don't keep retrying sending ACRA reports\n\nwe send via email intent. this typically doesn't fail. if it fails, usually because there's no email program installed and then we shouldn't keep trying\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-09T16:08:36.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/b5a97911d949cebcf940e5a48469838479da65f7",
+    "stats": {
+      "additions": 16,
+      "deletions": 0,
+      "total": 16
+    }
+  },
+  {
+    "id": "dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0",
+    "short_id": "dba20832",
+    "created_at": "2026-01-12T15:41:08.000-03:00",
+    "parent_ids": [
+      "b5a97911d949cebcf940e5a48469838479da65f7"
+    ],
+    "title": "Use proper Litecoin icon",
+    "message": "Use proper Litecoin icon\n\notherwise it looks strange if Bitcoin and Litecoin use the same icon\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-09T16:17:44.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0",
+    "stats": {
+      "additions": 67,
+      "deletions": 1,
+      "total": 68
+    }
+  },
+  {
+    "id": "88c32b0b0029a3863d8c9fc3221664b8feee7c4d",
+    "short_id": "88c32b0b",
+    "created_at": "2026-01-12T15:41:09.000-03:00",
+    "parent_ids": [
+      "dba20832ee0f9f1bfb7f5e8b98730b2cc8f52ce0"
+    ],
+    "title": "Only show repo errors if the repo is enabled",
+    "message": "Only show repo errors if the repo is enabled\n\nthis allows \"ignoring\" repo errors by disabling the repo\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-12T15:31:42.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:09.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/88c32b0b0029a3863d8c9fc3221664b8feee7c4d",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "46634ce38d7786f7a77138717dd03635044e167f",
+    "short_id": "46634ce3",
+    "created_at": "2026-01-12T15:41:09.000-03:00",
+    "parent_ids": [
+      "88c32b0b0029a3863d8c9fc3221664b8feee7c4d"
+    ],
+    "title": "Make repo error text selectable",
+    "message": "Make repo error text selectable\n\nso it can easily get copy and pasted\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-12T15:32:49.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:41:09.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/46634ce38d7786f7a77138717dd03635044e167f",
+    "stats": {
+      "additions": 8,
+      "deletions": 5,
+      "total": 13
+    }
+  },
+  {
+    "id": "189c697e5f761c64867bad38f1d0e39f896bfa85",
+    "short_id": "189c697e",
+    "created_at": "2026-01-12T15:42:25.000-03:00",
+    "parent_ids": [
+      "46634ce38d7786f7a77138717dd03635044e167f"
+    ],
+    "title": "Remove int preferences hack, because library now supports Long",
+    "message": "Remove int preferences hack, because library now supports Long\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-12T15:40:36.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-12T15:42:25.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/189c697e5f761c64867bad38f1d0e39f896bfa85",
+    "stats": {
+      "additions": 20,
+      "deletions": 9,
+      "total": 29
+    }
+  },
+  {
+    "id": "e337cf031ea249b4dde5406cbca6161d4696bee6",
+    "short_id": "e337cf03",
+    "created_at": "2026-01-15T10:43:23.000-03:00",
+    "parent_ids": [
+      "189c697e5f761c64867bad38f1d0e39f896bfa85"
+    ],
+    "title": "Take signer into account when finding installed version in app details",
+    "message": "Take signer into account when finding installed version in app details\n\nand multiple candidates with the same version code exist\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-15T10:40:27.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-15T10:43:23.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/e337cf031ea249b4dde5406cbca6161d4696bee6",
+    "stats": {
+      "additions": 20,
+      "deletions": 5,
+      "total": 25
+    }
+  },
+  {
+    "id": "7dfe86eea51a16cb86d435c2766a226ef6cda237",
+    "short_id": "7dfe86ee",
+    "created_at": "2026-01-15T18:02:58.000-03:00",
+    "parent_ids": [
+      "e337cf031ea249b4dde5406cbca6161d4696bee6"
+    ],
+    "title": "Improve behavior of updating our own app last",
+    "message": "Improve behavior of updating our own app last\n\nNow our own app will show as in progress of getting updated. No more 'Update all' button will be shown after it has been pressed already.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-15T18:02:31.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-15T18:02:58.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/7dfe86eea51a16cb86d435c2766a226ef6cda237",
+    "stats": {
+      "additions": 45,
+      "deletions": 3,
+      "total": 48
+    }
+  },
+  {
+    "id": "b55babcdce5ec4c879447ac5c6a221d2eb04026a",
+    "short_id": "b55babcd",
+    "created_at": "2026-01-20T10:13:21.000-03:00",
+    "parent_ids": [
+      "7dfe86eea51a16cb86d435c2766a226ef6cda237"
+    ],
+    "title": "Move new strings into a separate file",
+    "message": "Move new strings into a separate file\n\nso they are not exposed to translators until they've undergone review\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T10:13:21.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-20T10:13:21.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/b55babcdce5ec4c879447ac5c6a221d2eb04026a",
+    "stats": {
+      "additions": 179,
+      "deletions": 180,
+      "total": 359
+    }
+  },
+  {
+    "id": "52432777eb7efac7acf1a35a042e3b853c25f903",
+    "short_id": "52432777",
+    "created_at": "2026-01-20T15:13:41.000-03:00",
+    "parent_ids": [
+      "8793bd78764da659cdfb586a472359cb81bf5817"
+    ],
+    "title": "Reload updates after deleting a repository",
+    "message": "Reload updates after deleting a repository\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T15:13:41.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-20T15:13:41.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/52432777eb7efac7acf1a35a042e3b853c25f903",
+    "stats": {
+      "additions": 3,
+      "deletions": 0,
+      "total": 3
+    }
+  },
+  {
+    "id": "d35aad749da2b34b8a9fe628e68d2372004937c8",
+    "short_id": "d35aad74",
+    "created_at": "2026-01-20T15:36:05.000-03:00",
+    "parent_ids": [
+      "52432777eb7efac7acf1a35a042e3b853c25f903"
+    ],
+    "title": "Adapt strings according to material design 3 guidelines",
+    "message": "Adapt strings according to material design 3 guidelines\n\nsee: https://m3.material.io/foundations/content-design/\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T15:36:05.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-20T15:36:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/d35aad749da2b34b8a9fe628e68d2372004937c8",
+    "stats": {
+      "additions": 58,
+      "deletions": 41,
+      "total": 99
+    }
+  },
+  {
+    "id": "f398bc449d229859e46d6d42e1e692464794f3af",
+    "short_id": "f398bc44",
+    "created_at": "2026-01-21T11:16:00.000-03:00",
+    "parent_ids": [
+      "2cd6b29c6e72d4c031d504bb975abc2d007f8b0f"
+    ],
+    "title": "Reload updates after deleting a repository",
+    "message": "Reload updates after deleting a repository\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T15:13:41.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-21T11:16:00.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/f398bc449d229859e46d6d42e1e692464794f3af",
+    "stats": {
+      "additions": 3,
+      "deletions": 0,
+      "total": 3
+    }
+  },
+  {
+    "id": "887e378cf602dcc1bfb89d076e5657f99ab97d19",
+    "short_id": "887e378c",
+    "created_at": "2026-01-21T11:16:03.000-03:00",
+    "parent_ids": [
+      "f398bc449d229859e46d6d42e1e692464794f3af"
+    ],
+    "title": "Warn when we ignore external intent",
+    "message": "Warn when we ignore external intent\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-20T17:37:06.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-21T11:16:03.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/887e378cf602dcc1bfb89d076e5657f99ab97d19",
+    "stats": {
+      "additions": 4,
+      "deletions": 2,
+      "total": 6
+    }
+  },
+  {
+    "id": "eb710bbd6113c53ec4bba920929f40dc0f4177c6",
+    "short_id": "eb710bbd",
+    "created_at": "2026-01-21T11:17:54.000-03:00",
+    "parent_ids": [
+      "887e378cf602dcc1bfb89d076e5657f99ab97d19"
+    ],
+    "title": "Fix versionCode of nightly builds",
+    "message": "Fix versionCode of nightly builds\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T11:17:54.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-21T11:17:54.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/eb710bbd6113c53ec4bba920929f40dc0f4177c6",
+    "stats": {
+      "additions": 2,
+      "deletions": 1,
+      "total": 3
+    }
+  },
+  {
+    "id": "604429a9a1ace91215aa42d72c206056c1e0f74e",
+    "short_id": "604429a9",
+    "created_at": "2026-01-22T16:07:06.000-03:00",
+    "parent_ids": [
+      "eb710bbd6113c53ec4bba920929f40dc0f4177c6"
+    ],
+    "title": "Don't show an 'Open' button for ourselves",
+    "message": "Don't show an 'Open' button for ourselves\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T11:28:18.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:06.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/604429a9a1ace91215aa42d72c206056c1e0f74e",
+    "stats": {
+      "additions": 5,
+      "deletions": 1,
+      "total": 6
+    }
+  },
+  {
+    "id": "c2d68519f932e75c84fb760b8d68255b480d8e4d",
+    "short_id": "c2d68519",
+    "created_at": "2026-01-22T16:07:06.000-03:00",
+    "parent_ids": [
+      "604429a9a1ace91215aa42d72c206056c1e0f74e"
+    ],
+    "title": "Don't show an 'More' button for short descriptions",
+    "message": "Don't show an 'More' button for short descriptions\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T11:48:11.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:06.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c2d68519f932e75c84fb760b8d68255b480d8e4d",
+    "stats": {
+      "additions": 49,
+      "deletions": 27,
+      "total": 76
+    }
+  },
+  {
+    "id": "06551796e8605e7496e243ecdaf988faa25b1bfe",
+    "short_id": "06551796",
+    "created_at": "2026-01-22T16:07:07.000-03:00",
+    "parent_ids": [
+      "c2d68519f932e75c84fb760b8d68255b480d8e4d"
+    ],
+    "title": "Simplify dynamic feature graphic handling",
+    "message": "Simplify dynamic feature graphic handling\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T13:21:53.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:07.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/06551796e8605e7496e243ecdaf988faa25b1bfe",
+    "stats": {
+      "additions": 28,
+      "deletions": 36,
+      "total": 64
+    }
+  },
+  {
+    "id": "cb9667c917962db2b5db482dff62612e79799742",
+    "short_id": "cb9667c9",
+    "created_at": "2026-01-22T16:07:07.000-03:00",
+    "parent_ids": [
+      "06551796e8605e7496e243ecdaf988faa25b1bfe"
+    ],
+    "title": "Close search results when selecting an app",
+    "message": "Close search results when selecting an app\n\nworkaround for https://issuetracker.google.com/issues/471730911\nstill crashes sometimes, but at least back gesture works\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T14:03:36.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:07.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/cb9667c917962db2b5db482dff62612e79799742",
+    "stats": {
+      "additions": 8,
+      "deletions": 0,
+      "total": 8
+    }
+  },
+  {
+    "id": "afb8912cc76bed835e6a2396b1d93c52437c85f6",
+    "short_id": "afb8912c",
+    "created_at": "2026-01-22T16:07:07.000-03:00",
+    "parent_ids": [
+      "cb9667c917962db2b5db482dff62612e79799742"
+    ],
+    "title": "Treat old crash reports differently",
+    "message": "Treat old crash reports differently\n\nthese may have happened when the user didn't interact with the app.\n\nAlso dismiss the crash report when user navigates back from crash screen.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-21T18:06:09.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:07.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/afb8912cc76bed835e6a2396b1d93c52437c85f6",
+    "stats": {
+      "additions": 41,
+      "deletions": 7,
+      "total": 48
+    }
+  },
+  {
+    "id": "fba9f03a0b1520ed654616f5abe4ff859f309789",
+    "short_id": "fba9f03a",
+    "created_at": "2026-01-22T16:07:08.000-03:00",
+    "parent_ids": [
+      "afb8912cc76bed835e6a2396b1d93c52437c85f6"
+    ],
+    "title": "Implement custom search screen",
+    "message": "Implement custom search screen\n\nbecause the other one is still experimental and has severe crash bugs\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-22T15:53:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-22T16:07:08.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/fba9f03a0b1520ed654616f5abe4ff859f309789",
+    "stats": {
+      "additions": 583,
+      "deletions": 433,
+      "total": 1016
+    }
+  },
+  {
+    "id": "aff0eca22a95166e359b38f5d9c28efc6f7806a2",
+    "short_id": "aff0eca2",
+    "created_at": "2026-01-23T09:51:24.000-03:00",
+    "parent_ids": [
+      "15f03fef37554864dc343922f15334c7f0d4236b"
+    ],
+    "title": "update start-alpha-cycle.py for 2.0",
+    "message": "update start-alpha-cycle.py for 2.0\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-23T09:51:24.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-23T09:51:24.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/aff0eca22a95166e359b38f5d9c28efc6f7806a2",
+    "stats": {
+      "additions": 4,
+      "deletions": 4,
+      "total": 8
+    }
+  },
+  {
+    "id": "ed5995a16fd0ed2cc220b85107f17e75949dded1",
+    "short_id": "ed5995a1",
+    "created_at": "2026-01-23T09:55:46.000-03:00",
+    "parent_ids": [
+      "aff0eca22a95166e359b38f5d9c28efc6f7806a2"
+    ],
+    "title": "Add changelog",
+    "message": "Add changelog\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-23T09:55:46.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-23T09:55:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/ed5995a16fd0ed2cc220b85107f17e75949dded1",
+    "stats": {
+      "additions": 8,
+      "deletions": 0,
+      "total": 8
+    }
+  },
+  {
+    "id": "28db65f1088a8f3db1e8122d5100697b432eeb3a",
+    "short_id": "28db65f1",
+    "created_at": "2026-01-23T11:45:15.000-03:00",
+    "parent_ids": [
+      "ed5995a16fd0ed2cc220b85107f17e75949dded1"
+    ],
+    "title": "Clean up top app bar search bar",
+    "message": "Clean up top app bar search bar\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-23T11:25:46.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-23T11:45:15.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/28db65f1088a8f3db1e8122d5100697b432eeb3a",
+    "stats": {
+      "additions": 74,
+      "deletions": 143,
+      "total": 217
+    }
+  },
+  {
+    "id": "0a72ab4573c4733dc303ef35b754d5421240e623",
+    "short_id": "0a72ab45",
+    "created_at": "2026-01-26T14:33:19.000-03:00",
+    "parent_ids": [
+      "f9f4eb715fa84d2217c80c2a62adcd5023cfda93"
+    ],
+    "title": "Fix firstStart flag for people upgrading from 1.x",
+    "message": "Fix firstStart flag for people upgrading from 1.x\n\nAlso if first start is on, then just don't flag issues, but check for updates. This lowers the impact of the flag being wrong.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T11:34:42.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/0a72ab4573c4733dc303ef35b754d5421240e623",
+    "stats": {
+      "additions": 10,
+      "deletions": 6,
+      "total": 16
+    }
+  },
+  {
+    "id": "55e7047671ef10bcc4e1df7132e30c0163fa501f",
+    "short_id": "55e70476",
+    "created_at": "2026-01-26T14:33:19.000-03:00",
+    "parent_ids": [
+      "0a72ab4573c4733dc303ef35b754d5421240e623"
+    ],
+    "title": "Show signer of installed version in technical info",
+    "message": "Show signer of installed version in technical info\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T11:40:55.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/55e7047671ef10bcc4e1df7132e30c0163fa501f",
+    "stats": {
+      "additions": 19,
+      "deletions": 0,
+      "total": 19
+    }
+  },
+  {
+    "id": "f8a3610fa685992ce25306f1e6e81719027e183c",
+    "short_id": "f8a3610f",
+    "created_at": "2026-01-26T14:33:19.000-03:00",
+    "parent_ids": [
+      "55e7047671ef10bcc4e1df7132e30c0163fa501f"
+    ],
+    "title": "Don't get version name from git tag",
+    "message": "Don't get version name from git tag\n\nas full and basic are out of sync and this would give full the version name of basic\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T13:43:34.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:19.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/f8a3610fa685992ce25306f1e6e81719027e183c",
+    "stats": {
+      "additions": 1,
+      "deletions": 11,
+      "total": 12
+    }
+  },
+  {
+    "id": "006f03679523f0d8ef3350450965409e96eb0a00",
+    "short_id": "006f0367",
+    "created_at": "2026-01-26T14:33:20.000-03:00",
+    "parent_ids": [
+      "f8a3610fa685992ce25306f1e6e81719027e183c"
+    ],
+    "title": "Add version code to app details version item",
+    "message": "Add version code to app details version item\n\nand improve some other version info, making it selectable, etc.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T13:54:39.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:20.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/006f03679523f0d8ef3350450965409e96eb0a00",
+    "stats": {
+      "additions": 33,
+      "deletions": 18,
+      "total": 51
+    }
+  },
+  {
+    "id": "c1efc6f6f1245952fc848ab6930a309111d0dd97",
+    "short_id": "c1efc6f6",
+    "created_at": "2026-01-26T14:33:20.000-03:00",
+    "parent_ids": [
+      "006f03679523f0d8ef3350450965409e96eb0a00"
+    ],
+    "title": "Don't show issue for apps with incompatible signer installed by other stores",
+    "message": "Don't show issue for apps with incompatible signer installed by other stores\n\nThe other store is likely to provide updates and this is a common use case with Aurora or Google Play, so people get flagged false positives.\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:27:18.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:33:20.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c1efc6f6f1245952fc848ab6930a309111d0dd97",
+    "stats": {
+      "additions": 79,
+      "deletions": 37,
+      "total": 116
+    }
+  },
+  {
+    "id": "c982ec77332055ebe46012566e0d004d8d359b39",
+    "short_id": "c982ec77",
+    "created_at": "2026-01-26T14:40:22.000-03:00",
+    "parent_ids": [
+      "c1efc6f6f1245952fc848ab6930a309111d0dd97"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:40:22.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c982ec77332055ebe46012566e0d004d8d359b39",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+    "short_id": "bdbc64d1",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "c1efc6f6f1245952fc848ab6930a309111d0dd97"
+    ],
+    "title": "Try to get changelog picked up",
+    "message": "Try to get changelog picked up\n\ndefault.txt changelog for the basic flavor isn't getting picked up by fdroidserver, so we try the version code instead\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:44:58.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+    "stats": {
+      "additions": 0,
+      "deletions": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+    "short_id": "bd4e993f",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed"
+    ],
+    "title": "Improve manual repo update icon",
+    "message": "Improve manual repo update icon\n\nInstead of the 'Update' icon, we now use 'Sync' which people are more familiar with\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:47:33.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "73bcc3ce419853842b2c5886feb326bffde7513c",
+    "short_id": "73bcc3ce",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/73bcc3ce419853842b2c5886feb326bffde7513c",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+    "short_id": "a9f5e325",
+    "created_at": "2026-01-26T15:17:05.000-03:00",
+    "parent_ids": [
+      "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1"
+    ],
+    "title": "Show issue for apps we had installed with different signer",
+    "message": "Show issue for apps we had installed with different signer\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T15:13:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T15:17:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+    "stats": {
+      "additions": 3,
+      "deletions": 1,
+      "total": 4
+    }
+  },
+  {
+    "id": "6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+    "short_id": "6cfe6934",
+    "created_at": "2026-01-26T15:17:05.000-03:00",
+    "parent_ids": [
+      "a9f5e325fea2ecfa6665a6e8674035d9324b0a06"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T15:17:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "c982ec77332055ebe46012566e0d004d8d359b39",
+    "short_id": "c982ec77",
+    "created_at": "2026-01-26T14:40:22.000-03:00",
+    "parent_ids": [
+      "c1efc6f6f1245952fc848ab6930a309111d0dd97"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:40:22.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/c982ec77332055ebe46012566e0d004d8d359b39",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+    "short_id": "bdbc64d1",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "c1efc6f6f1245952fc848ab6930a309111d0dd97"
+    ],
+    "title": "Try to get changelog picked up",
+    "message": "Try to get changelog picked up\n\ndefault.txt changelog for the basic flavor isn't getting picked up by fdroidserver, so we try the version code instead\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:44:58.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed",
+    "stats": {
+      "additions": 0,
+      "deletions": 0,
+      "total": 0
+    }
+  },
+  {
+    "id": "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+    "short_id": "bd4e993f",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "bdbc64d1523ec1d8db8430e92da324bc8fd6f8ed"
+    ],
+    "title": "Improve manual repo update icon",
+    "message": "Improve manual repo update icon\n\nInstead of the 'Update' icon, we now use 'Sync' which people are more familiar with\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:47:33.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/bd4e993f2e1c7b9e9d7017538ed4b67d02586de1",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "73bcc3ce419853842b2c5886feb326bffde7513c",
+    "short_id": "73bcc3ce",
+    "created_at": "2026-01-26T14:47:46.000-03:00",
+    "parent_ids": [
+      "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T14:47:46.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/73bcc3ce419853842b2c5886feb326bffde7513c",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  },
+  {
+    "id": "a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+    "short_id": "a9f5e325",
+    "created_at": "2026-01-26T15:17:05.000-03:00",
+    "parent_ids": [
+      "bd4e993f2e1c7b9e9d7017538ed4b67d02586de1"
+    ],
+    "title": "Show issue for apps we had installed with different signer",
+    "message": "Show issue for apps we had installed with different signer\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T15:13:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T15:17:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/a9f5e325fea2ecfa6665a6e8674035d9324b0a06",
+    "stats": {
+      "additions": 3,
+      "deletions": 1,
+      "total": 4
+    }
+  },
+  {
+    "id": "6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+    "short_id": "6cfe6934",
+    "created_at": "2026-01-26T15:17:05.000-03:00",
+    "parent_ids": [
+      "a9f5e325fea2ecfa6665a6e8674035d9324b0a06"
+    ],
+    "title": "Bump version to 2.0-alpha1",
+    "message": "Bump version to 2.0-alpha1\n",
+    "author_name": "Torsten Grote",
+    "author_email": "t@grobox.de",
+    "authored_date": "2026-01-26T14:40:22.000-03:00",
+    "committer_name": "Torsten Grote",
+    "committer_email": "t@grobox.de",
+    "committed_date": "2026-01-26T15:17:05.000-03:00",
+    "trailers": {},
+    "extended_trailers": {},
+    "web_url": "https://gitlab.com/fdroid/fdroidclient/-/commit/6cfe69347cdd6995c9f8fb8190d67a1d551f833e",
+    "stats": {
+      "additions": 2,
+      "deletions": 2,
+      "total": 4
+    }
+  }
+]

@@ -31,6 +31,21 @@ def get_current_admin(current_user: AppUser = Depends(get_current_user)) -> AppU
 get_current_super_admin = get_current_admin
 
 
+# ── Active User ────────────────────────────────────────────────────────────────
+
+def get_current_active_user(current_user: AppUser = Depends(get_current_user)) -> AppUser:
+    """
+    Vérifie que l'utilisateur est actif.
+    Utilisé pour les opérations nécessitant un compte actif.
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Compte utilisateur désactivé.",
+        )
+    return current_user
+
+
 # ── Site Manager ou Super Admin ───────────────────────────────────────────────
 
 def get_current_manager(current_user: AppUser = Depends(get_current_user)) -> AppUser:
@@ -64,6 +79,48 @@ def get_current_team_lead_or_above(current_user: AppUser = Depends(get_current_u
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Droits team_lead ou supérieur requis.",
+        )
+    return current_user
+
+
+# ── Project Manager, Team Lead, Site Manager ou Super Admin ───────────────────
+
+def get_current_project_manager_or_above(current_user: AppUser = Depends(get_current_user)) -> AppUser:
+    """
+    Accès pour : super_admin, site_manager, team_lead, project_manager.
+    Utilisé pour les endpoints d'intelligence (admin et team).
+    """
+    if current_user.role not in (
+        UserRoleEnum.super_admin,
+        UserRoleEnum.site_manager,
+        UserRoleEnum.team_lead,
+        UserRoleEnum.project_manager,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Droits project_manager ou supérieur requis.",
+        )
+    return current_user
+
+
+# ── Viewer, Project Manager, Team Lead, Site Manager ou Super Admin ───────────
+
+def get_current_viewer_or_above(current_user: AppUser = Depends(get_current_user)) -> AppUser:
+    """
+    Accès pour : super_admin, site_manager, team_lead, project_manager, viewer.
+    Utilisé pour les endpoints d'intelligence et analytics avec assignations flexibles.
+    Viewer peut avoir des assignations combinées (sites, équipes, projets).
+    """
+    if current_user.role not in (
+        UserRoleEnum.super_admin,
+        UserRoleEnum.site_manager,
+        UserRoleEnum.team_lead,
+        UserRoleEnum.project_manager,
+        UserRoleEnum.viewer,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Droits viewer ou supérieur requis.",
         )
     return current_user
 
@@ -125,8 +182,11 @@ __all__ = [
     "get_current_user",
     "get_current_admin",
     "get_current_super_admin",
+    "get_current_active_user",
     "get_current_manager",
     "get_current_team_lead_or_above",
+    "get_current_project_manager_or_above",
+    "get_current_viewer_or_above",
     "check_dashboard_access",
     "require_site_access",
 ]

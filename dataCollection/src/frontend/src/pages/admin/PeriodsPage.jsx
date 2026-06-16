@@ -74,6 +74,133 @@ function CreatePeriodModal({ onClose, onSave }) {
   );
 }
 
+// ── Sub-component: Delete Period Modal ──────────────────────────────────────
+function DeletePeriodModal({ period, onClose, onConfirm, onDeleteLots }) {
+  const [confirming,    setConfirming]    = useState(false);
+  const [purgingLots,   setPurgingLots]   = useState(false);
+  const [error,         setError]         = useState("");
+  const [lotsBlocking,  setLotsBlocking]  = useState(false); // true si l'erreur est due aux lots
+
+  const handleConfirm = async () => {
+    setError(""); setConfirming(true);
+    try {
+      await onConfirm();
+    } catch(err) {
+      const msg = err.response?.data?.detail || "Erreur lors de la suppression.";
+      setError(msg);
+      // Détecte si le message concerne des lots d'extraction
+      setLotsBlocking(msg.includes("lot(s) d'extraction"));
+      setConfirming(false);
+    }
+  };
+
+  const handlePurgeAndDelete = async () => {
+    setError(""); setPurgingLots(true);
+    try {
+      // Étape 1 : vider tous les lots
+      await onDeleteLots();
+      // Étape 2 : supprimer la période (maintenant vide)
+      await onConfirm();
+    } catch(err) {
+      const msg = err.response?.data?.detail || "Erreur lors de la purge.";
+      setError(msg);
+      setLotsBlocking(false);
+      setPurgingLots(false);
+    }
+  };
+
+  const isLoading = confirming || purgingLots;
+
+  return (
+    <AdminModal
+      show={true}
+      onClose={onClose}
+      title="Supprimer la période"
+      subtitle="Cette action est irréversible"
+      icon="ri-delete-bin-6-line"
+      iconBg="bg-danger-subtle"
+      iconColor="text-danger"
+      loading={isLoading}
+      maxWidth={480}
+      footer={
+        <>
+          <button className="btn btn-sm btn-light px-4 fw-medium" onClick={onClose} disabled={isLoading}>
+            Annuler
+          </button>
+          {lotsBlocking ? (
+            /* Bouton alternatif quand des lots bloquent la suppression */
+            <button
+              className="btn btn-sm btn-warning px-4 fw-bold shadow-sm"
+              onClick={handlePurgeAndDelete}
+              disabled={isLoading}
+            >
+              {purgingLots
+                ? <><span className="spinner-border spinner-border-sm me-2"></span>Purge en cours...</>
+                : <><i className="ri-delete-bin-2-line me-1"></i>Vider les lots &amp; Supprimer</>
+              }
+            </button>
+          ) : (
+            <button
+              className="btn btn-sm btn-danger px-4 fw-bold shadow-sm"
+              onClick={handleConfirm}
+              disabled={isLoading}
+            >
+              {confirming
+                ? <><span className="spinner-border spinner-border-sm me-2"></span>Suppression...</>
+                : <><i className="ri-delete-bin-6-line me-1"></i>Confirmer la suppression</>
+              }
+            </button>
+          )}
+        </>
+      }
+    >
+      {/* Bandeau d'erreur avec action contextuelle */}
+      {error && (
+        <div className={`alert py-2 fs-13 mb-3 border-0 ${lotsBlocking ? "alert-warning" : "alert-danger"}`}>
+          <i className={`me-2 ${lotsBlocking ? "ri-archive-line" : "ri-error-warning-line"}`}></i>
+          {error}
+          {lotsBlocking && (
+            <div className="mt-2 fs-12 fw-medium">
+              <i className="ri-arrow-right-line me-1"></i>
+              Cliquez sur <strong>"Vider les lots &amp; Supprimer"</strong> pour supprimer les lots puis la période en une seule action.
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="d-flex align-items-center mb-4 p-3 bg-danger-subtle rounded-3">
+        <div className="flex-shrink-0 avatar-xs bg-danger rounded-circle d-flex align-items-center justify-content-center me-3">
+          <i className="ri-calendar-close-line text-white"></i>
+        </div>
+        <div>
+          <h6 className="mb-0 fw-bold text-danger">{period.year} / {String(period.month).padStart(2, "0")}</h6>
+          <p className="text-muted fs-12 mb-0">{MONTHS[period.month]} — Période ouverte</p>
+        </div>
+      </div>
+
+      <p className="fs-13 text-dark mb-3">
+        Vous êtes sur le point de <strong>supprimer définitivement</strong> cette période et toutes ses références.
+      </p>
+
+      <div className="vstack gap-2 mb-3">
+        <div className="d-flex align-items-start gap-2 fs-12 text-success">
+          <i className="ri-checkbox-circle-fill mt-1 flex-shrink-0"></i>
+          <span>Applicable aux périodes <strong>ouvertes</strong>. Si des lots existent, utilisez le bouton jaune pour tout supprimer en une fois.</span>
+        </div>
+        <div className="d-flex align-items-start gap-2 fs-12 text-danger">
+          <i className="ri-close-circle-fill mt-1 flex-shrink-0"></i>
+          <span>Les périodes <strong>clôturées</strong> et celles avec des <strong>jobs en cours</strong> ne peuvent pas être supprimées.</span>
+        </div>
+      </div>
+
+      <div className="alert alert-danger border-danger-subtle py-2 mb-0 fs-12">
+        <i className="ri-error-warning-line me-2"></i>
+        <strong>Attention :</strong> Cette action est irréversible. Aucune restauration ne sera possible.
+      </div>
+    </AdminModal>
+  );
+}
+
 // ── Sub-component: Advanced Close Modal ─────────────────────────────────────
 function AdvancedCloseModal({ period, onClose, onConfirm }) {
   const [data,       setData]       = useState(null);
@@ -164,6 +291,7 @@ export default function PeriodsPage() {
   const [showCreate,   setShowCreate]   = useState(false);
   const [closeTarget,  setCloseTarget]  = useState(null);
   const [closeLoading, setCloseLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast,        setToast]        = useState(null);
   const [page,         setPage]         = useState(1);
   const perPage = 10;
@@ -198,6 +326,25 @@ export default function PeriodsPage() {
       setCloseLoading(false);
     }
   };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await periodService.delete(deleteTarget.id);
+      showToast(`Période ${deleteTarget.year}/${String(deleteTarget.month).padStart(2, "0")} supprimée.`);
+      setDeleteTarget(null);
+      loadPeriods();
+    } catch(err) {
+      // l'erreur sera gérée dans la modale via le throw
+      throw err;
+    }
+  };
+
+  const handleDeleteLots = async () => {
+    if (!deleteTarget) return;
+    await periodService.deleteLots(deleteTarget.id);
+  };
+
 
   const openCount   = periods.filter(p => p.status === "open").length;
   const closedCount = periods.filter(p => p.status === "closed").length;
@@ -332,15 +479,30 @@ export default function PeriodsPage() {
                             ) : "—"}
                           </td>
                           <td>
-                            {period.status === "open" ? (
-                              <button className="btn btn-sm btn-soft-danger waves-effect waves-light" onClick={() => setCloseTarget(period)} title="Clôturer cette période">
-                                <i className="ri-lock-password-line me-1"></i>Clôturer
-                              </button>
-                            ) : (
-                              <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1">
-                                <i className="ri-shield-user-line me-1"></i>Archive Scellée
-                              </span>
-                            )}
+                            <div className="d-flex align-items-center gap-2">
+                              {period.status === "open" ? (
+                                <>
+                                  <button
+                                    className="btn btn-sm btn-soft-danger waves-effect waves-light"
+                                    onClick={() => setCloseTarget(period)}
+                                    title="Clôturer cette période"
+                                  >
+                                    <i className="ri-lock-password-line me-1"></i>Clôturer
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-soft-secondary waves-effect waves-light px-2"
+                                    onClick={() => setDeleteTarget(period)}
+                                    title="Supprimer cette période"
+                                  >
+                                    <i className="ri-delete-bin-6-line"></i>
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1">
+                                  <i className="ri-shield-user-line me-1"></i>Archive Scellée
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -367,6 +529,14 @@ export default function PeriodsPage() {
           period={closeTarget}
           onClose={() => setCloseTarget(null)}
           onConfirm={handleClose}
+        />
+      )}
+      {deleteTarget && (
+        <DeletePeriodModal
+          period={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+          onDeleteLots={handleDeleteLots}
         />
       )}
     </div>

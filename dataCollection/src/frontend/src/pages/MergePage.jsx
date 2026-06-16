@@ -165,98 +165,196 @@ function MRDetailModal({ mr, onClose }) {
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KPICard({ icon, label, value, bg, color, sub, onClick, active }) {
+  // Déterminer la couleur d'ombre et d'accentuation en fonction de la couleur active
+  const rgbColor = color === "#405189" ? "64, 81, 137" :
+                   color === "#0a7a6a" ? "10, 122, 106" :
+                   color === "#1a6fa3" ? "26, 111, 163" :
+                   color === "#b78a1e" ? "183, 138, 30" :
+                   color === "#5b21b6" ? "91, 33, 182" : "64, 81, 137";
+
   return (
-    <div className="col-xl-3 col-md-6">
-      <div className="card card-animate overflow-hidden" onClick={onClick}
-        style={{cursor:onClick?"pointer":"default",border:active?`2px solid ${color}`:"1px solid #e9ebec",transition:"all .2s"}}>
-        <div className="position-absolute start-0" style={{zIndex:0}}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120">
-            <path style={{opacity:0.06,fill:color}} d="m189.5-25.8c0 0 20.1 46.2-26.7 71.4 0 0-60 15.4-62.3 65.3-2.2 49.8-50.6 59.3-57.8 61.5-7.2 2.3-60.8 0-60.8 0l-11.9-199.4z"/>
+    <div className="kpi-card-wrapper">
+      <div className={`kpi-card-premium ${active ? 'kpi-card-active' : ''}`}
+        onClick={onClick}
+        style={{
+          cursor: onClick ? "pointer" : "default",
+          '--kpi-accent': color,
+          '--kpi-accent-rgb': rgbColor,
+        }}>
+        {/* Subtle dynamic background gradient glowing effect */}
+        <div className="kpi-card-glow-bg" style={{background: `radial-gradient(circle at top right, rgba(${rgbColor}, 0.08), transparent 70%)`}}></div>
+        
+        {/* Background blob */}
+        <div className="kpi-card-blob" style={{opacity: 0.04}}>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="180" height="110">
+            <path fill={color} d="m189.5-25.8c0 0 20.1 46.2-26.7 71.4 0 0-60 15.4-62.3 65.3-2.2 49.8-50.6 59.3-57.8 61.5-7.2 2.3-60.8 0-60.8 0l-11.9-199.4z"/>
           </svg>
         </div>
-        <div className="card-body" style={{zIndex:1}}>
-          <div className="d-flex align-items-center gap-3">
-            <div style={{width:52,height:52,borderRadius:"50%",background:bg,color,fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className={icon}></i></div>
-            <div><p style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em",color:"#878a99",marginBottom:4}}>{label}</p><h4 style={{fontSize:26,fontWeight:700,color,marginBottom:0}}>{value}</h4>{sub&&<p style={{fontSize:11,color:"#878a99",marginTop:4,marginBottom:0}}>{sub}</p>}</div>
+        
+        <div className="kpi-card-inner">
+          <div className="kpi-icon-wrap" style={{background: `${color}12`, color: color, boxShadow: `0 4px 14px rgba(${rgbColor}, 0.15)`}}>
+            <i className={icon}></i>
+          </div>
+          <div className="kpi-text">
+            <p className="kpi-label">{label}</p>
+            <h4 className="kpi-value" style={{color: "#1e293b"}}>{value}</h4>
+            {sub && <p className="kpi-sub"><span className="kpi-sub-badge" style={{background: `${color}10`, color: color}}>{sub}</span></p>}
           </div>
         </div>
+        
+        {/* Beautiful indicator bar at the bottom */}
+        <div className="kpi-active-bar" style={{background: `linear-gradient(90deg, ${color}, rgba(${rgbColor}, 0.4))`}}></div>
       </div>
     </div>
   );
 }
 
 // ─── FilterTag ────────────────────────────────────────────────────────────────
-function FilterTag({ label, onRemove, color="#f0f0f0", textColor="#495057" }) {
+function FilterTag({ label, onRemove, color="#e2e8f0", textColor="#475569" }) {
   return (
-    <span style={{background:color,color:textColor,borderRadius:20,padding:"3px 10px",fontSize:12,fontWeight:600,display:"inline-flex",alignItems:"center",gap:6}}>
+    <span className="premium-filter-tag" style={{background: color, color: textColor, border: `1px solid ${textColor}20`}}>
+      <i className="ri-price-tag-3-line fs-11 me-1 opacity-75"></i>
       {typeof label === 'object' && label !== null ? JSON.stringify(label) : String(label || "")}
-      <button onClick={onRemove} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:textColor,lineHeight:1,fontSize:14}}>×</button>
+      <button onClick={onRemove} aria-label="Supprimer ce filtre" className="premium-filter-tag-close">×</button>
     </span>
   );
 }
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
-function FilterBar({ filters, onChange, projects, sites, authors, activeCount, onReset, availableLots = [], availablePeriods = [], groups = [] }) {
+function FilterBar({ filters, onChange, projects, authors, activeCount, onReset, availableLots = [], availablePeriods = [] }) { // eslint-disable-line no-unused-vars
   return (
-    <div className="card mb-3"><div className="card-body pb-2">
-      <div className="row g-2 align-items-end">
-        <div className="col-xl-2 col-md-6"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-search-line me-1"></i>Search</label><div className="search-box"><input type="text" className="form-control form-control-sm" placeholder="Titre, développeur, projet…" value={filters.search} onChange={e=>onChange("search",e.target.value)}/><i className="ri-search-line search-icon"></i></div></div>
-        
-        <div className="col-xl-2 col-md-3">
-          <label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-calendar-check-line me-1"></i>Période (Mois)</label>
-          <select className="form-select form-select-sm" value={filters.period} onChange={e=>onChange("period",e.target.value)}>
-            <option value="all">Toutes les périodes</option>
-            {availablePeriods.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+    <div className="card filter-card-premium mb-4">
+      <div className="card-body p-4">
+        {/* ─── Premium Périmètre Switch ───────────────────────────────── */}
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pb-3 mb-4" style={{borderBottom: "1.5px solid #f1f5f9"}}>
+          <div className="d-flex align-items-center gap-3 flex-wrap">
+            <span style={{fontSize: 12, fontWeight: 700, color: "#334155", textTransform: "uppercase", letterSpacing: ".08em", display: "inline-flex", alignItems: "center", gap: 8}}>
+              <span className="p-1 rounded-circle bg-primary-subtle d-inline-flex"><i className="ri-database-2-line text-primary fs-14"></i></span> Périmètre d'analyse
+            </span>
+            <div className="premium-segmented-control">
+              <button 
+                onClick={() => onChange("dataScope", "kpi")}
+                className={`segmented-btn ${filters.dataScope === "kpi" ? "active-kpi" : ""}`}
+              >
+                <i className="ri-shield-check-line me-1"></i> Périmètre KPI (Lot d'extraction)
+              </button>
+              <button 
+                onClick={() => onChange("dataScope", "activity")}
+                className={`segmented-btn ${filters.dataScope === "activity" ? "active-activity" : ""}`}
+              >
+                <i className="ri-calendar-line me-1"></i> Activité Générale (Mois civil)
+              </button>
+            </div>
+          </div>
+
+          {/* Dynamic Context Card/Alert describing the active mode */}
+          <div className={`scope-badge-alert ${filters.dataScope === "kpi" ? "scope-kpi" : "scope-activity"}`}>
+            {filters.dataScope === "kpi" ? (
+              <>
+                <i className="ri-information-line fs-14 icon-kpi"></i>
+                <span><strong>Mode KPI (Défaut) :</strong> Uniquement les MRs validées & non-draft du lot d'extraction. <em>Recommandé pour la cohérence.</em></span>
+              </>
+            ) : (
+              <>
+                <i className="ri-alert-line fs-14 icon-activity"></i>
+                <span><strong>Mode Activité Générale :</strong> Toutes les MRs du mois civil (reviews, assignations & brouillons compris).</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="col-xl-2 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-git-branch-line me-1"></i>Status</label><select className="form-select form-select-sm" value={filters.state} onChange={e=>onChange("state",e.target.value)}><option value="all">All statuses</option><option value="opened">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-folder-2-line me-1"></i>Project</label><select className="form-select form-select-sm" value={filters.project} onChange={e=>onChange("project",e.target.value)}><option value="all">All projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-map-pin-2-line me-1"></i>Site</label><select className="form-select form-select-sm" value={filters.siteId} onChange={e=>onChange("siteId",e.target.value)}><option value="all">Tous</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-team-line me-1"></i>Équipe</label><select className="form-select form-select-sm" value={filters.groupId} onChange={e=>{onChange("groupId",e.target.value);onChange("developerId","all");}}><option value="all">Toutes</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 text-muted fw-semibold mb-1"><i className="ri-user-line me-1"></i>Développeur</label><select className="form-select form-select-sm" value={filters.developerId} onChange={e=>onChange("developerId",e.target.value)}><option value="all">Tous</option>{authors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-        <div className="col-xl-1 col-md-3"><label className="form-label fs-12 mb-1 d-block">&nbsp;</label><button onClick={onReset} className="btn btn-sm w-100" style={{background:activeCount>0?"#f06548":"#f0f0f0",color:activeCount>0?"#fff":"#878a99",border:"none",fontWeight:600,transition:"all .2s"}}>{activeCount>0?<><i className="ri-close-line me-1"></i>{activeCount}</>:<i className="ri-filter-off-line"></i>}</button></div>
-      </div>
-      {/* ─── Vue par Rôle ─────────────────────────────────────────────── */}
-      <div className="d-flex align-items-center gap-2 mt-3 pt-2" style={{borderTop:"1px solid #f0f0f0"}}>
-        <span style={{fontSize:11,fontWeight:700,color:"#878a99",textTransform:"uppercase",letterSpacing:".05em",whiteSpace:"nowrap"}}>
-          <i className="ri-user-settings-line me-1"></i>Vue par rôle :
-        </span>
-        {[
-          {value:"all",      icon:"ri-apps-line",       label:"Tous"},
-          {value:"authored", icon:"ri-quill-pen-line",   label:"Auteur"},
-          {value:"reviewed", icon:"ri-eye-line",         label:"Reviewer"},
-          {value:"assigned", icon:"ri-task-line",         label:"Assigné"},
-        ].map(r=>(
-          <button key={r.value} onClick={()=>onChange("role",r.value)}
-            style={{padding:"4px 14px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap",
-              background:filters.role===r.value?"#405189":"#f0f0f0",
-              color:filters.role===r.value?"#fff":"#6c757d",
-              border:`1px solid ${filters.role===r.value?"#405189":"#e9ecef"}`}}>
-            <i className={`${r.icon} me-1`}></i>{r.label}
-          </button>
-        ))}
-        {filters.role!=="all"&&filters.developerId==="all"&&(
-          <span style={{fontSize:11,color:"#f7b84b",fontStyle:"italic"}}>
-            <i className="ri-information-line me-1"></i>Sélectionnez un auteur pour activer le filtre par rôle
+        <div className="filter-grid-premium">
+          {/* Search */}
+          <div className="filter-item filter-item-search">
+            <label className="filter-label"><i className="ri-search-line me-1 text-primary"></i>Recherche</label>
+            <div className="filter-search-wrap">
+              <i className="ri-search-line filter-search-icon"></i>
+              <input
+                type="text"
+                className="form-control filter-input-premium"
+                placeholder="Titre, développeur, projet…"
+                value={filters.search}
+                onChange={e=>onChange("search",e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Période */}
+          <div className="filter-item">
+            <label className="filter-label"><i className="ri-calendar-check-line me-1 text-primary"></i>Période</label>
+            <div className="filter-select-wrap">
+              <select className="filter-select-premium" value={filters.period} onChange={e=>onChange("period",e.target.value)}>
+                <option value="all">Toutes les périodes</option>
+                {availablePeriods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <i className="ri-arrow-down-s-line filter-select-icon"></i>
+            </div>
+          </div>
+
+          {/* Project */}
+          <div className="filter-item">
+            <label className="filter-label"><i className="ri-folder-2-line me-1 text-primary"></i>Projet</label>
+            <div className="filter-select-wrap">
+              <select className="filter-select-premium" value={filters.project} onChange={e=>onChange("project",e.target.value)}>
+                <option value="all">Tous les projets</option>
+                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <i className="ri-arrow-down-s-line filter-select-icon"></i>
+            </div>
+          </div>
+
+          {/* Développeur */}
+          <div className="filter-item">
+            <label className="filter-label"><i className="ri-user-line me-1 text-primary"></i>Développeur</label>
+            <div className="filter-select-wrap">
+              <select className="filter-select-premium" value={filters.developerId} onChange={e=>onChange("developerId",e.target.value)}>
+                <option value="all">Tous les développeurs</option>
+                {authors.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+              <i className="ri-arrow-down-s-line filter-select-icon"></i>
+            </div>
+          </div>
+
+          {/* Reset */}
+          <div className="filter-item filter-item-reset">
+            <button onClick={onReset} className={`filter-reset-btn ${activeCount > 0 ? 'filter-reset-active' : ''}`}>
+              {activeCount > 0 ? <><i className="ri-close-circle-line me-1"></i>Reset ({activeCount})</> : <><i className="ri-filter-off-line me-1"></i>Réinitialiser</>}
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Vue par Rôle ─────────────────────────────────────────────── */}
+        <div className="d-flex align-items-center gap-2 mt-4 pt-3 flex-wrap" style={{borderTop:"1.5px solid #f1f5f9"}}>
+          <span style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:".08em",whiteSpace:"nowrap", display:"inline-flex", alignItems:"center", gap:6}}>
+            <span className="p-1 rounded-circle bg-light d-inline-flex"><i className="ri-user-settings-line text-muted"></i></span> Rôle de contribution :
           </span>
+          <div className="premium-segmented-control-small">
+            {[
+              {value:"all",      icon:"ri-apps-line",       label:"Tous les rôles"},
+              {value:"authored", icon:"ri-quill-pen-line",   label:"Auteur"},
+              {value:"reviewed", icon:"ri-eye-line",         label:"Reviewer"},
+            ].map(r=>(
+              <button key={r.value} onClick={()=>onChange("role",r.value)}
+                className={`segmented-btn-small ${filters.role===r.value?"active":""}`}
+              >
+                <i className={`${r.icon} me-1`}></i>{r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {activeCount>0&&(
+          <div className="d-flex flex-wrap gap-2 mt-3 pt-2">
+            {filters.search&&<FilterTag label={`"${filters.search}"`} onRemove={()=>onChange("search","")}/>}
+            {filters.period!=="all"&&<FilterTag label={`Période: ${availablePeriods.find(p=>String(p.id)===String(filters.period))?.name||filters.period}`} onRemove={()=>onChange("period","all")} color="#eff6ff" textColor="#1e40af"/>}
+            {filters.state!=="all"&&<FilterTag label={`Status: ${STATE_CFG[filters.state]?.label}`} onRemove={()=>onChange("state","all")} color="#eff6ff" textColor="#1e40af"/>}
+            {filters.project!=="all"&&<FilterTag label={`Projet: ${filters.project}`} onRemove={()=>onChange("project","all")} color="#e0e7ff" textColor="#3730a3"/>}
+            {filters.developerId!=="all"&&<FilterTag label={`Développeur: ${(authors||[]).find(d=>String(d.id)===filters.developerId)?.name||filters.developerId}`} onRemove={()=>onChange("developerId","all")} color="#f3e8ff" textColor="#6b21a8"/>}
+            {filters.role!=="all"&&filters.developerId!=="all"&&<FilterTag label={`Rôle: ${filters.role}`} onRemove={()=>onChange("role","all")} color="#ecfdf5" textColor="#065f46"/>}
+          </div>
         )}
       </div>
-      {activeCount>0&&(
-        <div className="d-flex flex-wrap gap-2 mt-2">
-          {filters.search&&<FilterTag label={`"${filters.search}"`} onRemove={()=>onChange("search","")}/>}
-          {filters.period!=="all"&&<FilterTag label={`Période: ${availablePeriods.find(p=>String(p.id)===String(filters.period))?.name||filters.period}`} onRemove={()=>onChange("period","all")} color="#dce9ff" textColor="#1a56db"/>}
-          {filters.state!=="all"&&<FilterTag label={`Status: ${STATE_CFG[filters.state]?.label}`} onRemove={()=>onChange("state","all")} color="#dce9ff" textColor="#1a56db"/>}
-          {filters.project!=="all"&&<FilterTag label={`Project: ${filters.project}`} onRemove={()=>onChange("project","all")} color="#e8ecf8" textColor="#405189"/>}
-          {filters.siteId!=="all"&&<FilterTag label={`Site: ${(sites||[]).find(s=>String(s.id)===filters.siteId)?.name}`} onRemove={()=>onChange("siteId","all")} color="#fef3dc" textColor="#b78a1e"/>}
-          {filters.groupId!=="all"&&<FilterTag label={`Équipe: ${groups.find(g=>String(g.id)===String(filters.groupId))?.name||"Inconnue"}`} onRemove={()=>onChange("groupId","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
-          {filters.developerId!=="all"&&<FilterTag label={`Développeur: ${(authors||[]).find(d=>String(d.id)===filters.developerId)?.name||filters.developerId}`} onRemove={()=>onChange("developerId","all")} color="#ede9fb" textColor="#5b21b6"/>}
-          {filters.role!=="all"&&filters.developerId!=="all"&&<FilterTag label={`Rôle: ${filters.role}`} onRemove={()=>onChange("role","all")} color="#d4f5f0" textColor="#0a7a6a"/>}
-        </div>
-      )}
-    </div></div>
+    </div>
   );
 }
 
@@ -282,7 +380,7 @@ function StatusDonut({ opened, merged, closed }) {
 }
 
 // ─── Top Contributors (Contextual Breakdown) ──────────────────────────────────
-function TopContributors({ mrs, selectedAuthor, developers, filters }) {
+function TopContributors({ mrs, selectedAuthor, developers, assignedDevs, filters }) {
   // Mode Individuel : Si un auteur est sélectionné (Vue Axel)
   if (selectedAuthor && selectedAuthor !== "all") {
     let authored = 0, reviewed = 0, assigned = 0;
@@ -355,9 +453,13 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
   }
 
   // Mode Global : La liste des meilleurs contributeurs (Vue Manager)
+  // [FIX MISSION-STRICT] On utilise assignedDevs (développeurs affectés au projet)
+  // au lieu de developers (tous les développeurs de l'entreprise).
+  // Ceci évite d'afficher Vaibhav Malik (mission gitlab-shell) comme auteur sur inkscape.
   const validDevs = useMemo(() => {
     const map = new Map();
-    (developers || []).forEach(d => {
+    const devSource = assignedDevs && assignedDevs.length > 0 ? assignedDevs : (developers || []);
+    devSource.forEach(d => {
       const siteMatch = !filters?.site || filters.site === "all" || d.site === filters.site;
       const groupMatch = !filters?.group || filters.group === "all" || (d.group_ids || []).map(Number).includes(parseInt(filters.group));
       
@@ -367,7 +469,7 @@ function TopContributors({ mrs, selectedAuthor, developers, filters }) {
       }
     });
     return map;
-  }, [developers, filters?.site, filters?.group]);
+  }, [assignedDevs, developers, filters?.site, filters?.group]);
 
   const map={};
   mrs.forEach(mr=>{
@@ -498,12 +600,17 @@ function ProjectsBreakdown({ mrs }) {
 }
 
 // ─── MR Table ─────────────────────────────────────────────────────────────────
-function MRTable({ mrs, onDetail, lots = [] }) {
+function MRTable({ mrs, onDetail, lots = [], filters = {}, developers = [], selectedPeriodObj }) {
   const [page,   setPage]   = useState(1);
   const [sortKey,setSortKey]= useState("created_at_gitlab");
   const [sortDir,setSortDir]= useState("desc");
   const perPage=10;
   useEffect(()=>setPage(1),[mrs]);
+
+  const selectedDev = filters.developerId && filters.developerId !== "all" 
+    ? developers.find(d => String(d.id) === String(filters.developerId)) 
+    : null;
+  const selectedDevName = selectedDev ? (selectedDev.name || selectedDev.gitlab_username || "").toLowerCase() : "";
 
   const sorted=useMemo(()=>[...mrs].sort((a,b)=>{
     let va=a[sortKey]??"", vb=b[sortKey]??"";
@@ -516,10 +623,9 @@ function MRTable({ mrs, onDetail, lots = [] }) {
   const totalPages=Math.ceil(sorted.length/perPage);
   const paginated=sorted.slice((page-1)*perPage,page*perPage);
   const handleSort=(key)=>{ if(sortKey===key)setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(key);setSortDir("asc");} };
-  const SortIcon=({k})=>{ if(sortKey!==k)return<i className="ri-arrow-up-down-line ms-1 opacity-25"></i>; return sortDir==="asc"?<i className="ri-arrow-up-line ms-1 text-primary"></i>:<i className="ri-arrow-down-line ms-1 text-primary"></i>; };
 
   // ✅ FIX : URL.revokeObjectURL(url) ajouté après a.click() — anti memory-leak
-  const exportCSV=()=>{
+  const exportCSV={exportCSV:()=>{
     const headers=["ID","Title","Author","Project","Status","Approved","Draft","Created","Time to approve (h)"];
     const rows=sorted.map(mr=>[`!${mr.gitlab_mr_id}`,`"${(mr.title||"").replace(/"/g,'""')}"`,mr.author||"",mr.project||"",mr.state||"",mr.approved?"Yes":"No",mr.is_draft?"Yes":"No",mr.created_at_gitlab?new Date(mr.created_at_gitlab).toLocaleDateString("fr-FR"):"",mr.time_to_approve!=null?mr.time_to_approve.toFixed(1):""]);
     const csv=[headers,...rows].map(r=>r.join(",")).join("\n");
@@ -527,155 +633,321 @@ function MRTable({ mrs, onDetail, lots = [] }) {
     const a=document.createElement("a");
     a.href=url; a.download="merge_requests.csv"; a.click();
     URL.revokeObjectURL(url); // ✅ FIX
+  }}.exportCSV;
+
+  // État de survol par ligne
+  const [hoveredRow, setHoveredRow] = useState(null);
+
+  const STATE_ACCENT = {
+    merged:  { line: "#0ab39c", bg: "rgba(10,179,156,0.06)",  badge: { bg: "#d4f5f0", color: "#0a7a6a" } },
+    opened:  { line: "#405189", bg: "rgba(64,81,137,0.05)",   badge: { bg: "#e8ecf8", color: "#405189" } },
+    closed:  { line: "#f06548", bg: "rgba(240,101,72,0.05)",  badge: { bg: "#fde8e8", color: "#9b1c1c" } },
   };
 
   const COLS=[
-    {key:"gitlab_mr_id",     label:"ID",      sortable:true },
-    {key:"title",            label:"Title",   sortable:true },
-    {key:"author",           label:"Contributeurs",  sortable:true },
-    {key:"project",          label:"Project", sortable:true },
-    {key:"state",            label:"Status",  sortable:true },
-    {key:"approved",         label:"Approved",sortable:false},
-    {key:"user_notes_count", label:"Comms",   sortable:true },
-    {key:"commits_count",    label:"Commits", sortable:true },
-    {key:"time_to_approve",  label:"Revue",   sortable:true },
-    {key:"created_at_gitlab",label:"Created", sortable:true },
-    {key:"_actions",         label:"",        sortable:false},
+    {key:"gitlab_mr_id",     label:"ID",           sortable:true },
+    {key:"title",            label:"Titre",         sortable:true },
+    {key:"author",           label:"Contributeurs", sortable:true, tooltip:"Auteur, reviewer(s) et assignee(s)" },
+    {key:"project",          label:"Projet",        sortable:true },
+    {key:"state",            label:"Statut",        sortable:true },
+    {key:"approved",         label:"Approuvé",      sortable:false},
+    {key:"user_notes_count", label:"Comms",         sortable:true, tooltip:"Commentaires" },
+    {key:"commits_count",    label:"Commits",       sortable:true, tooltip:"Commits dans la MR" },
+    {key:"time_to_approve",  label:"Revue",         sortable:true, tooltip:"Délai d'approbation (h) ou Lead Time DORA" },
+    {key:"created_at_gitlab",label:"Créée",         sortable:true },
+    {key:"_actions",         label:"",              sortable:false},
   ];
 
   return (
-    <div className="card">
-      <div className="card-header d-flex align-items-center gap-3">
-        <h5 className="card-title mb-0 flex-grow-1">
-          <i className="ri-git-pull-request-line me-2 text-primary"></i>Merge Requests
-          <span style={{marginLeft:10,background:"#e8ecf8",color:"#405189",fontSize:11,fontWeight:700,borderRadius:20,padding:"2px 10px"}}>{mrs.length}</span>
-        </h5>
-        <button onClick={exportCSV} className="btn btn-sm btn-soft-success"><i className="ri-download-2-line me-1"></i>Export CSV</button>
+    <div className="mr-table-premium-card">
+      {/* ── En-tête de la carte ── */}
+      <div className="mr-table-header">
+        <div className="mr-table-header-left">
+          <div className="mr-table-header-icon">
+            <i className="ri-git-pull-request-line"></i>
+          </div>
+          <div>
+            <h5 className="mr-table-title">Merge Requests</h5>
+            <p className="mr-table-subtitle">Liste complète des MRs correspondant aux filtres actifs</p>
+          </div>
+          <span className="mr-count-badge">{mrs.length} MRs</span>
+        </div>
+        <button onClick={exportCSV} className="mr-export-btn">
+          <i className="ri-download-2-line"></i>
+          <span>Export CSV</span>
+        </button>
       </div>
-      <div className="card-body p-0">
+
+      {/* ── Corps du tableau ── */}
+      <div className="mr-table-body">
         <div className="table-responsive">
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"13.5px"}}>
-            <thead><tr style={{background:"#f8f9fa"}}>
-              {COLS.map(col=>(
-                <th key={col.key} onClick={col.sortable?()=>handleSort(col.key):undefined}
-                  style={{padding:"12px 16px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",color:"#878a99",borderBottom:"1px solid #e9ebec",whiteSpace:"nowrap",cursor:col.sortable?"pointer":"default",userSelect:"none"}}>
-                  {col.label}{col.sortable&&<SortIcon k={col.key}/>}
-                </th>
-              ))}
-            </tr></thead>
+          <table className="mr-table">
+            <thead>
+              <tr className="mr-table-head-row">
+                {COLS.map(col => (
+                  <th key={col.key}
+                    className={`mr-th ${col.sortable ? 'mr-th-sortable' : ''} ${sortKey === col.key ? 'mr-th-active' : ''}`}
+                    onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                    title={col.tooltip}
+                  >
+                    <span className="mr-th-inner">
+                      {col.label}
+                      {col.tooltip && <span className="mr-th-info">ⓘ</span>}
+                      {col.sortable && (
+                        <span className="mr-sort-icon">
+                          {sortKey === col.key
+                            ? (sortDir === "asc" ? <i className="ri-arrow-up-line"></i> : <i className="ri-arrow-down-line"></i>)
+                            : <i className="ri-arrow-up-down-line opacity-25"></i>
+                          }
+                        </span>
+                      )}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {paginated.length===0?(
-                <tr><td colSpan={COLS.length} style={{textAlign:"center",padding:"52px 16px",color:"#878a99"}}><div style={{fontSize:40,marginBottom:10,opacity:.3}}><i className="ri-git-merge-line"></i></div><p style={{margin:0,fontSize:14,fontWeight:600}}>No results found</p><p style={{margin:"4px 0 0",fontSize:12}}>Try adjusting your filters</p></td></tr>
-              ):paginated.map((mr,i)=>{
-                const cfg=STATE_CFG[mr.state]||STATE_CFG.opened;
-                const aCol=avatarColor(mr.author||"");
-                const isApproved=mr.approved===true||mr.approved===1;
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={COLS.length} className="mr-empty-state">
+                    <div className="mr-empty-icon"><i className="ri-git-merge-line"></i></div>
+                    <p className="mr-empty-title">Aucun résultat</p>
+                    <p className="mr-empty-sub">Essayez d'ajuster vos filtres</p>
+                  </td>
+                </tr>
+              ) : paginated.map((mr, i) => {
+                const accent = STATE_ACCENT[mr.state] || STATE_ACCENT.opened;
+                const stateCfg = STATE_CFG[mr.state] || STATE_CFG.opened;
+                const aCol = avatarColor(mr.author || "");
+                const isApproved = mr.approved === true || mr.approved === 1;
+                const isAuthorSelected = selectedDev && (mr.developer_id === parseInt(filters.developerId) || (mr.author || "").toLowerCase().includes(selectedDevName));
+                const isReviewerSelected = selectedDev && (mr.reviewer || "").toLowerCase().includes(selectedDevName);
+                const isAssigneeSelected = selectedDev && (mr.assignee || "").toLowerCase().includes(selectedDevName);
+                const isHovered = hoveredRow === i;
+
                 return (
-                  <tr key={i} style={{borderBottom:"1px solid #f0f0f0",transition:"background .12s"}}
-                    onMouseEnter={e=>e.currentTarget.style.background="#f8f9fc"}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <td style={{padding:"14px 16px"}}>
-                      <div className="d-flex align-items-center gap-2">
-                        <code style={{background:"#e8ecf8",color:"#405189",borderRadius:4,padding:"3px 8px",fontWeight:700,fontSize:12}}>!{mr.gitlab_mr_id}</code>
+                  <tr
+                    key={i}
+                    className="mr-table-row"
+                    style={{
+                      background: isHovered ? accent.bg : 'transparent',
+                      borderLeft: `3px solid ${isHovered ? accent.line : 'transparent'}`,
+                    }}
+                    onMouseEnter={() => setHoveredRow(i)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                  >
+                    {/* ── ID & Lot ── */}
+                    <td className="mr-td">
+                      <div className="mr-id-cell">
+                        <span className="mr-id-chip">!{mr.gitlab_mr_id}</span>
                         {mr.extraction_lot_id && (
-                          <span 
-                            title={`Session d'extraction Lot #${mr.extraction_lot_id}`}
+                          <span
+                            className="mr-lot-chip"
+                            title={`Lot d'extraction #${mr.extraction_lot_id}`}
                             style={{
                               background: getLotColor(mr.extraction_lot_id).bg,
                               color: getLotColor(mr.extraction_lot_id).text,
-                              borderRadius: 20, padding: "1px 6px", fontSize: 10, fontWeight: 700,
-                              border: `1px solid ${getLotColor(mr.extraction_lot_id).text}22`
+                              border: `1px solid ${getLotColor(mr.extraction_lot_id).text}33`,
                             }}
                           >
                             #{String(mr.extraction_lot_id || "")}
                           </span>
                         )}
-                        {mr.is_draft&&<span style={{background:"#f0f0f0",color:"#6c757d",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:600}}>Draft</span>}
+                        {mr.is_draft && <span className="mr-draft-chip">Draft</span>}
                       </div>
                     </td>
-                    <td style={{padding:"14px 16px",maxWidth:260}}>
-                      <div className="d-flex flex-column">
-                        <div style={{fontWeight:600,color:"#212529",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240,cursor:"pointer"}} title={String(mr.title || "")} onClick={()=>onDetail(mr)}>{String(mr.title || "")}</div>
-                        {/* [CLEANUP] Retrait de l'alerte d'historique pour une UI plus épurée */}
+
+                    {/* ── Titre ── */}
+                    <td className="mr-td" style={{ maxWidth: 280 }}>
+                      <div
+                        className="mr-title-text"
+                        title={String(mr.title || "")}
+                        onClick={() => onDetail(mr)}
+                      >
+                        {String(mr.title || "")}
                       </div>
                     </td>
-                    <td style={{padding:"14px 16px"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{width:30,height:30,borderRadius:"50%",background:aCol.bg,color:aCol.text,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{String(getInitials(mr.author) || "")}</span>
-                        <div style={{display:"flex",flexDirection:"column"}}>
-                          <span style={{color:"#495057",fontSize:13,whiteSpace:"nowrap",fontWeight:600}}>{String(mr.author||"Unknown")}</span>
-                          <div style={{display: "flex", gap: "4px", marginTop: "2px", flexWrap: "wrap"}}>
-                            {mr.reviewer && <span style={{fontSize:10,color:"#e8ecf8",background:"#405189",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Rev: {String(mr.reviewer || "")}</span>}
-                            {mr.assignee && mr.assignee !== mr.reviewer && <span style={{fontSize:10,color:"#1a6fa3",background:"#d7edf9",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",fontWeight:600}}>Assig: {String(mr.assignee || "")}</span>}
+
+                    {/* ── Contributeurs ── */}
+                    <td className="mr-td">
+                      <div className="mr-contrib-cell">
+                        <div
+                          className="mr-avatar"
+                          style={{ background: aCol.bg, color: aCol.text }}
+                        >
+                          {String(getInitials(mr.author) || "")}
+                        </div>
+                        <div className="mr-contrib-info">
+                          <div className="mr-contrib-author-row">
+                            <span className="mr-contrib-name">{String(mr.author || "Unknown")}</span>
+                            <span
+                              className="mr-role-badge mr-role-author"
+                              style={{ boxShadow: isAuthorSelected ? "0 0 0 2px #405189" : "none" }}
+                            >
+                              <i className="ri-quill-pen-line"></i> Auteur
+                            </span>
+                          </div>
+                          <div className="mr-contrib-roles">
+                            {mr.reviewer && (
+                              <span
+                                className="mr-role-badge mr-role-reviewer"
+                                style={{ boxShadow: isReviewerSelected ? "0 0 0 2px #0a7a6a" : "none" }}
+                              >
+                                <i className="ri-eye-line"></i> {String(mr.reviewer || "")}
+                              </span>
+                            )}
+                            {mr.assignee && mr.assignee !== mr.reviewer && (
+                              <span
+                                className="mr-role-badge mr-role-assignee"
+                                style={{ boxShadow: isAssigneeSelected ? "0 0 0 2px #5b21b6" : "none" }}
+                              >
+                                <i className="ri-task-line"></i> {String(mr.assignee || "")}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td style={{padding:"14px 16px"}}><span style={{color:"#6c757d",fontSize:13,whiteSpace:"nowrap"}}><i className="ri-folder-3-line me-1" style={{color:"#878a99"}}></i>{String(mr.project||"Unknown")}</span></td>
-                    <td style={{padding:"14px 16px"}}><span style={{background:cfg.bg,color:cfg.color,borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><i className={cfg.icon}></i>{cfg.label}</span></td>
-                    <td style={{padding:"14px 16px"}}>{isApproved?<span style={{background:"#d7edf9",color:"#1a6fa3",borderRadius:20,padding:"4px 12px",fontSize:11.5,fontWeight:700,display:"inline-flex",alignItems:"center",gap:5}}><i className="ri-shield-check-line"></i>Yes</span>:<span style={{color:"#c8cbcf",fontSize:18}}>—</span>}</td>
-                    
-                    {/* Colonne COMMS (Commentaires) */}
-                    <td style={{padding:"14px 16px"}}>
-                      <div className="d-flex align-items-center gap-1">
-                        <i className="ri-chat-1-line text-muted"></i>
-                          {String(mr.user_notes_count || 0)}
+
+                    {/* ── Projet ── */}
+                    <td className="mr-td">
+                      <div className="mr-project-cell">
+                        <i className="ri-folder-3-line mr-project-icon"></i>
+                        <span className="mr-project-name">{String(mr.project || "Unknown")}</span>
                       </div>
                     </td>
 
-                    {/* Colonne COMMITS */}
-                    <td style={{padding:"14px 16px"}}>
-                      <div className="d-flex align-items-center gap-1">
-                        <i className="ri-git-commit-line text-muted"></i>
-                          {String(mr.commits_count || 0)}
+                    {/* ── Statut ── */}
+                    <td className="mr-td">
+                      <span
+                        className="mr-status-badge"
+                        style={{
+                          background: stateCfg.bg,
+                          color: stateCfg.color,
+                          boxShadow: `0 2px 8px ${accent.line}30`,
+                        }}
+                      >
+                        <i className={stateCfg.icon}></i>
+                        {stateCfg.label}
+                      </span>
+                    </td>
+
+                    {/* ── Approuvé ── */}
+                    <td className="mr-td">
+                      {isApproved ? (
+                        <span className="mr-approved-badge">
+                          <i className="ri-shield-check-line"></i> Yes
+                        </span>
+                      ) : (
+                        <span className="mr-null-dash">—</span>
+                      )}
+                    </td>
+
+                    {/* ── Commentaires ── */}
+                    <td className="mr-td">
+                      <div className="mr-counter-cell">
+                        <i className="ri-chat-1-line mr-counter-icon"></i>
+                        <span className="mr-counter-val">{String(mr.user_notes_count || 0)}</span>
                       </div>
                     </td>
-                    {/* Colonne REVUE — exact ou proxy Lead Time (DORA) */}
+
+                    {/* ── Commits ── */}
+                    <td className="mr-td">
+                      <div className="mr-counter-cell">
+                        <i className="ri-git-commit-line mr-counter-icon"></i>
+                        <span className="mr-counter-val">{String(mr.commits_count || 0)}</span>
+                      </div>
+                    </td>
+
+                    {/* ── Revue ── */}
                     {(() => {
                       const rt = reviewTime(mr);
-                      if (!rt) return <td style={{padding:"14px 16px"}}><span style={{color:"#c8cbcf"}}>—</span></td>;
-                      const color = rt.hours === 0 ? "#0ab39c" : rt.hours < 2 ? "#0ab39c" : rt.hours < 24 ? "#f7b84b" : "#f06548";
+                      if (!rt) return <td className="mr-td"><span className="mr-null-dash">—</span></td>;
+                      const reviewColor = rt.hours === 0 ? "#0ab39c" : rt.hours < 2 ? "#0ab39c" : rt.hours < 24 ? "#f7b84b" : "#f06548";
+                      const reviewBg   = rt.hours === 0 ? "#ecfdf5" : rt.hours < 2 ? "#ecfdf5" : rt.hours < 24 ? "#fffbeb" : "#fef2f2";
                       return (
-                        <td style={{padding:"14px 16px"}}>
-                          <span style={{fontSize:12,fontWeight:600,color}} title={rt.isExact ? "Temps d'approbation exact" : "Lead Time (proxy DORA) : merged_at − created_at"}>
+                        <td className="mr-td">
+                          <span
+                            className="mr-review-badge"
+                            style={{ background: reviewBg, color: reviewColor }}
+                            title={rt.isExact ? "Temps d'approbation exact" : "Lead Time DORA : merged_at − created_at"}
+                          >
+                            <i className="ri-timer-flash-line"></i>
                             {rt.isExact ? "" : "~"}{rt.hours === 0 ? "Instant" : `${rt.hours.toFixed(1)}h`}
+                            {!rt.isExact && <span style={{ opacity: 0.55, fontSize: 9, marginLeft: 2 }}>ⓘ</span>}
                           </span>
-                          {!rt.isExact && (
-                            <span style={{marginLeft:4,fontSize:10,color:"#adb5bd"}} title="Lead Time approximé">ⓘ</span>
-                          )}
                         </td>
                       );
                     })()}
-                    <td style={{padding:"14px 16px",whiteSpace:"nowrap"}}>
-                      <div className="d-flex flex-column">
-                        <span style={{color:"#495057",fontSize:12.5,fontWeight:600}}><i className="ri-calendar-line me-1 text-muted"></i>{fmtDate(mr.created_at_gitlab)}</span>
+
+                    {/* ── Créée ── */}
+                    <td className="mr-td">
+                      <div className="mr-date-cell">
+                        <span className="mr-date-main">
+                          <i className="ri-calendar-line mr-date-icon"></i>
+                          {fmtDate(mr.created_at_gitlab)}
+                        </span>
                         {mr.updated_at_gitlab && (
-                          <span style={{color:"#878a99",fontSize:11,marginTop:2}} title="Dernière activité détectée">
-                            <i className="ri-history-line me-1"></i>Actif: {fmtDate(mr.updated_at_gitlab)}
+                          <span className="mr-date-sub" title="Dernière activité">
+                            <i className="ri-history-line"></i> {fmtDate(mr.updated_at_gitlab)}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td style={{padding:"14px 16px"}}><button onClick={()=>onDetail(mr)} className="btn btn-sm btn-soft-primary" style={{fontSize:11,padding:"3px 10px"}}><i className="ri-eye-line"></i></button></td>
+
+                    {/* ── Action ── */}
+                    <td className="mr-td">
+                      <button
+                        onClick={() => onDetail(mr)}
+                        className="mr-detail-btn"
+                        title="Voir le détail"
+                      >
+                        <i className="ri-eye-line"></i>
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        {totalPages>1&&(
-          <div style={{padding:"14px 20px",borderTop:"1px solid #e9ebec",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-            <p style={{margin:0,fontSize:13,color:"#878a99"}}>Showing <strong style={{color:"#495057"}}>{Math.min((page-1)*perPage+1,sorted.length)}–{Math.min(page*perPage,sorted.length)}</strong> of <strong style={{color:"#495057"}}>{sorted.length}</strong></p>
-            <div style={{display:"flex",gap:4}}>
-              <button onClick={()=>setPage(p=>p-1)} disabled={page===1} style={{width:32,height:32,borderRadius:6,border:"1px solid #dee2e6",background:"transparent",cursor:page===1?"not-allowed":"pointer",color:page===1?"#c8cbcf":"#495057"}}>←</button>
-              {Array.from({length:totalPages},(_,i)=>i+1).filter(p=>Math.abs(p-page)<=2).map(p=>(
-                <button key={p} onClick={()=>setPage(p)} style={{width:32,height:32,borderRadius:6,fontSize:13,fontWeight:p===page?700:400,cursor:"pointer",border:`1px solid ${p===page?"#405189":"#dee2e6"}`,background:p===page?"#405189":"transparent",color:p===page?"#fff":"#495057"}}>{p}</button>
-              ))}
-              <button onClick={()=>setPage(p=>p+1)} disabled={page>=totalPages} style={{width:32,height:32,borderRadius:6,border:"1px solid #dee2e6",background:"transparent",cursor:page>=totalPages?"not-allowed":"pointer",color:page>=totalPages?"#c8cbcf":"#495057"}}>→</button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ── Pagination ── */}
+      {totalPages > 1 && (
+        <div className="mr-pagination">
+          <p className="mr-pagination-info">
+            Affichage <strong>{Math.min((page - 1) * perPage + 1, sorted.length)}–{Math.min(page * perPage, sorted.length)}</strong> sur <strong>{sorted.length}</strong> résultats
+          </p>
+          <div className="mr-pagination-controls">
+            <button
+              className="mr-page-btn"
+              onClick={() => setPage(p => p - 1)}
+              disabled={page === 1}
+            >
+              <i className="ri-arrow-left-s-line"></i>
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => Math.abs(p - page) <= 2)
+              .map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`mr-page-btn ${p === page ? 'mr-page-active' : ''}`}
+                >
+                  {p}
+                </button>
+              ))}
+            <button
+              className="mr-page-btn"
+              onClick={() => setPage(p => p + 1)}
+              disabled={page >= totalPages}
+            >
+              <i className="ri-arrow-right-s-line"></i>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -687,13 +959,10 @@ const INITIAL_FILTERS = {
   period: "all",
   state: "all",
   project: "all",
-  siteId: "all",
-  groupId: "all",
   developerId: "all",
   role: "all",
   approved: "all",
-  dateFrom: "",
-  dateTo: ""
+  dataScope: "kpi"
 };
 // [SENIOR UTILS] Extraction unique des projets pour la liste déroulante
 const extractProjects = (mrs) => {
@@ -715,8 +984,6 @@ export default function MergePage() {
   const [lots,     setLots]      = useState([]);    
   const [periods,  setPeriods]   = useState([]);
   const [developers, setDevelopers] = useState([]);
-  const [groups,   setGroups]    = useState([]);
-  const [allSites, setAllSites]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState({
@@ -724,24 +991,26 @@ export default function MergePage() {
     project: searchParams.get("project_id") || searchParams.get("project") || "all",
     lot: searchParams.get("lot_id") || "all",
     period: searchParams.get("period_id") || "all",
-    developerId: searchParams.get("developer_id") || "all",
-    siteId: searchParams.get("site_id") || "all",
-    groupId: searchParams.get("group_id") || "all"
+    developerId: searchParams.get("developer_id") || "all"
   });
   const [error,    setError]    = useState(null);
   const [detailMr, setDetailMr] = useState(null);
   const [spinning, setSpinning] = useState(false);
   const [currentPeriod, setCurrentPeriod] = useState(null);
 
+  const selectedPeriodObj = useMemo(() => {
+    if (filters.period === "all" || !periods || periods.length === 0) return null;
+    return periods.find(p => String(p.id) === String(filters.period));
+  }, [periods, filters.period]);
+
   useEffect(() => {
     // Phase 1 : Load configuration metadata (Projects and Periods)
     const initData = async () => {
       try {
-        const [projRes, perRes, currRes, siteRes] = await Promise.all([
+        const [projRes, perRes, currRes] = await Promise.all([
           api.get("/projects"),
           api.get("/periods"),
-          api.get("/periods/current").catch(() => ({ data: null })),
-          api.get("/sites").catch(() => ({ data: [] }))
+          api.get("/periods/current").catch(() => ({ data: null }))
         ]);
         const projsData = Array.isArray(projRes.data) ? projRes.data : (projRes.data?.items ?? []);
         const periodsData = Array.isArray(perRes.data) ? perRes.data : (perRes.data?.items ?? []);
@@ -750,7 +1019,6 @@ export default function MergePage() {
         setProjects(projsData);
         setPeriods(periodsData);
         setCurrentPeriod(cur);
-        setAllSites(Array.isArray(siteRes.data) ? siteRes.data : (siteRes.data?.items ?? []));
 
         // Default period logic: Only if NOT coming from a specific lot/context
         if (cur && filters.period === "all" && !searchParams.get("period_id") && !searchParams.get("lot_id")) {
@@ -768,8 +1036,6 @@ export default function MergePage() {
     if (projects.length === 0 || periods.length === 0) return;
 
     const urlDevId = searchParams.get("developer_id");
-    const urlSiteId = searchParams.get("site_id");
-    const urlGroupId = searchParams.get("group_id");
     const urlLotId = searchParams.get("lot_id");
     const urlProjectId = searchParams.get("project_id");
     const urlPeriodId = searchParams.get("period_id");
@@ -778,8 +1044,6 @@ export default function MergePage() {
       let next = { ...prev };
       
       if (urlDevId) next.developerId = urlDevId;
-      if (urlSiteId) next.siteId = urlSiteId;
-      if (urlGroupId) next.groupId = urlGroupId;
       if (urlLotId) next.lot = urlLotId;
       if (urlProjectId) next.project = urlProjectId;
       if (urlPeriodId) next.period = urlPeriodId;
@@ -823,25 +1087,15 @@ export default function MergePage() {
       let devs = [];
       try {
         const periodParam = filters.period !== "all" ? `?active_only=true&period_id=${filters.period}` : "?active_only=true";
-        const [dRes, gRes] = await Promise.all([
-          api.get(`/developers${periodParam}`),
-          api.get("/developer-groups")
-        ]);
+        const dRes = await api.get(`/developers${periodParam}`);
         const rawDevs = Array.isArray(dRes.data)?dRes.data:(dRes.data?.items??[]);
         // SENIOR: Strict Data Parity - Only use validated (HR/CSV) developers in filters
         devs = rawDevs.filter(d => d.is_validated === true && d.is_bot === false);
         setDevelopers(devs);
-        setGroups(Array.isArray(gRes.data)?gRes.data:(gRes.data?.items??[]));
       } catch (e) {
         console.error("Metadata fetch error", e);
       }
 
-      // [SENIOR FIX] Dictionnaire pour résolution rapide des sites des acteurs
-      const nameToSite = {};
-      devs.forEach(d => {
-        if (d.name) nameToSite[d.name.toLowerCase()] = d.primary_site_id;
-        if (d.gitlab_username) nameToSite[d.gitlab_username.toLowerCase()] = d.primary_site_id;
-      });
       
       // 2. Fetch Data (Optimized Strategy)
       let data = [];
@@ -853,7 +1107,10 @@ export default function MergePage() {
           ?? projects.find(p => p.name === filters.project)?.id;
 
       if (targetProjectId !== undefined) {
-        const params = { exclude_draft: false };
+        const params = { 
+          exclude_draft: false,
+          author_only: filters.dataScope === "kpi"
+        };
         // ── PRIORITÉ : lot_id prend le dessus sur period_id (drill-down depuis ExtractionLotsPage)
         if (filters.lot !== "all") {
           params.lot_id = parseInt(filters.lot);
@@ -898,8 +1155,6 @@ export default function MergePage() {
             developer: devInfo || mr.developer,
             site_id: devInfo?.primary_site_id || mr.developer?.primary_site_id || mr.site_id,
             group_ids: devInfo?.group_ids || mr.developer?.group_ids || [],
-            reviewer_site: nameToSite[revName.toLowerCase()] || null,
-            assignee_site: nameToSite[assName.toLowerCase()] || null,
             updated_at_gitlab: mr.updated_at_gitlab,
             reviewer: revName || null,
             assignee: assName || null
@@ -952,28 +1207,6 @@ export default function MergePage() {
       .sort((a,b) => a.name.localeCompare(b.name));
   }, [assignedDevs]);
 
-  // Derive assigned teams based on assigned devs
-  const assignedGroupIds = useMemo(() => {
-    const ids = new Set();
-    assignedDevs.forEach(d => {
-      if (d.group_ids && Array.isArray(d.group_ids)) {
-        d.group_ids.forEach(gId => ids.add(String(gId)));
-      }
-    });
-    return ids;
-  }, [assignedDevs]);
-
-  const groupList = useMemo(() => {
-    if (!groups || groups.length === 0) return [];
-    return groups
-      .filter(g => filters.project === "all" || assignedGroupIds.has(String(g.id)))
-      .map(g => ({ 
-        id: String(g.id), 
-        name: String(g.name || "Unnamed Group") 
-      }))
-      .sort((a,b) => a.name.localeCompare(b.name));
-  }, [groups, assignedGroupIds, filters.project]);
-
   const projectList = useMemo(() => {
     if (!projects || projects.length === 0) return [];
     return projects.map(p => {
@@ -987,110 +1220,135 @@ export default function MergePage() {
     }).sort((a,b) => a.name.localeCompare(b.name));
   }, [projects]);
 
-  // Derive assigned sites based on assigned devs
-  const assignedSiteIds = useMemo(() => {
-    const ids = new Set();
-    assignedDevs.forEach(d => {
-      if (d.sites && Array.isArray(d.sites)) {
-        d.sites.forEach(s => ids.add(String(s.site_id)));
-      } else if (d.primary_site_id) {
-        ids.add(String(d.primary_site_id));
-      }
-    });
-    return ids;
-  }, [assignedDevs]);
-
-  const siteList = useMemo(() => {
-    if (!allSites || allSites.length === 0) return [];
-    return allSites
-      .filter(s => filters.project === "all" || assignedSiteIds.has(String(s.id)))
-      .sort((a,b) => a.name.localeCompare(b.name));
-  }, [allSites, assignedSiteIds, filters.project]);
-
   //  SENIOR AUTO-RESET : Désactivé pour permettre la navigation multi-contexte
 
   const activeFilterCount=useMemo(()=>Object.entries(filters).filter(([,v])=>v!==""&&v!=="all").length,[filters]);
 
-  const siteLookup = useMemo(() => {
-    const map = {};
-    if (allSites) {
-      allSites.forEach(s => { map[String(s.id)] = s.name.toLowerCase(); });
-    }
-    return map;
-  }, [allSites]);
+  const activeLotIds = useMemo(() => {
+    return lots
+      .filter(lot => {
+        const matchesPeriod = filters.period === "all" || String(lot.period_id) === String(filters.period);
+        const matchesProject = filters.project === "all" || String(lot.project_id) === String(filters.project);
+        return matchesPeriod && matchesProject;
+      })
+      .map(lot => lot.id);
+  }, [lots, filters.period, filters.project]);
 
   const filtered = useMemo(() => {
     return allMrs.filter(mr=>{
-      if(filters.state!=="all"&&mr.state!==filters.state)return false;
-      if(filters.project!=="all"){const isNum=/^\d+$/.test(String(filters.project));const okById=isNum&&String(mr.project_id)===String(filters.project);const okByName=mr.project===filters.project;if(!okById&&!okByName)return false;}
+      // ─── FILTRE PAR PÉRIMÈTRE DE DONNÉES (KPI VS ACTIVITÉ) ───────────────────
+      if (filters.dataScope === "kpi") {
+        // En mode KPI : on exclut les brouillons (Drafts)
+        if (mr.is_draft) return false;
+        
+        // On restreint au lot d'extraction de la période/projet active si lot === 'all'
+        if (filters.lot !== "all") {
+          if (String(mr.extraction_lot_id) !== String(filters.lot)) return false;
+        } else {
+          if (filters.period !== "all") {
+            if (!activeLotIds.includes(mr.extraction_lot_id)) return false;
+          }
+        }
 
-      //  FILTRE PAR SITE (Simple et robuste grâce à l'enrichissement - Vue 360)
-      if (filters.siteId !== "all") {
-        const sId = String(filters.siteId);
-        let siteMatch = false;
+        // Alignement strict temporel
+        if (selectedPeriodObj) {
+          const createdDate = new Date(mr.created_at_gitlab);
+          if (createdDate.getFullYear() !== selectedPeriodObj.year || createdDate.getMonth() !== (selectedPeriodObj.month - 1)) {
+            return false;
+          }
+        }
 
-        // 1. Check Auteur
-        const mrSiteId = String(mr.site_id || "");
-        if (mrSiteId === sId) siteMatch = true;
-
-        // 2. Check Reviewer
-        if (!siteMatch && mr.reviewer_site && String(mr.reviewer_site) === sId) siteMatch = true;
-
-        // 3. Check Assignee
-        if (!siteMatch && mr.assignee_site && String(mr.assignee_site) === sId) siteMatch = true;
-
-        if (!siteMatch) {
-            // Fallback pour Unassigned
-            if (!(sId === "unassigned" && (mrSiteId === "" || mrSiteId === "undefined" || mrSiteId === "null"))) {
-               return false;
-            }
+        // ✅ [FIX MISSION-STRICT] Filtre auteur uniquement par mission
+        // En mode KPI, une MR est comptée UNIQUEMENT si son AUTEUR (developer_id)
+        // a une mission sur le projet sélectionné.
+        // Raison : le reviewer/assignee peut être un dev d'un autre projet (ex: Vaibhav Malik
+        // qui a mission gitlab-shell peut reviewer une MR inkscape, mais cette MR ne doit PAS
+        // être comptée dans les KPIs inkscape s'il en est l'auteur sans mission inkscape).
+        if (filters.project !== "all" && assignedDevs.length > 0) {
+          const certifiedAuthorIds = assignedDevs.map(d => d.id).filter(Boolean);
+          
+          // STRICT : seul l'auteur doit avoir une mission sur le projet
+          const isAuthorCertified = certifiedAuthorIds.includes(mr.developer_id);
+          
+          if (!isAuthorCertified) return false;
         }
       }
 
-      //  FILTRE PAR ÉQUIPE / GROUPE
-      if (filters.groupId !== "all") {
-        const gId = String(filters.groupId);
-        const mrGroupIds = (mr.group_ids || []).map(String);
-        if (!mrGroupIds.includes(gId)) return false;
+      if (filters.dataScope === "activity" && selectedPeriodObj) {
+        const createdDate = new Date(mr.created_at_gitlab);
+        if (createdDate.getFullYear() !== selectedPeriodObj.year || createdDate.getMonth() !== (selectedPeriodObj.month - 1)) {
+          return false;
+        }
       }
+
+      if(filters.state!=="all"&&mr.state!==filters.state)return false;
+      if(filters.project!=="all"){const isNum=/^\d+$/.test(String(filters.project));const okById=isNum&&String(mr.project_id)===String(filters.project);const okByName=mr.project===filters.project;if(!okById&&!okByName)return false;}
       
       //  FILTRE PAR DÉVELOPPEUR + RÔLE — Vue 360° de la contribution
       if (filters.developerId !== "all") {
         const targetId = parseInt(filters.developerId);
         const isAuthor = mr.developer_id === targetId;
         
-        if (filters.role === "authored") { if (!isAuthor) return false; }
-        else if (filters.role === "reviewed") { 
-          // Reviewer/Assignee matching fallback to names if ID not available in MR object
-          const dev = developers.find(d => d.id === targetId);
-          const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
-          const rev = (mr.reviewer || "").toLowerCase();
-          if (!rev.includes(targetName)) return false; 
+        if (filters.dataScope === "kpi") {
+          // En mode KPI, seul le rôle d'auteur principal est retenu
+          if (!isAuthor) return false;
+        } else {
+          // Mode Activité standard
+          if (filters.role === "authored") { if (!isAuthor) return false; }
+          else if (filters.role === "reviewed") { 
+            // Reviewer/Assignee matching fallback to names if ID not available in MR object
+            const dev = developers.find(d => d.id === targetId);
+            const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
+            const rev = (mr.reviewer || "").toLowerCase();
+            if (!rev.includes(targetName)) return false; 
+          }
+          else if (filters.role === "assigned") {
+            const dev = developers.find(d => d.id === targetId);
+            const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
+            const ass = (mr.assignee || "").toLowerCase();
+            if (!ass.includes(targetName)) return false;
+          }
+          else {
+            // "all" roles — vue inclusive
+            const dev = developers.find(d => d.id === targetId);
+            const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
+            const rev = (mr.reviewer || "").toLowerCase();
+            const ass = (mr.assignee || "").toLowerCase();
+            if (!isAuthor && !rev.includes(targetName) && !ass.includes(targetName)) return false;
+          }
         }
-        else if (filters.role === "assigned") {
-          const dev = developers.find(d => d.id === targetId);
-          const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
-          const ass = (mr.assignee || "").toLowerCase();
-          if (!ass.includes(targetName)) return false;
-        }
-        else {
-          // "all" roles — vue inclusive
-          const dev = developers.find(d => d.id === targetId);
-          const targetName = (dev?.name || dev?.gitlab_username || "").toLowerCase();
-          const rev = (mr.reviewer || "").toLowerCase();
-          const ass = (mr.assignee || "").toLowerCase();
-          if (!isAuthor && !rev.includes(targetName) && !ass.includes(targetName)) return false;
+      } else {
+        // Mode global : filtre par rôle sans sélection de développeur spécifique
+        if (filters.role !== "all") {
+          const authorLower = (mr.author || "").toLowerCase();
+          const reviewerLower = (mr.reviewer || "").toLowerCase();
+          
+          // Vérifier si l'auteur est un développeur tracked
+          const isTrackedAuthor = developers.some(d => 
+            (d.name || "").toLowerCase() === authorLower || 
+            (d.gitlab_username || "").toLowerCase() === authorLower
+          );
+          
+          // Vérifier si le reviewer est un développeur tracked
+          const isTrackedReviewer = reviewerLower && developers.some(d => 
+            (d.name || "").toLowerCase() === reviewerLower || 
+            (d.gitlab_username || "").toLowerCase() === reviewerLower
+          );
+          
+          if (filters.role === "authored") {
+            if (!isTrackedAuthor) return false;
+          } else if (filters.role === "reviewed") {
+            if (!isTrackedReviewer) return false;
+          }
         }
       }
 
       if(filters.approved==="yes"&&!(mr.approved===true||mr.approved===1))return false;
       if(filters.approved==="no"&&(mr.approved===true||mr.approved===1))return false;
       if(filters.search){const q=filters.search.toLowerCase();if(!mr.title?.toLowerCase().includes(q)&&!mr.author?.toLowerCase().includes(q)&&!mr.project?.toLowerCase().includes(q))return false;}
-      if(filters.dateFrom&&new Date(mr.created_at_gitlab)<new Date(filters.dateFrom))return false;
-      if(filters.dateTo){const to=new Date(filters.dateTo);to.setHours(23,59,59);if(new Date(mr.created_at_gitlab)>to)return false;}
       return true;
     });
-  },[allMrs,filters]);
+  }, [allMrs, filters, activeLotIds, developers, assignedDevs, selectedPeriodObj]);
 
   const kpis=useMemo(()=>{
     const total=filtered.length, merged=filtered.filter(m=>m.state==="merged").length, opened=filtered.filter(m=>m.state==="opened").length, closed=filtered.filter(m=>m.state==="closed").length, approved=filtered.filter(m=>m.approved===true||m.approved===1).length;
@@ -1166,13 +1424,13 @@ export default function MergePage() {
         );
       })()}
 
-      <FilterBar filters={filters} onChange={setFilter} projects={projectList} sites={siteList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots} availablePeriods={periods} groups={groupList}/>
+      <FilterBar filters={filters} onChange={setFilter} projects={projectList} authors={authorList} activeCount={activeFilterCount} onReset={()=>setFilters(INITIAL_FILTERS)} availableLots={lots} availablePeriods={periods}/>
 
-      <div className="row">
+      <div className="kpi-grid-row">
         <KPICard icon="ri-git-pull-request-line" label="Total MRs"   value={kpis.total}  bg="#e8ecf8" color="#405189" sub={`${kpis.mergeRate}% merge rate`}/>
-        <KPICard icon="ri-git-merge-line"        label="Merged"       value={kpis.merged} bg="#d4f5f0" color="#0a7a6a" sub="Click to filter" onClick={()=>setFilter("state",filters.state==="merged"?"all":"merged")} active={filters.state==="merged"}/>
-        <KPICard icon="ri-git-pull-request-fill" label="Open"         value={kpis.opened} bg="#d7edf9" color="#1a6fa3" sub="Click to filter" onClick={()=>setFilter("state",filters.state==="opened"?"all":"opened")} active={filters.state==="opened"}/>
-        <KPICard icon="ri-shield-check-line"     label="Approved"     value={kpis.approved} bg="#fef3dc" color="#b78a1e" sub="Ready to merge"/>
+        <KPICard icon="ri-git-merge-line"        label="Merged"       value={kpis.merged} bg="#d4f5f0" color="#0a7a6a" sub="Cliquer pour filtrer" onClick={()=>setFilter("state",filters.state==="merged"?"all":"merged")} active={filters.state==="merged"}/>
+        <KPICard icon="ri-git-pull-request-fill" label="Open"         value={kpis.opened} bg="#d7edf9" color="#1a6fa3" sub="Cliquer pour filtrer" onClick={()=>setFilter("state",filters.state==="opened"?"all":"opened")} active={filters.state==="opened"}/>
+        <KPICard icon="ri-shield-check-line"     label="Approved"     value={kpis.approved} bg="#fef3dc" color="#b78a1e" sub="Prêt à merger"/>
         {kpis.avgReview&&<KPICard icon="ri-timer-line" label="Moy. Revue" value={`${kpis.avgReview}h`} bg="#ede9fb" color="#5b21b6" sub="Temps d'approbation"/>}
       </div>
 
@@ -1182,11 +1440,11 @@ export default function MergePage() {
           <div className="row">
             <div className="col-xl-4"><StatusDonut opened={kpis.opened} merged={kpis.merged} closed={kpis.closed}/></div>
             <div className="col-xl-8">
-              <TopContributors mrs={filtered} selectedAuthor={filters.author} developers={developers} filters={filters} />
+              <TopContributors mrs={filtered} selectedAuthor={filters.author} developers={developers} assignedDevs={assignedDevs} filters={filters} />
             </div>
           </div>
           <div className="row">
-            <div className="col-12"><MRTable mrs={filtered} onDetail={setDetailMr} lots={lots}/></div>
+            <div className="col-12"><MRTable mrs={filtered} onDetail={setDetailMr} lots={lots} filters={filters} developers={developers} selectedPeriodObj={selectedPeriodObj}/></div>
           </div>
           <div className="row">
             <div className="col-12"><ProjectsBreakdown mrs={filtered}/></div>
@@ -1237,7 +1495,779 @@ export default function MergePage() {
         </div>
       )}
     </div>
-    <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.rotate-animation{animation:spin 1s linear infinite;display:inline-block}`}</style>
+    <style>{`
+      @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+      .rotate-animation{animation:spin 1s linear infinite;display:inline-block}
+
+      /* ═══════════════════════════════════════════════════
+         PREMIUM MR TABLE STYLES
+      ═══════════════════════════════════════════════════ */
+
+      /* ── Carte principale ── */
+      .mr-table-premium-card {
+        background: #ffffff;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 20px;
+        box-shadow: 0 4px 24px -4px rgba(15, 23, 42, 0.06), 0 1px 4px rgba(15, 23, 42, 0.04);
+        overflow: hidden;
+        margin-bottom: 24px;
+        transition: box-shadow 0.3s ease;
+      }
+      .mr-table-premium-card:hover {
+        box-shadow: 0 8px 32px -6px rgba(15, 23, 42, 0.1), 0 2px 8px rgba(15, 23, 42, 0.05);
+      }
+
+      /* ── En-tête de la carte ── */
+      .mr-table-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 24px;
+        border-bottom: 1.5px solid #f1f5f9;
+        background: linear-gradient(135deg, #fafbff 0%, #f8fafc 100%);
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .mr-table-header-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .mr-table-header-icon {
+        width: 42px; height: 42px;
+        background: linear-gradient(135deg, #405189, #3577f1);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 20px;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(64, 81, 137, 0.3);
+      }
+      .mr-table-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 2px;
+      }
+      .mr-table-subtitle {
+        font-size: 11.5px;
+        color: #94a3b8;
+        margin: 0;
+      }
+      .mr-count-badge {
+        background: linear-gradient(135deg, #e8ecf8, #dce5f7);
+        color: #405189;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+        border: 1px solid #c7d2f0;
+        letter-spacing: 0.02em;
+      }
+      .mr-export-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 18px;
+        background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+        border: 1.5px solid #6ee7b7;
+        border-radius: 10px;
+        color: #065f46;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.22s ease;
+      }
+      .mr-export-btn:hover {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: #fff;
+        border-color: #059669;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        transform: translateY(-1px);
+      }
+
+      /* ── Corps du tableau ── */
+      .mr-table-body { overflow: auto; }
+      .mr-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      /* ── Entêtes ── */
+      .mr-table-head-row {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+      }
+      .mr-th {
+        padding: 13px 16px;
+        text-align: left;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: #94a3b8;
+        border-bottom: 1.5px solid #e2e8f0;
+        white-space: nowrap;
+        user-select: none;
+        position: relative;
+      }
+      .mr-th-sortable { cursor: pointer; transition: color 0.2s; }
+      .mr-th-sortable:hover { color: #475569; }
+      .mr-th-active { color: #405189; }
+      .mr-th-inner {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .mr-th-info {
+        font-size: 9.5px;
+        color: #cbd5e1;
+        cursor: help;
+      }
+      .mr-sort-icon { font-size: 11px; }
+
+      /* ── Lignes du tableau ── */
+      .mr-table-row {
+        border-bottom: 1px solid #f0f4f8;
+        transition: background 0.18s ease, border-left 0.18s ease;
+        border-left: 3px solid transparent;
+      }
+      .mr-td {
+        padding: 13px 16px;
+        vertical-align: middle;
+      }
+
+      /* ── Cellule ID ── */
+      .mr-id-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .mr-id-chip {
+        background: linear-gradient(135deg, #e8ecf8, #dce5f7);
+        color: #405189;
+        border-radius: 7px;
+        padding: 4px 9px;
+        font-weight: 700;
+        font-size: 12px;
+        font-family: 'Courier New', monospace;
+        border: 1px solid #c7d2f0;
+        letter-spacing: -0.02em;
+      }
+      .mr-lot-chip {
+        border-radius: 20px;
+        padding: 2px 7px;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .mr-draft-chip {
+        background: #f1f5f9;
+        color: #64748b;
+        border-radius: 6px;
+        padding: 2px 7px;
+        font-size: 10px;
+        font-weight: 600;
+        border: 1px solid #e2e8f0;
+      }
+
+      /* ── Titre MR ── */
+      .mr-title-text {
+        font-weight: 600;
+        color: #1e293b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 260px;
+        cursor: pointer;
+        transition: color 0.18s;
+        font-size: 13px;
+      }
+      .mr-title-text:hover { color: #405189; text-decoration: underline; }
+
+      /* ── Contributeurs ── */
+      .mr-contrib-cell { display: flex; align-items: flex-start; gap: 10px; }
+      .mr-avatar {
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+      .mr-contrib-info { display: flex; flex-direction: column; gap: 4px; }
+      .mr-contrib-author-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .mr-contrib-name { font-size: 13px; font-weight: 600; color: #334155; white-space: nowrap; }
+      .mr-contrib-roles { display: flex; gap: 4px; flex-wrap: wrap; }
+
+      /* ── Badges de rôle ── */
+      .mr-role-badge {
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+        transition: box-shadow 0.2s;
+      }
+      .mr-role-author   { background: #e8ecf8; color: #405189; }
+      .mr-role-reviewer { background: #d4f5f0; color: #0a7a6a; }
+      .mr-role-assignee { background: #ede9fb; color: #5b21b6; }
+
+      /* ── Projet ── */
+      .mr-project-cell { display: flex; align-items: center; gap: 6px; }
+      .mr-project-icon { color: #94a3b8; font-size: 14px; }
+      .mr-project-name { font-size: 12.5px; color: #475569; white-space: nowrap; }
+
+      /* ── Badge Statut ── */
+      .mr-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 11.5px;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: box-shadow 0.2s;
+      }
+
+      /* ── Badge Approuvé ── */
+      .mr-approved-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #d7edf9, #bfe5f8);
+        color: #1a6fa3;
+        font-size: 11.5px;
+        font-weight: 700;
+        border: 1px solid #93c5fd;
+      }
+      .mr-null-dash { color: #cbd5e1; font-size: 17px; }
+
+      /* ── Compteurs ── */
+      .mr-counter-cell {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .mr-counter-icon { color: #94a3b8; font-size: 14px; }
+      .mr-counter-val { font-size: 13px; font-weight: 600; color: #475569; }
+
+      /* ── Badge de Revue ── */
+      .mr-review-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+        border: 1px solid currentColor;
+        border-opacity: 0.2;
+      }
+
+      /* ── Date ── */
+      .mr-date-cell { display: flex; flex-direction: column; gap: 2px; }
+      .mr-date-main {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #334155;
+      }
+      .mr-date-icon { color: #94a3b8; }
+      .mr-date-sub {
+        font-size: 11px;
+        color: #94a3b8;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      /* ── Bouton de détail ── */
+      .mr-detail-btn {
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        border: 1.5px solid #e2e8f0;
+        background: #f8fafc;
+        color: #405189;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 15px;
+        transition: all 0.2s ease;
+      }
+      .mr-detail-btn:hover {
+        background: #405189;
+        color: #fff;
+        border-color: #405189;
+        box-shadow: 0 4px 12px rgba(64, 81, 137, 0.3);
+        transform: scale(1.1);
+      }
+
+      /* ── État vide ── */
+      .mr-empty-state {
+        text-align: center;
+        padding: 60px 16px;
+        color: #94a3b8;
+      }
+      .mr-empty-icon {
+        font-size: 48px;
+        opacity: 0.25;
+        margin-bottom: 12px;
+      }
+      .mr-empty-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #64748b;
+        margin: 0 0 4px;
+      }
+      .mr-empty-sub {
+        font-size: 13px;
+        color: #94a3b8;
+        margin: 0;
+      }
+
+      /* ── Pagination ── */
+      .mr-pagination {
+        padding: 16px 24px;
+        border-top: 1.5px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        background: #fafbfc;
+      }
+      .mr-pagination-info {
+        margin: 0;
+        font-size: 13px;
+        color: #64748b;
+      }
+      .mr-pagination-info strong { color: #1e293b; }
+      .mr-pagination-controls { display: flex; gap: 6px; align-items: center; }
+      .mr-page-btn {
+        min-width: 34px; height: 34px;
+        padding: 0 8px;
+        border-radius: 8px;
+        border: 1.5px solid #e2e8f0;
+        background: #ffffff;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+      }
+      .mr-page-btn:hover:not(:disabled) {
+        border-color: #405189;
+        color: #405189;
+        background: #f0f4ff;
+      }
+      .mr-page-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .mr-page-btn.mr-page-active {
+        background: linear-gradient(135deg, #405189, #3577f1);
+        border-color: #405189;
+        color: #ffffff;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(64, 81, 137, 0.3);
+      }
+
+      /* ── KPI Grid ─────────────────────────────────────────── */
+      .kpi-grid-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 18px;
+        margin-bottom: 28px;
+      }
+      @media (max-width: 1200px) { .kpi-grid-row { grid-template-columns: repeat(3, 1fr); } }
+      @media (max-width: 768px)  { .kpi-grid-row { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 480px)  { .kpi-grid-row { grid-template-columns: 1fr; } }
+
+      .kpi-card-wrapper { display: flex; flex-direction: column; }
+
+      .kpi-card-premium {
+        position: relative;
+        overflow: hidden;
+        background: #ffffff;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 20px;
+        padding: 24px 20px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      
+      /* Hover glow corresponding to matching accents */
+      .kpi-card-premium:hover {
+        transform: translateY(-5px);
+        border-color: var(--kpi-accent);
+        box-shadow: 0 20px 30px -8px rgba(var(--kpi-accent-rgb), 0.18);
+      }
+      
+      .kpi-card-premium.kpi-card-active {
+        border-color: var(--kpi-accent);
+        background: #fafcff;
+        box-shadow: 0 10px 25px -5px rgba(var(--kpi-accent-rgb), 0.2);
+      }
+      
+      .kpi-card-glow-bg {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        opacity: 0.5;
+      }
+      .kpi-card-premium:hover .kpi-card-glow-bg {
+        opacity: 1;
+      }
+      
+      .kpi-card-blob {
+        position: absolute;
+        top: -12px; right: -12px;
+        pointer-events: none;
+        transition: transform 0.4s ease;
+      }
+      .kpi-card-premium:hover .kpi-card-blob {
+        transform: scale(1.15) rotate(5deg);
+      }
+      
+      .kpi-card-inner {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      
+      .kpi-icon-wrap {
+        width: 52px; height: 52px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        flex-shrink: 0;
+        transition: all 0.3s ease;
+      }
+      .kpi-card-premium:hover .kpi-icon-wrap { 
+        transform: scale(1.1) rotate(-8deg); 
+      }
+      
+      .kpi-text { flex: 1; }
+      
+      .kpi-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      
+      .kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        margin-bottom: 0;
+        line-height: 1.1;
+        letter-spacing: -1px;
+      }
+      
+      .kpi-sub {
+        font-size: 11px;
+        margin-top: 8px;
+        margin-bottom: 0;
+      }
+      
+      .kpi-sub-badge {
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 10px;
+        display: inline-block;
+      }
+      
+      .kpi-active-bar {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        height: 4px;
+        border-radius: 0 0 20px 20px;
+        opacity: 0.3;
+        transition: opacity 0.3s ease;
+      }
+      .kpi-card-premium:hover .kpi-active-bar,
+      .kpi-card-premium.kpi-card-active .kpi-active-bar {
+        opacity: 1;
+      }
+
+      /* ── Premium Filter Card ──────────────────────────────── */
+      .filter-card-premium {
+        border: 1.5px solid #e2e8f0;
+        border-radius: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        background: #ffffff;
+      }
+
+      .filter-grid-premium {
+        display: grid;
+        grid-template-columns: 2.2fr 1.3fr 1.3fr 1.5fr auto;
+        gap: 16px;
+        align-items: end;
+        margin-top: 0;
+      }
+      @media (max-width: 1200px) { 
+        .filter-grid-premium { grid-template-columns: 1fr 1fr; } 
+        .filter-item-search { grid-column: 1 / -1; } 
+      }
+      @media (max-width: 640px)  { 
+        .filter-grid-premium { grid-template-columns: 1fr; } 
+      }
+
+      .filter-item { display: flex; flex-direction: column; }
+      .filter-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      /* Search Input */
+      .filter-search-wrap { position: relative; }
+      .filter-search-icon {
+        position: absolute;
+        left: 14px; top: 50%; transform: translateY(-50%);
+        color: #64748b;
+        font-size: 15px;
+        pointer-events: none;
+        z-index: 1;
+      }
+      .filter-input-premium {
+        width: 100%;
+        padding: 10px 14px 10px 40px;
+        background: #f8fafc;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 12px;
+        font-size: 13.5px;
+        color: #1e293b;
+        transition: all 0.2s ease;
+        outline: none;
+      }
+      .filter-input-premium::placeholder { color: #94a3b8; }
+      .filter-input-premium:focus {
+        border-color: #405189;
+        background: #ffffff;
+        box-shadow: 0 0 0 4px rgba(64, 81, 137, 0.12);
+      }
+
+      /* Select Inputs */
+      .filter-select-wrap { position: relative; }
+      .filter-select-icon {
+        position: absolute;
+        right: 12px; top: 50%; transform: translateY(-50%);
+        color: #64748b;
+        font-size: 16px;
+        pointer-events: none;
+      }
+      .filter-select-premium {
+        width: 100%;
+        padding: 10px 36px 10px 14px;
+        background: #f8fafc;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 12px;
+        font-size: 13.5px;
+        color: #1e293b;
+        appearance: none;
+        -webkit-appearance: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        outline: none;
+      }
+      .filter-select-premium:focus {
+        border-color: #405189;
+        background: #ffffff;
+        box-shadow: 0 0 0 4px rgba(64, 81, 137, 0.12);
+      }
+      .filter-select-premium option { color: #1e293b; background: #ffffff; }
+
+      /* Reset Button */
+      .filter-item-reset { justify-content: flex-end; }
+      .filter-reset-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 11px 20px;
+        border-radius: 12px;
+        border: 1.5px solid #cbd5e1;
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.25s ease;
+        white-space: nowrap;
+        width: 100%;
+        justify-content: center;
+      }
+      .filter-reset-btn:hover { 
+        border-color: #94a3b8; 
+        background: #f1f5f9; 
+        color: #334155;
+      }
+      .filter-reset-btn.filter-reset-active {
+        background: #fef2f2;
+        border-color: #fca5a5;
+        color: #dc2626;
+      }
+      .filter-reset-btn.filter-reset-active:hover { 
+        background: #dc2626; 
+        color: #ffffff; 
+        border-color: #dc2626;
+        box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+      }
+
+      /* Premium Segmented Control */
+      .premium-segmented-control {
+        background: #f1f5f9; 
+        padding: 4px; 
+        border-radius: 14px; 
+        display: inline-flex; 
+        gap: 2px; 
+        border: 1px solid #e2e8f0;
+      }
+      .segmented-btn {
+        padding: 8px 18px; 
+        border-radius: 10px; 
+        font-size: 12px; 
+        font-weight: 600; 
+        cursor: pointer; 
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); 
+        border: none;
+        background: transparent;
+        color: #475569;
+        display: flex;
+        align-items: center;
+      }
+      .segmented-btn.active-kpi {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: #ffffff;
+        box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25);
+      }
+      .segmented-btn.active-activity {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: #ffffff;
+        box-shadow: 0 4px 10px rgba(245, 158, 11, 0.25);
+      }
+
+      /* Premium Small Segmented Control */
+      .premium-segmented-control-small {
+        background: #f1f5f9; 
+        padding: 3px; 
+        border-radius: 12px; 
+        display: inline-flex; 
+        gap: 2px; 
+        border: 1px solid #e2e8f0;
+      }
+      .segmented-btn-small {
+        padding: 6px 14px; 
+        border-radius: 9px; 
+        font-size: 11.5px; 
+        font-weight: 600; 
+        cursor: pointer; 
+        transition: all 0.2s ease; 
+        border: none;
+        background: transparent;
+        color: #475569;
+      }
+      .segmented-btn-small.active {
+        background: #405189;
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(64, 81, 137, 0.2);
+      }
+
+      /* Alert badging */
+      .scope-badge-alert {
+        padding: 8px 16px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+        border: 1px solid;
+      }
+      .scope-badge-alert.scope-kpi {
+        background: #ecfdf5;
+        color: #065f46;
+        border-color: #a7f3d0;
+      }
+      .scope-badge-alert.scope-activity {
+        background: #fffbeb;
+        color: #92400e;
+        border-color: #fde68a;
+      }
+      .icon-kpi { color: #10b981; }
+      .icon-activity { color: #f59e0b; }
+
+      .role-warning-badge {
+        font-size: 11px;
+        color: #b45309;
+        background: #fffbeb;
+        padding: 4px 10px;
+        border-radius: 8px;
+        border: 1px solid #fde68a;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      /* Premium Tags */
+      .premium-filter-tag {
+        border-radius: 10px;
+        padding: 5px 12px;
+        font-size: 11.5px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.01);
+      }
+      .premium-filter-tag-close {
+        background: none;
+        border: none;
+        padding: 0 0 0 4px;
+        cursor: pointer;
+        color: inherit;
+        line-height: 1;
+        font-size: 13px;
+        font-weight: 700;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+      }
+      .premium-filter-tag-close:hover { opacity: 1; }
+    `}</style>
     </div>
   );
 }

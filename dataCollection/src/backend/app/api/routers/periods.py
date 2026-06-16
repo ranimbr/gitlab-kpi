@@ -132,3 +132,93 @@ def list_periods(db: Session = Depends(get_db), current_user: AppUser = Depends(
         if p.closed_by:
             p.closed_by_name = p.closed_by.full_name or p.closed_by.username
     return periods
+
+
+@router.delete("/{period_id}/lots", status_code=200)
+def delete_period_lots(
+    period_id:     int,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin)
+):
+    """
+    [ADMIN ONLY] Supprime TOUS les lots d'extraction d'une période ouverte.
+
+    Règles de sécurité :
+    - Interdit si la période est clôturée (archive scellée).
+    - Interdit si des jobs sont en cours (pending / running) → risque de corruption.
+    - Seul un administrateur peut effectuer cette action.
+    """
+    from app.models.extraction_lot import ExtractionLot, ExtractionStatusEnum
+
+    period = repo.get_by_id(db, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Période introuvable.")
+
+    if period.status == PeriodStatusEnum.closed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La période {period.year}/{period.month:02d} est clôturée. Impossible de modifier ses lots."
+        )
+
+    # Bloquer si jobs actifs (pending ou running)
+    active = db.query(ExtractionLot).filter(
+        ExtractionLot.period_id == period_id,
+        ExtractionLot.status.in_([ExtractionStatusEnum.pending, ExtractionStatusEnum.running])
+    ).count()
+    if active > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Impossible de vider : {active} job(s) sont encore en cours d'exécution sur cette période."
+        )
+
+    # Suppression de tous les lots
+    lots = db.query(ExtractionLot).filter(ExtractionLot.period_id == period_id).all()
+    deleted_count = len(lots)
+    for lot in lots:
+        db.delete(lot)
+    db.commit()
+
+    return {
+        "message": f"{deleted_count} lot(s) supprimé(s) pour la période {period.year}/{period.month:02d}.",
+        "deleted_count": deleted_count,
+        "period_id": period_id
+    }
+
+
+@router.delete("/{period_id}", status_code=204)
+def delete_period(
+    period_id:     int,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin)
+):
+    """
+    [ADMIN ONLY] Supprime une période ouverte.
+
+    Règles de sécurité :
+    - Interdit si la période est clôturée (archive scellée).
+    - Interdit si la période possède des lots d'extraction (données liées).
+    - Seul un administrateur peut effectuer cette action.
+    """
+    from app.models.extraction_lot import ExtractionLot
+
+    period = repo.get_by_id(db, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Période introuvable.")
+
+    # Règle 1 : impossible de supprimer une période clôturée
+    if period.status == PeriodStatusEnum.closed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La période {period.year}/{period.month:02d} est clôturée (archive scellée). Suppression impossible."
+        )
+
+    # Règle 2 : impossible de supprimer si des lots d'extraction existent
+    lots_count = db.query(ExtractionLot).filter(ExtractionLot.period_id == period_id).count()
+    if lots_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La période {period.year}/{period.month:02d} contient {lots_count} lot(s) d'extraction. Videz-les avant de supprimer la période."
+        )
+
+    repo.delete(db, period_id)
+    db.commit()

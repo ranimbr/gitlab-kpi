@@ -4,8 +4,9 @@ repositories/user_repository.py
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import selectinload
 from app.models.app_user import AppUser, UserRoleEnum
-from app.repositories.base import BaseRepository
+from app.repositories.base import BaseRepository, UNSET
 
 
 class AppUserRepository(BaseRepository[AppUser]):
@@ -14,6 +15,13 @@ class AppUserRepository(BaseRepository[AppUser]):
         super().__init__(AppUser)
 
     # ── READ ──────────────────────────────────────────────────────────────────
+
+    def get_all(self, db: Session) -> List[AppUser]:
+        """✅ FIX : Charger site_accesses et group_accesses pour multi-sites/multi-équipes"""
+        return db.query(AppUser).options(
+            selectinload(AppUser.site_accesses),
+            selectinload(AppUser.group_accesses)
+        ).all()
 
     def get_by_email(self, db: Session, email: str) -> Optional[AppUser]:
         return db.query(AppUser).filter(AppUser.email == email).one_or_none()
@@ -96,7 +104,7 @@ class AppUserRepository(BaseRepository[AppUser]):
         self,
         db:               Session,
         email:            str,
-        hashed_password:  str,
+        hashed_password: str,
         role:             UserRoleEnum        = UserRoleEnum.developer,  # ✅ FIX
         login:            Optional[str]       = None,
         name:             Optional[str]       = None,
@@ -104,6 +112,8 @@ class AppUserRepository(BaseRepository[AppUser]):
         # ✅ AJOUT
         site_id:          Optional[int]       = None,
         group_id:         Optional[int]       = None,
+        # ✅ AJOUT : profile_id pour synchronisation avec ProfileManagementPage
+        profile_id:        Optional[int]       = None,
     ) -> AppUser:
         user = AppUser(
             email            = email,
@@ -115,6 +125,7 @@ class AppUserRepository(BaseRepository[AppUser]):
             dashboard_access = dashboard_access or [],
             site_id          = site_id,
             group_id         = group_id,
+            profile_id        = profile_id,
         )
         db.add(user)
         db.flush()
@@ -129,8 +140,12 @@ class AppUserRepository(BaseRepository[AppUser]):
         new_hashed_password: Optional[str]          = None,
         dashboard_access:    Optional[List[int]]    = None,
         # ✅ AJOUT
-        site_id:             Optional[int]          = None,
-        group_id:            Optional[int]          = None,
+        site_id:             Optional[int]          = UNSET,
+        group_id:            Optional[int]          = UNSET,
+        # ✅ AJOUT : profile_id pour synchronisation avec ProfileManagementPage
+        profile_id:           Optional[int]          = UNSET,
+        # ✅ AJOUT : project_ids pour synchronisation avec Projects
+        project_ids:            Optional[List[int]]    = UNSET,
     ) -> AppUser:
         if role is not None:
             user.role = role
@@ -140,11 +155,15 @@ class AppUserRepository(BaseRepository[AppUser]):
             user.hashed_password = new_hashed_password
         if dashboard_access is not None:
             user.dashboard_access = dashboard_access
-        # ✅ AJOUT : None intentionnel → SET NULL autorisé
-        if "site_id" in locals() and site_id is not None:
+        # ✅ AJOUT : UNSET distingue "non fourni" de None (SET NULL)
+        if site_id is not UNSET:
             user.site_id = site_id
-        if "group_id" in locals() and group_id is not None:
+        if group_id is not UNSET:
             user.group_id = group_id
+        # ✅ AJOUT : profile_id pour synchronisation avec ProfileManagementPage
+        if profile_id is not UNSET:
+            user.profile_id = profile_id
+        # ❌ SUPPRESSION : project_ids n'est pas un attribut du modèle AppUser, géré via user_project_access
         db.flush()
         return user
 

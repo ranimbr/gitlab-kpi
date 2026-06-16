@@ -103,7 +103,35 @@ const authService = {
     return _meCacheData;
   },
 
-  isAuthenticated: () => !!localStorage.getItem("access_token"),
+  isAuthenticated: () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return false;
+    
+    // ✅ FIX: Vérifier aussi l'expiration du token
+    const expiresAt = localStorage.getItem("token_expires_at");
+    if (expiresAt && Date.now() > Number(expiresAt)) {
+      // Token expiré, le supprimer
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("token_expires_at");
+      return false;
+    }
+    
+    return true;
+  },
+
+  /**
+   * Récupère les assignations multi-tenant de l'utilisateur courant
+   * Retourne { site_ids, group_ids, project_ids }
+   */
+  getUserAssignments: async () => {
+    try {
+      const response = await api.get("/auth/assignments");
+      return response.data;
+    } catch (err) {
+      console.error("Erreur lors de la récupération des assignations:", err);
+      return { site_ids: [], group_ids: [], project_ids: [] };
+    }
+  },
 
   /**
    * Vérifie si le token JWT est expiré côté client (sans appel réseau).
@@ -112,6 +140,39 @@ const authService = {
     const expiresAt = localStorage.getItem("token_expires_at");
     if (!expiresAt) return false;
     return Date.now() > Number(expiresAt);
+  },
+
+  /**
+   * Demande de réinitialisation de mot de passe.
+   * Envoie un email avec un lien de reset.
+   */
+  forgotPassword: async (email) => {
+    const response = await api.post("/auth/forgot-password", { email });
+    return response.data;
+  },
+
+  /**
+   * Réinitialise le mot de passe avec un token.
+   */
+  resetPassword: async (token, newPassword) => {
+    const response = await api.post("/auth/reset-password", {
+      token,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+
+  /**
+   * Change le mot de passe de l'utilisateur connecté.
+   * Nécessite le mot de passe actuel et le nouveau mot de passe.
+   */
+  changePassword: async (currentPassword, newPassword, confirmPassword) => {
+    const response = await api.put("/users/me/password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    });
+    return response.data;
   },
 };
 

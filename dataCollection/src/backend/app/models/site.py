@@ -42,13 +42,16 @@ class Site(Base):
         back_populates="site",
         # Pas de cascade : une config peut survivre si le site est désactivé
     )
-    developer_groups = relationship(
-        "DeveloperGroup",
+
+    dashboards = relationship(
+        "Dashboard",
         back_populates="site",
         cascade="all, delete-orphan",
     )
-    dashboards = relationship(
-        "Dashboard",
+    
+    # ✅ AJOUT : Relation many-to-many avec AppUser via UserSiteAccess
+    user_accesses = relationship(
+        "UserSiteAccess",
         back_populates="site",
         cascade="all, delete-orphan",
     )

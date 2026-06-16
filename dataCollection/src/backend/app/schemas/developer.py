@@ -10,15 +10,11 @@ from app.schemas.enums import ImportStatusEnum, DeveloperSourceEnum
 
 class DeveloperGroupCreate(BaseModel):
     name:        str           = Field(min_length=1, max_length=100)
-    site_id:     Optional[int] = Field(default=None, description="ID du site (Nouveau modèle 1-N)")
-    site_ids:    Optional[List[int]] = Field(default=[], description="Maintenu pour compatibilité frontend")
     manager_id:  Optional[int] = None
     description: Optional[str] = Field(default=None, max_length=500)
 
 class DeveloperGroupUpdate(BaseModel):
     name:        Optional[str] = Field(default=None, min_length=1, max_length=100)
-    site_id:     Optional[int] = None
-    site_ids:    Optional[List[int]] = None
     manager_id:  Optional[int] = None
     description: Optional[str] = Field(default=None, max_length=500)
 
@@ -31,11 +27,9 @@ class SiteResponse(BaseModel):
 class DeveloperGroupResponse(BaseModel):
     id:          int
     name:        str
-    site_id:     Optional[int] = None
-    site:        Optional[SiteResponse] = None
-    sites:       List[SiteResponse] = []  # Pour compatibilité
     manager_id:  Optional[int]
     description: Optional[str]
+    member_count: Optional[int] = 0  # ✅ AJOUT SENIOR : Compteur temporel intelligent
     created_at:  datetime
     model_config = {"from_attributes": True}
 
@@ -52,14 +46,14 @@ class DeveloperCreate(BaseModel):
     gitlab_user_id:  Optional[int] = Field(default=None)
     name:    str           = Field(min_length=1, max_length=255)
     email:   Optional[str] = Field(default=None, max_length=255)
-    company: Optional[str] = Field(default=None, max_length=255)
     is_external:     bool           = Field(default=False)
     onboarding_date: Optional[date] = Field(default=None)
     offboarding_date: Optional[date] = Field(default=None)
     group_ids: List[int] = Field(default=[])
     sites:    List[DeveloperSiteAssociation]    = Field(default=[])
     projects: List[DeveloperProjectAssociation] = Field(default=[])
-    period_id: Optional[int] = Field(default=None, description="Période cible pour l'affectation des projets")
+    period_id: Optional[int] = Field(default=None, description="Période cible pour l'affectation des projets (Laisser vide pour mission permanente)")
+    mutation_date: Optional[date] = Field(default=None, description="Date d'effet précise pour l'affectation initiale du site")
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -79,8 +73,6 @@ class DeveloperUpdate(BaseModel):
     gitlab_username: Optional[str]  = Field(default=None, max_length=255)
     name:            Optional[str]  = Field(default=None, max_length=255)
     email:           Optional[str]  = Field(default=None, max_length=255)
-    company:         Optional[str]  = Field(default=None, max_length=255)
-    avatar_url:      Optional[str]  = Field(default=None, max_length=512)
     is_external:     Optional[bool] = None
     onboarding_date: Optional[date] = None
     offboarding_date: Optional[date] = None
@@ -89,6 +81,7 @@ class DeveloperUpdate(BaseModel):
     sites:    Optional[List[DeveloperSiteAssociation]]    = None
     projects: Optional[List[DeveloperProjectAssociation]] = None
     period_id: Optional[int] = None
+    mutation_date: Optional[date] = Field(default=None, description="Date d'effet précise pour le changement de site (SCD Type 2)")
 
 class DeveloperValidate(BaseModel):
     is_validated: bool
@@ -107,6 +100,9 @@ class SiteAssociationResponse(BaseModel):
     site_id:    int
     site_name:  Optional[str] = None
     is_primary: bool
+    is_active:  Optional[bool] = None
+    start_date: Optional[date] = None
+    end_date:   Optional[date] = None
     model_config = {"from_attributes": True}
 
 class ProjectAssociationResponse(BaseModel):
@@ -114,6 +110,8 @@ class ProjectAssociationResponse(BaseModel):
     project_name: Optional[str] = None
     gitlab_project_id: Optional[int] = None
     is_active:    bool
+    start_date:   Optional[date] = None
+    end_date:     Optional[date] = None
     period_id:    Optional[int] = None # AJOUT SENIOR
     model_config = {"from_attributes": True}
 
@@ -123,8 +121,6 @@ class DeveloperResponse(BaseModel):
     gitlab_username: Optional[str]
     name:            str
     email:           Optional[str]
-    company:         Optional[str]
-    avatar_url:      Optional[str]
     is_external:     bool
     auto_created:    bool
     onboarding_date: Optional[date] = None
@@ -138,6 +134,7 @@ class DeveloperResponse(BaseModel):
     created_by:      Optional[int]
     created_at:      datetime
     site:            Optional[str] = None
+    rh_status:       Optional[str] = None
     sites:    List[SiteAssociationResponse]    = []
     projects: List[ProjectAssociationResponse] = []
     model_config = {"from_attributes": True}
@@ -160,7 +157,6 @@ class DeveloperSummary(BaseModel):
     gitlab_username: Optional[str]
     name:            str
     email:           Optional[str]
-    avatar_url:      Optional[str]
     is_external:     bool
     is_active:       bool
     is_validated:    bool
@@ -169,7 +165,7 @@ class DeveloperSummary(BaseModel):
     primary_site_id: Optional[int] = None
     onboarding_date:  Optional[date] = None
     offboarding_date: Optional[date] = None
-    rh_status:        Optional[str]  = "ACTIVE"
+    rh_status:        Optional[str]  = None
     site:            Optional[str] = None
     sites:    List[SiteAssociationResponse]    = []
     projects: List[ProjectAssociationResponse] = []
@@ -177,15 +173,21 @@ class DeveloperSummary(BaseModel):
 
     @model_validator(mode='after')
     def compute_site(self) -> 'DeveloperSummary':
-        if not self.site:
-            # On essaie d'extraire le nom du site depuis les associations
-            for assoc in self.sites:
-                if assoc.is_primary and assoc.site_name:
-                    self.site = assoc.site_name
-                    break
-            if not self.site and self.sites:
-                # Fallback sur le premier site rattaché
-                self.site = self.sites[0].site_name
+        try:
+            if not getattr(self, "site", None):
+                # On essaie d'extraire le nom du site depuis les associations
+                if hasattr(self, "sites") and self.sites:
+                    for assoc in self.sites:
+                        if assoc.is_primary and getattr(assoc, "site_name", None):
+                            self.site = assoc.site_name
+                            break
+                    if not self.site and self.sites:
+                        # Fallback sur le premier site rattaché
+                        self.site = getattr(self.sites[0], "site_name", "Inconnu")
+                else:
+                    self.site = "Sans site"
+        except Exception:
+            self.site = "Inconnu"
         return self
 
 
@@ -196,7 +198,7 @@ class DeveloperSummary(BaseModel):
 class DeveloperImportRequest(BaseModel):
     default_group_id: Optional[int] = Field(default=None)
     default_site_id:  Optional[int] = Field(default=None)
-    period_id:        int           = Field(..., description="Période cible de synchronisation (Janvier, Février...)")
+    period_id:        Optional[int] = Field(default=None, description="Période cible de synchronisation (Laisser vide pour mission permanente)")
     dry_run: bool = Field(default=False)
     create_missing_sites:    bool = Field(default=False)
     create_missing_projects: bool = Field(default=False)
@@ -261,6 +263,7 @@ class DeveloperImportLogResponse(BaseModel):
     error_count:     int
     duplicate_count: int
     imported_by:     Optional[int]
+    target_database: str  # ✅ AJOUT: Base de données cible
     created_at:      datetime
     model_config = {"from_attributes": True}
 
@@ -271,4 +274,31 @@ class TimelineEvent(BaseModel):
     description: Optional[str] = None
     icon: str
     color: str
+    is_mission: Optional[bool] = False
     details: Optional[dict] = None
+
+class PaginatedDeveloperSummary(BaseModel):
+    items: List[DeveloperSummary]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+class DeveloperKpiSummary(BaseModel):
+    """
+    Résumé des KPIs d'un développeur (utilisé dans les exports et synthèses).
+    """
+    id:              int
+    name:            str
+    gitlab_username: Optional[str] = None
+    avatar_url:      Optional[str] = None
+    
+    # KPIs agrégés (valeurs types)
+    total_commits:   int   = 0
+    total_mrs:       int   = 0
+    velocity:        float = 0.0
+    impact:          float = 0.0
+
+    model_config = {"from_attributes": True}
+

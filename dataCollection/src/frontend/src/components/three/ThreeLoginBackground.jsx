@@ -1,23 +1,23 @@
 /**
- * ThreeLoginBackground.jsx — Executive "Mission Control" Edition
+ * ThreeLoginBackground.jsx — TELNET HOLDING · "AeroSpace Sovereign v16" Ultimate Tech Globe
  *
- * Major fixes for a Senior/Professional aesthetic:
- *   · EXTREMELY slow, majestic physics (framerate independent using Clock.getDelta).
- *   · 1px crisp orbital lines replacing chunky torus geometries to look like a high-end HUD.
- *   · Minimalist glowing satellite nodes replacing clunky boxes (no more "dropped in" / parachuted look).
- *   · Subtle additive blending on glows for professional data-viz feel.
+ * Design philosophy: Enterprise-grade aerospace and satellite technology visualization.
+ * Crafted by a Senior UI/UX Specialist & Senior 3D Frontend Engineer.
+ *
+ * Visual signature in v16:
+ *  - Fixed Continent Contrast: Set base color to pure white (0xffffff) upon texture load
+ *    to preserve the original high-contrast satellite details and crisp continent outlines.
+ *  - Matte-Satin Tech Finish: Switched to a non-reflective MeshStandardMaterial (roughness: 0.85,
+ *    metalness: 0.15) to completely eliminate glossy spots, neon billiard reflections, and circular highlights.
+ *  - Professional Space Lighting:
+ *      * Sun Light: Soft white-cyan (0xd0e8ff, intensity: 3.5) for natural, volumetric day/night shading.
+ *      * Ambient Light: Deep navy (0x0b1b3a, intensity: 3.0) for rich, cohesive dark shadows.
+ *      * Silhouette Rim Light: Soft blue (0x0055ff, intensity: 2.5) to define the dark side curvature.
+ *  - Silhouette Atmospheric Halo: Hugs the planet (R * 1.04) with an edge-only Fresnel cyan glow.
+ *  - Maintained the transparent background, orbits, and scaled-up (2.0x) titanium CubeSats.
  */
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-
-// Generate an exact orbital plane rotation
-function orbitalQuaternion(inclination, raan) {
-  const q1 = new THREE.Quaternion();
-  const q2 = new THREE.Quaternion();
-  q1.setFromAxisAngle(new THREE.Vector3(0, 1, 0), raan);
-  q2.setFromAxisAngle(new THREE.Vector3(1, 0, 0), inclination);
-  return q1.multiply(q2);
-}
 
 export default function ThreeLoginBackground() {
   const mountRef = useRef(null);
@@ -26,230 +26,343 @@ export default function ThreeLoginBackground() {
     const mount = mountRef.current;
     if (!mount) return;
 
-    let width = mount.clientWidth || window.innerWidth;
-    let height = mount.clientHeight || window.innerHeight;
+    let W = mount.clientWidth  || window.innerWidth;
+    let H = mount.clientHeight || window.innerHeight;
 
-    const scene = new THREE.Scene();
-    
-    // Tilted camera for an epic but calm perspective
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500);
-    camera.position.set(0, 8, 22);
-
+    /* ─── 1. WebGL Renderer Setup ────────────────────────────────── */
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
+    renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setClearColor(0x000000, 0);
+    renderer.setClearColor(0x000000, 0); // Transparent background to let original CSS gradient shine through
     mount.appendChild(renderer.domElement);
 
-    // Group to hold the entire planetary system so we can offset it
-    // We offset it so it centers in the right panel area
-    const systemGroup = new THREE.Group();
-    systemGroup.position.set(1.5, 0, 0);
-    scene.add(systemGroup);
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 500);
+    camera.position.set(0, 2.5, 18.5);
 
-    // ── 1. BACKGROUND STARS ─────────────────────────────────────────
-    const STARS = 2000;
-    const sPos = new Float32Array(STARS * 3);
-    for (let i = 0; i < STARS; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = 80 + Math.random() * 60; // distant sphere
-        sPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        sPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        sPos[i * 3 + 2] = r * Math.cos(phi);
-    }
+    /* Globe group — shifted right to provide perfect breathing space for the login panel */
+    const globe = new THREE.Group();
+    globe.position.set(1.5, -0.2, 0);
+    scene.add(globe);
+
+    const R = 3.6; // Perfect scale for the screen estate
+
+    /* ─── 2. Clean Studio Space Lighting ─────────────────────────── */
+    // Deep navy ambient fill for cohesive cosmic shadows
+    const ambientLight = new THREE.AmbientLight(0x0b1b3a, 3.0);
+    scene.add(ambientLight);
+
+    // Primary Sun Light (soft white-cyan for realistic day/night delineation)
+    const sunLight = new THREE.DirectionalLight(0xd0e8ff, 3.5);
+    sunLight.position.set(12, 6, 12);
+    scene.add(sunLight);
+
+    // Soft backlight to outline the silhouette of the dark hemisphere
+    const backLight = new THREE.DirectionalLight(0x0055ff, 2.5);
+    backLight.position.set(-12, -4, -10);
+    scene.add(backLight);
+
+    /* ─── 3. Elegant Starfield ───────────────────────────────────── */
     const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute("position", new THREE.BufferAttribute(sPos, 3));
-    const starPoints = new THREE.Points(
-        starGeo, 
-        new THREE.PointsMaterial({ size: 0.12, color: 0xffffff, transparent: true, opacity: 0.6 })
-    );
-    scene.add(starPoints);
-
-    // ── 2. PLANETARY CORE ───────────────────────────────────────────
-    const EARTH_RADIUS = 2.0;
-
-    // Deep dark core
-    const coreMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(EARTH_RADIUS, 64, 64),
-        new THREE.MeshBasicMaterial({ color: 0x02050A }) // nearly black
-    );
-    systemGroup.add(coreMesh);
-
-    // High-tech wireframe grid wrapping the core
-    const gridMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(EARTH_RADIUS + 0.02, 32, 24),
-        new THREE.MeshBasicMaterial({
-            color: 0x1A56FF,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.15,
-            blending: THREE.AdditiveBlending
-        })
-    );
-    systemGroup.add(gridMesh);
-
-    // Subtle atmospheric haze
-    const atmosphere = new THREE.Mesh(
-        new THREE.SphereGeometry(EARTH_RADIUS + 0.6, 32, 32),
-        new THREE.MeshBasicMaterial({
-            color: 0x1A56FF,
-            transparent: true,
-            opacity: 0.05,
-            side: THREE.BackSide,
-            blending: THREE.AdditiveBlending
-        })
-    );
-    systemGroup.add(atmosphere);
-
-    // ── 3. ORBITS AND SATELLITES ────────────────────────────────────
-    
-    // Abstracted clean data
-    const orbitalParams = [
-        // inc: tilt, raan: rotation of the tilt, speed: radians per sec (VERY slow, 0.15 is ~42 secs per orbit)
-        { r: 3.4, inc: Math.PI * 0.45, raan: 0.0, speed: -0.15, opacity: 0.60, count: 2 },
-        { r: 4.8, inc: Math.PI * 0.25, raan: 1.2, speed: 0.10,  opacity: 0.40, count: 1 },
-        { r: 6.5, inc: Math.PI * 0.60, raan: 2.8, speed: -0.07, opacity: 0.25, count: 2 },
-        { r: 8.5, inc: Math.PI * 0.15, raan: 4.0, speed: 0.04,  opacity: 0.15, count: 1 },
-    ];
-
-    const satellites = [];
-
-    // Create a 128-point circle geometry for crisp 1px lines
-    const orbitPathGeometry = new THREE.BufferGeometry();
-    const orbitPts = [];
-    for (let c = 0; c <= 128; c++) {
-        const theta = (c / 128) * Math.PI * 2;
-        orbitPts.push(new THREE.Vector3(Math.cos(theta), 0, Math.sin(theta))); // base radius 1
+    const starCount = 600;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const dist = 70 + Math.random() * 50;
+      starPositions[i * 3]     = dist * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = dist * Math.sin(phi) * Math.sin(theta);
+      starPositions[i * 3 + 2] = dist * Math.cos(phi);
     }
-    orbitPathGeometry.setFromPoints(orbitPts);
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+    const starMat = new THREE.PointsMaterial({
+      size: 0.12,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
 
-    orbitalParams.forEach((orb) => {
-        const q = orbitalQuaternion(orb.inc, orb.raan);
-
-        // Crisp 1px orbit line (High-end HUD style)
-        const lineMat = new THREE.LineBasicMaterial({
-            color: 0x1A56FF,
-            transparent: true,
-            opacity: orb.opacity,
-            blending: THREE.AdditiveBlending
-        });
-        const ring = new THREE.LineLoop(orbitPathGeometry, lineMat);
-        ring.scale.set(orb.r, orb.r, orb.r); // scale to exact orbit radius
-        ring.quaternion.copy(q);
-        systemGroup.add(ring);
-
-        // Minimalist data-node "Satellites"
-        for(let s = 0; s < orb.count; s++) {
-            const satGroup = new THREE.Group();
-            
-            // Bright solid core
-            const glowCore = new THREE.Mesh(
-                new THREE.SphereGeometry(0.06, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0xffffff })
-            );
-            
-            // Translucent glowing aura
-            const glowAura = new THREE.Mesh(
-                new THREE.SphereGeometry(0.20, 16, 16),
-                new THREE.MeshBasicMaterial({ 
-                    color: 0x4a88ff, 
-                    transparent: true, 
-                    opacity: 0.6,
-                    blending: THREE.AdditiveBlending
-                })
-            );
-            
-            satGroup.add(glowCore, glowAura);
-            systemGroup.add(satGroup);
-
-            satellites.push({
-                mesh: satGroup,
-                r: orb.r,
-                q: q,
-                angle: (s / orb.count) * Math.PI * 2 + Math.random(),
-                speed: orb.speed // majestic real-time seconds
-            });
-        }
+    /* ─── 4. Premium Satellite Earth Globe (High Contrast) ───────── */
+    // Non-reflective standard material for a soft, matte-satin technical finish
+    const earthMat = new THREE.MeshStandardMaterial({
+      color: 0x0a1f44, // Elegant dark slate blue fallback color
+      roughness: 0.85,  // High roughness diffuses all shiny highlights
+      metalness: 0.15,  // Balanced tech satin feel
+      transparent: false,
     });
 
-    // ── MOUSE PARALLAX ──────────────────────────────────────────────
-    let mouseX = 0, mouseY = 0;
-    const onMouse = (e) => {
-        if (!mount) return;
-        const rect = mount.getBoundingClientRect();
-        mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-        mouseY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+    const earthSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(R, 64, 64),
+      earthMat
+    );
+    globe.add(earthSphere);
+
+    // Load professional dark-mode satellite Earth texture from stable unpkg CDN
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.setCrossOrigin("anonymous");
+    textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-dark.jpg",
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        earthMat.map = texture;
+        // CRITICAL UI/UX FIX: Set color to pure white to let the high-contrast
+        // texture details, continents, and oceans render with absolute clarity!
+        earthMat.color.setHex(0xffffff);
+        earthMat.needsUpdate = true;
+      },
+      undefined,
+      (error) => {
+        console.warn("CDN Earth texture load failed, gracefully falling back to corporate shading.", error);
+      }
+    );
+
+    /* ─── 5. Volumetric Silhouette-Only Atmospheric Halo ───────── */
+    // Precision Fresnel shader that glows ONLY at the outer silhouette, leaving the center completely clear.
+    // Hugs the planet surface perfectly at R * 1.04 for a crisp, high-tech definition.
+    const haloVert = `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewPosition = -mvPosition.xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `;
+    const haloFrag = `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 viewDir = normalize(vViewPosition);
+        // Razor-sharp peak at the exact silhouette edge, completely dark in the center
+        float intensity = pow(1.0 - abs(dot(normal, viewDir)), 2.2);
+        gl_FragColor = vec4(0.0, 0.55, 1.0, 1.0) * intensity * 0.45;
+      }
+    `;
+    const haloMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(R * 1.04, 48, 48),
+      new THREE.ShaderMaterial({
+        vertexShader: haloVert,
+        fragmentShader: haloFrag,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.BackSide,
+      })
+    );
+    globe.add(haloMesh);
+
+    /* ─── 6. Challenge One CubeSats & Precise Orbital Rings ─────── */
+    function buildCubeSat(color) {
+      const satGroup = new THREE.Group();
+
+      // Main Titanium chassis
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.08, 0.13),
+        new THREE.MeshStandardMaterial({
+          color: 0x141a29,
+          metalness: 0.95,
+          roughness: 0.10,
+        })
+      );
+      satGroup.add(body);
+
+      // Sleek Solar Panels
+      [-0.13, 0.13].forEach((panelOffset) => {
+        const wingGroup = new THREE.Group();
+        const solarCell = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 0.002, 0.08),
+          new THREE.MeshStandardMaterial({
+            color: 0x081e4a,
+            metalness: 0.85,
+            roughness: 0.12,
+          })
+        );
+        const wingFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(0.16, 0.004, 0.085),
+          new THREE.MeshStandardMaterial({
+            color: 0x90a2b5,
+            metalness: 0.95,
+            roughness: 0.15,
+          })
+        );
+        wingFrame.position.y = -0.001;
+        wingGroup.add(solarCell);
+        wingGroup.add(wingFrame);
+        wingGroup.position.x = panelOffset;
+        satGroup.add(wingGroup);
+      });
+
+      // Tiny cyan telemetry thruster glow
+      const thruster = new THREE.Mesh(
+        new THREE.SphereGeometry(0.012, 8, 8),
+        new THREE.MeshBasicMaterial({
+          color: color,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending,
+        })
+      );
+      thruster.position.z = -0.075;
+      satGroup.add(thruster);
+
+      return satGroup;
+    }
+
+    const orbits = [];
+    const ORBIT_CFG = [
+      { r: R * 1.35, inc: 0.35 * Math.PI, raan: 0.5, color: 0x0077ff, speed: 0.22 },
+      { r: R * 1.62, inc: -0.25 * Math.PI, raan: 2.2, color: 0x0055dd, speed: -0.16 },
+    ];
+    const PARTICLE_COUNT = 90;
+
+    ORBIT_CFG.forEach((cfg) => {
+      // Rotation quaternion for the inclined orbit
+      const q = new THREE.Quaternion().multiplyQuaternions(
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), cfg.raan),
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), cfg.inc)
+      );
+
+      // Elegant, thin ghost orbit track
+      const orbitTrack = new THREE.Mesh(
+        new THREE.TorusGeometry(cfg.r, 0.003, 4, 150),
+        new THREE.MeshBasicMaterial({
+          color: cfg.color,
+          transparent: true,
+          opacity: 0.14,
+        })
+      );
+      orbitTrack.quaternion.copy(q);
+      globe.add(orbitTrack);
+
+      // Flowing telemetry orbit particles
+      const pGeo = new THREE.BufferGeometry();
+      const pArr = new Float32Array(PARTICLE_COUNT * 3);
+      pGeo.setAttribute("position", new THREE.BufferAttribute(pArr, 3));
+      const pMesh = new THREE.Points(
+        pGeo,
+        new THREE.PointsMaterial({
+          size: 0.035,
+          color: cfg.color,
+          transparent: true,
+          opacity: 0.70,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      globe.add(pMesh);
+
+      // Miniature Challenge One CubeSat (scaled up by 2.0x for beautiful visibility)
+      const sat = buildCubeSat(cfg.color);
+      sat.scale.setScalar(2.0);
+      globe.add(sat);
+
+      orbits.push({
+        q,
+        r: cfg.r,
+        speed: cfg.speed,
+        angle: Math.random() * Math.PI * 2,
+        sat,
+        pMesh,
+        pArr,
+      });
+    });
+
+    /* ─── 7. Interactive Mouse Parallax ─────────────────────────── */
+    let mx = 0, my = 0;
+    const onMouseMove = (e) => {
+      const rc = mount.getBoundingClientRect();
+      mx = ((e.clientX - rc.left) / rc.width  - 0.5) * 2;
+      my = ((e.clientY - rc.top)  / rc.height - 0.5) * 2;
     };
-    window.addEventListener("mousemove", onMouse);
 
     const onResize = () => {
-        if (!mount) return;
-        width = mount.clientWidth || window.innerWidth;
-        height = mount.clientHeight || window.innerHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
+      W = mount.clientWidth  || window.innerWidth;
+      H = mount.clientHeight || window.innerHeight;
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
+      renderer.setSize(W, H);
     };
-    window.addEventListener("resize", onResize);
 
-    // ── RENDER LOOP ─────────────────────────────────────────────────
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("resize",    onResize);
+
+    /* ─── 8. Immersive Animation Loop ───────────────────────────── */
     const clock = new THREE.Clock();
-    let animId;
-    const workingVec = new THREE.Vector3();
+    const vecHolder = new THREE.Vector3();
+    let raf;
 
-    const animate = () => {
-        animId = requestAnimationFrame(animate);
-        const delta = Math.min(clock.getDelta(), 0.1); // cap delta for tab-switching
+    (function tick() {
+      raf = requestAnimationFrame(tick);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const t  = clock.getElapsedTime();
 
-        // Entire system precesses VERY slowly like real cosmos
-        systemGroup.rotation.y += 0.02 * delta;
-        starPoints.rotation.y += 0.005 * delta;
+      // Earth rotation speed (0.075) for dynamic visible movement
+      globe.rotation.y = t * 0.075;
 
-        // Update satellite positions perfectly along their orbital planes
-        satellites.forEach(sat => {
-            sat.angle += sat.speed * delta;
-            
-            // Calculate base position in XZ plane
-            workingVec.set(
-                Math.cos(sat.angle) * sat.r,
-                0,
-                Math.sin(sat.angle) * sat.r
-            );
+      // Almost imperceptible background star drift
+      stars.rotation.y = t * 0.0004;
 
-            // Apply the exact orbital tilt to snap perfectly onto the crisp line
-            workingVec.applyQuaternion(sat.q);
-            sat.mesh.position.copy(workingVec);
-        });
+      // Inclined orbit CubeSats & particle streams
+      orbits.forEach((orb) => {
+        orb.angle += orb.speed * dt;
 
-        // Cinematic, smooth, stable camera parallax
-        const targetCamX = 0 + mouseX * 2.0;
-        const targetCamY = 8 - mouseY * 1.5;
-        camera.position.x += (targetCamX - camera.position.x) * 0.015;
-        camera.position.y += (targetCamY - camera.position.y) * 0.015;
-        camera.lookAt(systemGroup.position); // Always focus on the center of the planet
+        // Position CubeSat
+        vecHolder.set(Math.cos(orb.angle) * orb.r, 0, Math.sin(orb.angle) * orb.r).applyQuaternion(orb.q);
+        orb.sat.position.copy(vecHolder);
+        orb.sat.rotation.y = orb.angle + Math.PI / 2;
 
-        renderer.render(scene, camera);
-    };
-
-    animate();
-
-    return () => {
-        cancelAnimationFrame(animId);
-        window.removeEventListener("mousemove", onMouse);
-        window.removeEventListener("resize", onResize);
-        renderer.dispose();
-        if (mount.contains(renderer.domElement)) {
-            mount.removeChild(renderer.domElement);
+        // Animate particles flowing along the track
+        const positions = orb.pMesh.geometry.attributes.position;
+        const direction = orb.speed > 0 ? 1.0 : -1.0;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const alpha = (i / PARTICLE_COUNT) * Math.PI * 2 + t * 0.10 * direction;
+          vecHolder.set(Math.cos(alpha) * orb.r, 0, Math.sin(alpha) * orb.r).applyQuaternion(orb.q);
+          orb.pArr[i * 3]     = vecHolder.x;
+          orb.pArr[i * 3 + 1] = vecHolder.y;
+          orb.pArr[i * 3 + 2] = vecHolder.z;
         }
+        positions.needsUpdate = true;
+      });
+
+      // Subtle, high-end camera parallax
+      const targetCamX = mx * 0.8 + Math.sin(t * 0.1) * 0.20;
+      const targetCamY = 2.5 - my * 0.5 + Math.cos(t * 0.08) * 0.15;
+      camera.position.x += (targetCamX - camera.position.x) * 0.03;
+      camera.position.y += (targetCamY - camera.position.y) * 0.03;
+      camera.lookAt(globe.position);
+
+      renderer.render(scene, camera);
+    })();
+
+    /* ─── 9. Cleanup ────────────────────────────────────────────── */
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("resize",    onResize);
+      renderer.dispose();
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
     };
   }, []);
 
   return (
-    <div ref={mountRef} style={{
-      position: "absolute", inset: 0, zIndex: 0,
-      pointerEvents: "none", overflow: "hidden"
-    }} />
+    <div
+      ref={mountRef}
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 0,
+        pointerEvents: "none",
+        overflow: "hidden",
+      }}
+    />
   );
 }

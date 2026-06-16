@@ -27,9 +27,6 @@ class GitLabMapper:
     @staticmethod
     def map_developer(
         data:    Dict[str, Any],
-        # ✅ FIX : project_id et site_id supprimés — gérés via M2M
-        group_id: Optional[int] = None,
-        company:  Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Mappe les données GitLab vers le modèle Developer.
@@ -38,7 +35,7 @@ class GitLabMapper:
         L'association Developer ↔ Project est créée séparément via
         DeveloperProjectRepository.add() dans ExtractionService.
 
-        ✅ AJOUT : gitlab_username et avatar_url (nouveaux champs Developer).
+        ✅ AJOUT : gitlab_username (nouveau champ Developer).
         """
         gitlab_user_id = data.get("id")
         if gitlab_user_id is None:
@@ -51,10 +48,6 @@ class GitLabMapper:
             "gitlab_username": data.get("username") or None,
             "name":            data.get("name")     or None,
             "email":           data.get("email")    or None,
-            "company":         company,
-            # ✅ AJOUT : photo de profil récupérée depuis GitLab
-            "avatar_url":      data.get("avatar_url") or None,
-            "group_id":        group_id,
             "is_active":       True,
         }
 
@@ -167,6 +160,15 @@ class GitLabMapper:
             if not approved_at and approvals_data.get("approved_at"):
                 approved_at = parse_dt(approvals_data["approved_at"])
                 approved    = approved_at is not None
+
+        # Fallback for JSON imports where approvals_data is None but MR is merged
+        if not approved and merged_at:
+            approved = True
+            approved_at = merged_at
+        elif not approved and data.get("state") == "merged":
+            approved = True
+            # Use updated_at as fallback if merged_at is missing but state is merged
+            approved_at = parse_dt(data.get("updated_at"))
 
         review_time_hours = None
         if approved_at and created_at:

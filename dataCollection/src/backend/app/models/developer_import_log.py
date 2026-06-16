@@ -85,6 +85,13 @@ class DeveloperImportLog(Base):
         nullable=True,  # nullable : si l'user est supprimé, le log reste
     )
 
+    # ── Base de données cible ──────────────────────────────────────────────────
+    target_database = Column(
+        String(100),
+        nullable=True,  # Changed to nullable to match current DB schema
+        comment="Nom de la base de données cible (ex: gitlab_kpi1, telnetdb)",
+    )
+
     # ── Relations ────────────────────────────────────────────────────────────
     imported_by_user = relationship(
         "AppUser",

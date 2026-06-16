@@ -43,7 +43,6 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
                 MergeRequest.project_id == project_id,
                 # Logique Senior : Inclure si l'auteur est externe OU s'il est humain-validé
                 (Developer.id == None) | (
-                    (Developer.is_active == True) &
                     (Developer.is_validated == True) &
                     (Developer.is_bot == False)
                 )
@@ -83,7 +82,6 @@ class MergeRequestRepository(BaseRepository[MergeRequest]):
         def is_valid_human(dev_alias):
             return (
                 (dev_alias.id.isnot(None)) &
-                (dev_alias.is_active.is_(True)) &
                 (dev_alias.is_validated.is_(True)) &
                 (dev_alias.is_bot.is_(False))
             )

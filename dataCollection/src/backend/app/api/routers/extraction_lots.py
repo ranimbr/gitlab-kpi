@@ -1,4 +1,8 @@
-"""api/routers/extraction_lots.py   
+"""api/routers/extraction_lots.py
+
+✅ [ENTERPRISE PARITY] Toutes les définitions de "Commit Libre" (non-merge)
+   DOIVENT utiliser _IS_PURE_COMMIT_FILTERS pour garantir la cohérence totale
+   entre le Lot, la page Commits, et les KPIs.
 """
 from fastapi           import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm    import Session, joinedload
@@ -14,33 +18,89 @@ from app.models.extraction_lot                  import ExtractionLot
 from app.models.app_user                        import AppUser
 from app.models.commit                          import Commit
 from app.models.merge_request                   import MergeRequest
+from app.repositories.developer_repository      import DeveloperRepository
 
 router = APIRouter(prefix="/extraction-lots", tags=["Extraction Lots"])
 repo   = ExtractionLotRepository()
+dev_repo = DeveloperRepository()
 
 
 def _base_query(db: Session):
     """Query de base avec toutes les relations eager-loadees."""
-    return (
-        db.query(ExtractionLot)
-        .options(
-            joinedload(ExtractionLot.developer),
-            joinedload(ExtractionLot.triggered_by_user),
-            joinedload(ExtractionLot.project),
-            joinedload(ExtractionLot.period),
+    try:
+        return (
+            db.query(ExtractionLot)
+            .options(
+                joinedload(ExtractionLot.developer),
+                joinedload(ExtractionLot.triggered_by_user),
+                joinedload(ExtractionLot.project),
+                joinedload(ExtractionLot.period),
+            )
         )
-    )
+    except Exception as e:
+        logger.error(f"Error in _base_query: {e}", exc_info=True)
+        # Fallback: query without the problematic triggered_by_user join
+        return (
+            db.query(ExtractionLot)
+            .options(
+                joinedload(ExtractionLot.developer),
+                joinedload(ExtractionLot.project),
+                joinedload(ExtractionLot.period),
+            )
+        )
 
 
-def _enrich_lot(lot: ExtractionLot, db: Session) -> dict:
+# ✅ [ENTERPRISE POLICY] — Définition Unifiée d'un "Commit Libre"
+# Ces critères sont IDENTIQUES à ceux de commit_repository.py.
+# Toute modification ici DOIT être répercutée dans commit_repository.py et vice-versa.
+# C'est le "Single Source of Truth" pour le filtrage des commits de fusion.
+_PURE_COMMIT_FILTERS = [
+    Commit.is_merge_commit.is_(False),
+    func.lower(Commit.title).notlike("merge branch %"),
+    func.lower(Commit.title).notlike("merge pull request %"),
+    func.lower(Commit.title).notlike("merge %"),
+]
+
+
+def _batch_load_users(db: Session) -> dict:
+    """
+    Charge tous les utilisateurs depuis auth_db en une seule requête.
+    Retourne un dict {user_id: user_object} pour accès O(1).
+    """
+    from app.database.session import get_auth_session
+    try:
+        auth_db = get_auth_session()
+        users = auth_db.query(AppUser).all()
+        users_dict = {user.id: user for user in users}
+        auth_db.close()
+        return users_dict
+    except Exception as e:
+        # En cas d'erreur, retourner un dict vide
+        # Les lots utiliseront triggered_by_user du joinedload si disponible
+        return {}
+
+
+def _enrich_lot(lot: ExtractionLot, db: Session, users_cache: dict = None) -> dict:
     """Convertit un lot ORM en dict avec les compteurs SQL injectes."""
     commit_count = db.query(func.count(Commit.id)).filter(
-        Commit.extraction_lot_id == lot.id
+        Commit.extraction_lot_id == lot.id,
+        *_PURE_COMMIT_FILTERS  # ✅ Parity: même définition que commit_repository.py
     ).scalar() or 0
 
     mr_count = db.query(func.count(MergeRequest.id)).filter(
         MergeRequest.extraction_lot_id == lot.id
     ).scalar() or 0
+
+    # ✅ SENIOR : On injecte directement la liste exacte scannée
+    members = []
+    if lot.project_id and lot.period_id:
+        members, _ = dev_repo.get_by_tab(db, tab="validated", project_id=lot.project_id, period_id=lot.period_id)
+
+    # ✅ OPTIMISATION BATCH: Utiliser le cache d'utilisateurs si fourni
+    # Évite N requêtes cross-DB pour N lots
+    triggered_by_user = lot.triggered_by_user
+    if lot.triggered_by and not triggered_by_user and users_cache:
+        triggered_by_user = users_cache.get(lot.triggered_by)
 
     return {
         "id":              lot.id,
@@ -52,15 +112,17 @@ def _enrich_lot(lot: ExtractionLot, db: Session) -> dict:
         "triggered_by":    lot.triggered_by,
         "generated_file":  lot.generated_file,
         "md5sum":          lot.md5sum,
+        "source_filename":  lot.source_filename,
         "error_message":   lot.error_message,
         "created_at":      lot.created_at,
         "completed_at":    lot.completed_at,
         "commit_count":    commit_count,
         "mr_count":        mr_count,
         "developer":           lot.developer,
-        "triggered_by_user":   lot.triggered_by_user,
+        "triggered_by_user":   triggered_by_user,
         "period":              lot.period,
         "project":             lot.project,
+        "project_members":     members,
     }
 
 
@@ -81,7 +143,41 @@ def list_lots(
         q = q.filter(ExtractionLot.period_id == perid)
 
     lots = q.order_by(ExtractionLot.created_at.desc()).all()
-    return [_enrich_lot(lot, db) for lot in lots]
+    
+    # ✅ OPTIMISATION: Batch load des utilisateurs pour éviter N requêtes cross-DB
+    users_cache = _batch_load_users(db)
+    
+    enriched_lots = []
+    for lot in lots:
+        try:
+            enriched_lots.append(_enrich_lot(lot, db, users_cache))
+        except Exception as e:
+            logger.error(f"Error enriching lot {lot.id}: {e}", exc_info=True)
+            # Return lot with minimal data if enrichment fails
+            enriched_lots.append({
+                "id": lot.id,
+                "extraction_type": lot.extraction_type,
+                "status": lot.status,
+                "project_id": lot.project_id,
+                "developer_id": lot.developer_id,
+                "period_id": lot.period_id,
+                "triggered_by": lot.triggered_by,
+                "generated_file": lot.generated_file,
+                "md5sum": lot.md5sum,
+                "source_filename": lot.source_filename,
+                "error_message": lot.error_message,
+                "created_at": lot.created_at,
+                "completed_at": lot.completed_at,
+                "commit_count": 0,
+                "mr_count": 0,
+                "developer": lot.developer,
+                "triggered_by_user": None,
+                "period": lot.period,
+                "project": lot.project,
+                "project_members": [],
+            })
+    
+    return enriched_lots
 
 
 @router.get("/{lot_id}", response_model=ExtractionLotResponse)

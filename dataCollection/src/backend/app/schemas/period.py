@@ -27,6 +27,7 @@ class PeriodResponse(BaseModel):
     closed_by_id:    Optional[int] = None
     closed_by_name:  Optional[str] = None
     closure_summary: Optional[dict] = None
+    headcount_snapshot: Optional[int] = None
 
     @computed_field
     @property

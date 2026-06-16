@@ -41,7 +41,6 @@ class CommitRepository(BaseRepository[Commit]):
             )
             .filter(
                 Commit.project_id == project_id,
-                Developer.is_active == True,
                 Developer.is_validated == True,
                 Developer.is_bot == False
             )
@@ -77,9 +76,16 @@ class CommitRepository(BaseRepository[Commit]):
         """
         ✅ SENIOR : Récupération fédérée par période.
         Permet de voir tous les commits d'un mois (ou d'un projet spécifique ce mois-là)
-        en joignant via ExtractionLot.
+        en filtrant par authored_date pour cohérence avec les KPIs.
         """
+        from app.models.period import Period
         from app.models.extraction_lot import ExtractionLot
+        
+        # Get period dates
+        period = db.query(Period).filter(Period.id == period_id).first()
+        if not period:
+            return []
+        
         query = (
             db.query(Commit)
             .join(Developer, Commit.developer_id == Developer.id)
@@ -88,10 +94,9 @@ class CommitRepository(BaseRepository[Commit]):
                 .joinedload(Developer.site_associations)
                 .joinedload(DeveloperSite.site)
             )
-            .join(ExtractionLot, Commit.extraction_lot_id == ExtractionLot.id)
             .filter(
-                ExtractionLot.period_id == period_id,
-                Developer.is_active == True,
+                Commit.authored_date >= period.start_date,
+                Commit.authored_date <= period.end_date,
                 Developer.is_validated == True,
                 Developer.is_bot == False
             )
@@ -138,7 +143,6 @@ class CommitRepository(BaseRepository[Commit]):
                 .joinedload(DeveloperSite.site)
             )
             .filter(
-                Developer.is_active == True,
                 Developer.is_validated == True,
                 Developer.is_bot == False
             )

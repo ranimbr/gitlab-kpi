@@ -1,18 +1,27 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import developerService from "../../services/developerService";
+import periodService from "../../services/periodService";
 import Swal from "sweetalert2";
 
 export default function DeveloperImportModal({ onClose, onSuccess }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [periods, setPeriods] = useState([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [options, setOptions] = useState({
     createMissingSites: false,
     createMissingProjects: false,
     createMissingGroups: true,
-    fullSync: true, // [SENIOR] Default to true for Strict Mission logic
+    fullSync: true, // Default to true for Strict Mission logic
   });
   
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    periodService.getAll().then(data => {
+      setPeriods(Array.isArray(data) ? data : []);
+    }).catch(console.error);
+  }, []);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -46,6 +55,7 @@ export default function DeveloperImportModal({ onClose, onSuccess }) {
     try {
       const response = await developerService.importFile(file, {
         dryRun: false,
+        period_id: selectedPeriodId || null,
         ...options
       });
       
@@ -129,6 +139,30 @@ export default function DeveloperImportModal({ onClose, onSuccess }) {
             <button className="btn btn-sm btn-soft-info" onClick={downloadTemplate} type="button">
               <i className="ri-download-line me-1"></i> Télécharger le template
             </button>
+          </div>
+
+          <hr className="border-light" />
+
+          {/* Intelligent Period Scoping */}
+          <div className="mb-4">
+            <h6 className="fw-bold fs-13 mb-2 text-dark text-uppercase">Portée de l'Importation</h6>
+            <div className="d-flex align-items-center gap-2">
+              <select 
+                className="form-select form-select-sm" 
+                value={selectedPeriodId}
+                onChange={(e) => setSelectedPeriodId(e.target.value)}
+                style={{ borderRadius: 8 }}
+              >
+                <option value="">Mission Permanente (Recommandé)</option>
+                {periods.map(p => (
+                  <option key={p.id} value={p.id}>Période Spécifique : {p.month}/{p.year}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-muted fs-11 mt-2 mb-0">
+              <i className="ri-information-line me-1"></i>
+              Si "Mission Permanente" est choisie, le système utilisera les dates Onboarding/Offboarding du fichier pour activer les développeurs intelligemment chaque mois.
+            </p>
           </div>
 
           <hr className="border-light" />

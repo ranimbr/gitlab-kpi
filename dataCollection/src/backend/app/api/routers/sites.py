@@ -127,11 +127,12 @@ def get_site_team(
     # ── 1. Gérer le cas "Tous les sites" ("all") ─────────────────────────────
     from sqlalchemy.orm import joinedload
     from app.models.developer_project import DeveloperProject
+    from app.models.developer_group import DeveloperGroupLink
 
     query = (
         db.query(Developer)
         .options(
-            joinedload(Developer.groups),
+            joinedload(Developer.group_links).joinedload(DeveloperGroupLink.group),
             joinedload(Developer.project_associations).joinedload(DeveloperProject.project)
         )
         .filter(Developer.is_bot.is_(False))
@@ -265,7 +266,7 @@ def get_site_team(
             "name":            dev.name,
             "gitlab_username": dev.gitlab_username,
             "email":           dev.email,
-            "avatar_url":      dev.avatar_url,
+            "avatar_url":      getattr(dev, 'avatar_url', None),
             "is_validated":    dev.is_validated,
             "is_active":       dev.is_active,
             "is_primary_site": primary_map.get(dev.id, False),

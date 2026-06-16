@@ -170,6 +170,9 @@ class MergeRequest(Base):
         # ✅ AJOUT : MRs ciblant la branche principale (détection commits directs sur main)
         Index("idx_mr_target_branch",       "project_id", "target_branch"),
 
+        # ✅ [ENTERPRISE] Index composite haute performance pour les KPIs MR (Rate, Lead Time)
+        Index("idx_mr_analytics_perf",      "project_id", "created_at_gitlab", "state", "is_draft"),
+
         # ✅ AJOUT : MRs non matchées (developer_id NULL) → à traiter par l'admin
         Index("idx_mr_unmatched",           "project_id", "developer_id"),
 

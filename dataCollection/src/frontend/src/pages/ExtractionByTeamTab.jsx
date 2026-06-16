@@ -63,7 +63,7 @@ export default function ExtractionByTeamTab({
       const [sitesRes, groupsRes, devsRes] = await Promise.all([
         siteService.getAll(false), // active_only: false
         developerService.getGroups(),
-        api.get("/developers", { params: { tab: "all", period_id: selectedPeriod || undefined } }) // ✅ AJOUT SENIOR
+        api.get("/developers", { params: { tab: "extraction", period_id: selectedPeriod || undefined } }) // ✅ SENIOR : Mode intelligent
       ]);
       const devsData = devsRes.data;
       setSites(Array.isArray(sitesRes) ? sitesRes : []);
@@ -188,7 +188,7 @@ export default function ExtractionByTeamTab({
     developers.forEach(dev => {
       if (selectedDeveloperIds.includes(String(dev.id))) {
         (dev?.projects || []).forEach(p => {
-          if (p.is_active && p.gitlab_project_id) ids.add(String(p.gitlab_project_id));
+          if (p.gitlab_project_id) ids.add(String(p.gitlab_project_id));
         });
       }
     });
@@ -201,7 +201,7 @@ export default function ExtractionByTeamTab({
     const ids = new Set();
     filteredDevelopers.forEach(dev => {
       (dev?.projects || []).forEach(p => {
-        if (p.is_active && p.gitlab_project_id) ids.add(String(p.gitlab_project_id));
+        if (p.gitlab_project_id) ids.add(String(p.gitlab_project_id));
       });
     });
     return ids;
@@ -245,7 +245,7 @@ export default function ExtractionByTeamTab({
     setLoading(true);
 
     try {
-      const res = await api.post("/extraction/by-team", null, {
+      const res = await api.post("/extraction/run", null, {
         params: {
           gitlab_config_id: selectedConfig,
           site_id: selectedSite || undefined,
@@ -472,7 +472,7 @@ export default function ExtractionByTeamTab({
 
                    {!isSmartSync && (
                      <>
-                        <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.filter(d => d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED").map(d => String(d.id)))}>Tout cocher</button>
+                        <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.map(d => String(d.id)))}>Tout cocher</button>
                         <span className="text-muted">|</span>
                         <button className="btn btn-link p-0 fs-10 text-danger" onClick={() => setSelectedDeveloperIds([])}>Reset</button>
                      </>
@@ -510,7 +510,7 @@ export default function ExtractionByTeamTab({
                         type="checkbox" 
                         id={`team-dev-${d.id}`}
                         checked={selectedDeveloperIds.includes(String(d.id))}
-                        disabled={isSmartSync || d.rh_status === "FUTURE_JOINER" || d.rh_status === "OFFBOARDED"}
+                        disabled={isSmartSync}
                         onChange={e => {
                           const id = String(d.id);
                           setSelectedDeveloperIds(prev => 
@@ -599,7 +599,13 @@ export default function ExtractionByTeamTab({
                         </span>
                         <span className="badge bg-info text-white rounded-pill px-2 py-1 fs-10">
                           {(() => {
-                            const activeOnPeriod = developers.filter(d => d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED");
+                            // ✅ FIX : On exclut les devs SANS projet (ex: suspendus comme Elliot en Mars/Avril)
+                            // Un dev avec rh_status=ACTIVE mais projects=[] ne compte pas dans l'effectif réel
+                            const activeOnPeriod = developers.filter(d =>
+                              d.rh_status !== "FUTURE_JOINER" &&
+                              d.rh_status !== "OFFBOARDED" &&
+                              (d.projects || []).length > 0  // ← NOUVEAU : doit avoir au moins un projet
+                            );
                             const uniqueIds = new Set();
                             activeOnPeriod.forEach(d => {
                               const projectsOfDev = d.projects || [];
@@ -619,9 +625,12 @@ export default function ExtractionByTeamTab({
                       const isTeam = teamProjectIds.has(pId);
 
                       // ✅ SENIOR — Comptage DYNAMIQUE selon la période sélectionnée
-                      // On exclut les FUTURE_JOINER et OFFBOARDED (non actifs sur la période)
+                      // On exclut les FUTURE_JOINER, OFFBOARDED et les devs sans projet (ex: suspendus)
                       const devCount = developers.filter(d => {
-                        const isActiveOnPeriod = d.rh_status !== "FUTURE_JOINER" && d.rh_status !== "OFFBOARDED";
+                        const isActiveOnPeriod =
+                          d.rh_status !== "FUTURE_JOINER" &&
+                          d.rh_status !== "OFFBOARDED" &&
+                          (d.projects || []).length > 0; // ← FIX : exclut les dev sans mission active
                         const isOnProject = (d.projects || []).some(dp =>
                           String(dp.gitlab_project_id) === pId || String(dp.project_id) === String(p.id)
                         );

@@ -52,3 +52,23 @@ class UserResponse(BaseModel):
     dashboard_access: Optional[List[int]] = None
 
     model_config = {"from_attributes": True}
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Demande de réinitialisation de mot de passe"""
+    email: EmailStr = Field(description="Email de l'utilisateur")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Réinitialisation de mot de passe avec token"""
+    token: str = Field(description="Token de réinitialisation JWT")
+    new_password: str = Field(min_length=8, description="Nouveau mot de passe")
+
+    @model_validator(mode="after")
+    def validate_password_strength(self) -> "ResetPasswordRequest":
+        pwd = self.new_password
+        if not any(c.isupper() for c in pwd):
+            raise ValueError("Le mot de passe doit contenir au moins une majuscule.")
+        if not any(c.isdigit() for c in pwd):
+            raise ValueError("Le mot de passe doit contenir au moins un chiffre.")
+        return self

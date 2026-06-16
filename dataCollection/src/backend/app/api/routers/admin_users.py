@@ -10,13 +10,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_admin, get_current_user
-from app.database.session import get_db
+from app.database.session import get_auth_db, get_db
+from app.core.config import get_settings
 from app.models.app_user import AppUser, UserRoleEnum
 from app.schemas.user import (
     ChangePasswordRequest,
     CreateUserRequest,
     UpdateUserRequest,
     UserManagementResponse,
+    UserSiteAccessResponse,
+    UserGroupAccessResponse,
 )
 from app.services.admin.user_service import UserService
 
@@ -30,7 +33,9 @@ def list_users(
     db:            Session = Depends(get_db),
     current_admin: AppUser = Depends(get_current_admin),
 ):
-    return service.get_all_users(db)
+    users = service.get_all_users(db)
+    # ✅ FIX : Utiliser le sérialiseur personnalisé pour lire les propriétés
+    return [UserManagementResponse.from_orm(user) for user in users]
 
 
 @router.post("/admin/users", response_model=UserManagementResponse, status_code=status.HTTP_201_CREATED)
@@ -125,7 +130,7 @@ def get_my_profile(current_user: AppUser = Depends(get_current_user)):
 @router.put("/users/me/password", status_code=200)
 def change_my_password(
     request:      ChangePasswordRequest,
-    db:           Session = Depends(get_db),
+    db:           Session = Depends(get_auth_db),
     current_user: AppUser = Depends(get_current_user),
 ):
     service.change_password(
@@ -135,3 +140,83 @@ def change_my_password(
         confirm_password=request.confirm_password,
     )
     return {"message": "Mot de passe mis à jour avec succès."}
+
+
+# ── Endpoints pour la gestion multi-sites ─────────────────────────────────────
+@router.get("/admin/users/{user_id}/site-access", response_model=List[UserSiteAccessResponse])
+def get_user_site_access(
+    user_id:       int,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """Retourne tous les accès sites d'un utilisateur."""
+    user = service.get_user(db, user_id)
+    return service.site_access_repo.get_by_user_id(db, user_id)
+
+
+@router.post("/admin/users/{user_id}/site-access", response_model=UserSiteAccessResponse, status_code=status.HTTP_201_CREATED)
+def add_user_site_access(
+    user_id:       int,
+    site_id:       int,
+    req:           Request,
+    is_primary:    bool = False,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """Ajoute un accès site pour un utilisateur."""
+    user = service.get_user(db, user_id)
+    access = service.site_access_repo.create(db, user_id, site_id, is_primary)
+    return access
+
+
+@router.delete("/admin/users/{user_id}/site-access/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_user_site_access(
+    user_id:       int,
+    site_id:       int,
+    req:           Request,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """Supprime un accès site pour un utilisateur."""
+    user = service.get_user(db, user_id)
+    service.site_access_repo.delete_by_user_site(db, user_id, site_id)
+
+
+# ── Endpoints pour la gestion multi-équipes ───────────────────────────────────
+@router.get("/admin/users/{user_id}/group-access", response_model=List[UserGroupAccessResponse])
+def get_user_group_access(
+    user_id:       int,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """Retourne tous les accès équipes d'un utilisateur."""
+    user = service.get_user(db, user_id)
+    return service.group_access_repo.get_by_user_id(db, user_id)
+
+
+@router.post("/admin/users/{user_id}/group-access", response_model=UserGroupAccessResponse, status_code=status.HTTP_201_CREATED)
+def add_user_group_access(
+    user_id:       int,
+    group_id:      int,
+    req:           Request,
+    is_primary:    bool = False,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """Ajoute un accès équipe pour un utilisateur."""
+    user = service.get_user(db, user_id)
+    access = service.group_access_repo.create(db, user_id, group_id, is_primary)
+    return access
+
+
+@router.delete("/admin/users/{user_id}/group-access/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_user_group_access(
+    user_id:       int,
+    group_id:      int,
+    req:           Request,
+    db:            Session = Depends(get_db),
+    current_admin: AppUser = Depends(get_current_admin),
+):
+    """Supprime un accès équipe pour un utilisateur."""
+    user = service.get_user(db, user_id)
+    service.group_access_repo.delete_by_user_group(db, user_id, group_id)

@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import List, Optional, Any, Dict
 
 from sqlalchemy.orm import Session
+from app.database.session import SessionLocal
 
 from app.models.kpi_snapshot import KpiSnapshot
 from app.repositories.kpi_snapshot_repository import KpiSnapshotRepository
@@ -74,7 +75,7 @@ class KpiService:
             excluded = {"period_start", "period_end", "site_id", "project_id"}
             data = {k: v for k, v in metrics.items() if k not in excluded}
 
-            # ✅ résolution automatique du site si non fourni (Senior logic)
+            #  résolution automatique du site si non fourni (Senior logic)
             final_site_id = site_id
             if final_site_id is None and dev_id is not None:
                 from app.services.kpi.kpi_aggregator import KpiAggregator
@@ -107,3 +108,19 @@ class KpiService:
         )
 
         return snapshot
+    def recalculate_developer_history(self, developer_id: int, changed_fields: Optional[List[str]] = None):
+        """
+        [ENTERPRISE BRIDGE] Déclenche le recalcul historique via KpiAggregator.
+        Utilisé par le routeur en BackgroundTask.
+        """
+        from app.database.session import SessionLocal
+        from app.services.kpi.kpi_aggregator import KpiAggregator
+        
+        db = SessionLocal()
+        try:
+            aggregator = KpiAggregator(db)
+            aggregator.recalculate_developer_history(developer_id, changed_fields)
+        except Exception as e:
+            logger.error(f"KpiService.recalculate_developer_history FAILED for dev {developer_id}: {e}")
+        finally:
+            db.close()

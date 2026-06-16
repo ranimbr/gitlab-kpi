@@ -49,6 +49,8 @@ class ExtractionLot(Base):
     generated_file = Column(String(500), nullable=True)
     # MD5 du fichier généré pour vérification d'intégrité
     md5sum         = Column(String(64),  nullable=True)
+    # Nom original du fichier source importé
+    source_filename = Column(String(255), nullable=True, comment="Nom original du fichier importé (JSON ou ZIP)")
     error_message  = Column(Text,        nullable=True)
     # NULL tant que le lot est pending ou running
     completed_at   = Column(DateTime(timezone=True), nullable=True)
@@ -86,8 +88,8 @@ class ExtractionLot(Base):
     )
     triggered_by = Column(
         Integer,
-        ForeignKey("app_user.id", ondelete="SET NULL"),
         nullable=True,  # NULL = déclenché par le scheduler (automatique)
+        comment="User ID from auth_db (cross-DB reference, no FK constraint)"
     )
 
     # ── Relations ────────────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ class ExtractionLot(Base):
         "AppUser",
         back_populates="extraction_lots",
         foreign_keys=[triggered_by],
+        primaryjoin="ExtractionLot.triggered_by == AppUser.id",
     )
     developer = relationship("Developer", back_populates="extraction_lots")
     gitlab_config = relationship("GitLabConfig")
@@ -118,7 +121,17 @@ class ExtractionLot(Base):
 
     @property
     def commit_count(self) -> int:
-        return len(self.commits)
+        # ✅ [ENTERPRISE PARITY] — Définition unifiée d'un "Commit Libre"
+        # Critères IDENTIQUES à commit_repository.py et extraction_lots.py :
+        # 1. flag is_merge_commit == False
+        # 2. titre ne commence pas par "merge branch", "merge pull request", "merge"
+        return len([
+            c for c in self.commits
+            if not c.is_merge_commit
+            and not (c.title or "").lower().startswith("merge branch ")
+            and not (c.title or "").lower().startswith("merge pull request ")
+            and not (c.title or "").lower().startswith("merge ")
+        ])
 
     @property
     def mr_count(self) -> int:

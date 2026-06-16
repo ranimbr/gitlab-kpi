@@ -3,7 +3,7 @@ services/kpi/analytics_service.py
 
 """
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy import func, distinct
@@ -114,6 +114,24 @@ class AnalyticsService:
             
             history = self.get_kpi_history(project_id, site_id, group_id, developer_id)
             
+            # ✅ [SENIOR] Dynamic Headcount & Velocity Recalculation
+            # Permet de refléter les changements d'organisation (site/groupe) sans ré-extraction.
+            if latest and not developer_id:
+                pid = latest.period_id if hasattr(latest, 'period_id') else period_id
+                if pid:
+                    nb_devs = self.dev_repo.count_active_for_period(
+                        self.db, project_id, pid, site_id, group_id
+                    )
+                    latest.nb_developers = nb_devs
+                    
+                    # Recalcul des ratios de vitesse (Commits/Dev, MRs/Dev)
+                    if nb_devs > 0:
+                        latest.commit_rate_per_site = round(float(latest.total_commits or 0) / nb_devs, 2)
+                        latest.mr_rate_per_site = round(float(latest.total_mrs_created or 0) / nb_devs, 2)
+                    else:
+                        latest.commit_rate_per_site = 0.0
+                        latest.mr_rate_per_site = 0.0
+
             period_label = None
             if latest and latest.snapshot_date:
                 mois         = _MOIS_FR.get(latest.snapshot_date.month, "")
@@ -143,16 +161,11 @@ class AnalyticsService:
             if not last_period: return None
             period_id = last_period[0]
 
-        # 1b. Calculer le nombre UNIQUE de développeurs pour cette période (Global)
-        nb_devs_query = self.db.query(func.count(distinct(DeveloperProject.developer_id))).filter(
-            DeveloperProject.period_id == period_id,
-            DeveloperProject.is_active == True
+        # 1b. [SENIOR] Calcul Dynamique du Headcount (Virtualization Layer)
+        # On ne se base plus sur les liens statiques mais sur le moteur SCD Type 2
+        nb_devs_total = self.dev_repo.count_active_for_period(
+            self.db, project_id=None, period_id=period_id, site_id=site_id
         )
-        if site_id:
-            nb_devs_query = nb_devs_query.join(Developer).join(
-                DeveloperSite, (DeveloperSite.developer_id == Developer.id) & (DeveloperSite.site_id == site_id)
-            )
-        nb_devs_total = nb_devs_query.scalar() or 0
 
         # 2. Aggréger les snapshots de niveau 'Project' (dev_id=NULL, group_id=NULL)
         # On fait la moyenne des taux et la somme des volumes
@@ -190,12 +203,17 @@ class AnalyticsService:
         if not stats or stats.total_commits is None: return None
 
         # Créer un snapshot virtuel
+        # ✅ [SENIOR] Dynamic Velocity Calculation
+        # On recalcule les ratios globaux basés sur le headcount virtuel
+        c_rate = round(float(stats.total_commits or 0) / nb_devs_total, 2) if nb_devs_total > 0 else 0.0
+        m_rate = round(float(stats.total_mrs or 0) / nb_devs_total, 2) if nb_devs_total > 0 else 0.0
+
         snap = KpiSnapshot(
             project_id=0, site_id=site_id, period_id=period_id,
-            mr_rate_per_site       = round(float(stats.mr_rate or 0), 2),
+            mr_rate_per_site       = m_rate,
             approved_mr_rate       = round(float(stats.approved_rate or 0), 4),
             merged_mr_rate         = round(float(stats.merged_rate or 0), 4),
-            commit_rate_per_site   = round(float(stats.commit_rate or 0), 2),
+            commit_rate_per_site   = c_rate,
             nb_commits_per_project = int(stats.total_commits or 0),
             total_commits          = int(stats.total_commits or 0),
             total_mrs_created      = int(stats.total_mrs or 0),
@@ -207,7 +225,7 @@ class AnalyticsService:
             avg_review_time_hours  = round(float(stats.avg_review or 0), 1),
             review_time_hours      = float(stats.total_review_time or 0),
             developer_score        = float(stats.developer_score or 0) if developer_id else None,
-            nb_developers          = nb_devs_total, # Utilisation du compte distinct
+            nb_developers          = nb_devs_total, 
             
             # ✅ AJOUT : Initialiser les métriques Enterprise pour éviter validation fail (None -> int)
             bus_factor             = 0,
@@ -252,6 +270,7 @@ class AnalyticsService:
     ) -> Dict:
         """
         ✅ AJOUT : vue KPI individuelle pour la page profil développeur.
+        ✅ [FIX] Support period_id pour données historiques
         """
         developer = self.dev_repo.get_by_id(self.db, developer_id)
         if not developer:
@@ -267,12 +286,14 @@ class AnalyticsService:
                 snapshot = (
                     self.db.query(KpiSnapshot)
                     .filter(KpiSnapshot.developer_id == developer_id)
-                    .order_by(KpiSnapshot.snapshot_date.desc())
-                    .first()
                 )
+                # ✅ [FIX] Filtrer par period_id si spécifié
+                if period_id:
+                    snapshot = snapshot.filter(KpiSnapshot.period_id == period_id)
+                snapshot = snapshot.order_by(KpiSnapshot.snapshot_date.desc()).first()
             else:
                 snapshot = self.snapshot_repo.get_latest(
-                    self.db, project_id, developer_id=developer_id
+                    self.db, project_id, developer_id=developer_id, period_id=period_id
                 )
 
         # Site primaire du développeur
@@ -336,9 +357,15 @@ class AnalyticsService:
             mois         = _MOIS_FR.get(period.month, "")
             period_label = f"{mois} {period.year}"
 
+        # ✅ [SENIOR] FIX 3 : Batch fetch developers
+        dev_ids = [snap.developer_id for snap in snapshots if snap.developer_id]
+        from app.models.developer import Developer
+        devs = self.db.query(Developer).filter(Developer.id.in_(dev_ids)).all()
+        dev_map = {d.id: d for d in devs}
+
         entries = []
         for rank, snap in enumerate(snapshots, start=1):
-            dev = self.dev_repo.get_by_id(self.db, snap.developer_id) if snap.developer_id else None
+            dev = dev_map.get(snap.developer_id)
             # Compute approved_rate as a ratio (0-1) for the frontend
             approved_rate = None
             if snap.total_mrs_created and snap.total_mrs_created > 0:
@@ -412,9 +439,15 @@ class AnalyticsService:
         period = self.period_repo.get_by_id(self.db, period_id)
         period_label = f"{_MOIS_FR.get(period.month, '')} {period.year}" if period else "—"
         
+        # ✅ [SENIOR] FIX 3 : Batch fetch developers
+        dev_ids = [r.developer_id for r in rows if r.developer_id]
+        from app.models.developer import Developer
+        devs = self.db.query(Developer).filter(Developer.id.in_(dev_ids)).all()
+        dev_map = {d.id: d for d in devs}
+
         entries = []
         for rank, r in enumerate(rows, start=1):
-            dev = self.dev_repo.get_by_id(self.db, r.developer_id)
+            dev = dev_map.get(r.developer_id)
             if not dev: continue
             
             approved_rate = None
@@ -556,26 +589,31 @@ class AnalyticsService:
             if r[0] not in site_ids:
                 site_ids.append(r[0])
 
-        # 2. Calculer un snapshot virtuel pour chaque site
+        # 2. Pre-fetch Site names [SENIOR]
+        from app.models.site import Site
+        sites_objs = self.db.query(Site).filter(Site.id.in_(site_ids)).all()
+        site_map = {s.id: s.name for s in sites_objs}
+
+        # 3. Calculer un snapshot virtuel pour chaque site
         results = []
         for sid in site_ids:
             snap = self._calculate_virtual_snapshot_for_lot(
                 project_id, lot_id, site_id=sid, group_id=None, developer_id=None
             )
             if snap:
-                site_obj = self.db.query(Site).filter(Site.id == sid).first()
-                snap.site_name = site_obj.name if site_obj else f"Site {sid}"
+                snap.site_name = site_map.get(sid) or f"Site {sid}"
                 results.append(snap)
 
         # 3. Tri par le KPI demandé (facultatif, le router le fait aussi)
         results.sort(key=lambda x: getattr(x, kpi_field, 0), reverse=True)
         return results
 
-    def get_site_comparison_global(self, period_id: int, kpi_field: str = "total_commits") -> List[KpiSnapshot]:
+    def get_site_comparison_global(self, period_id: int, kpi_field: str = "total_commits", site_id: Optional[int] = None) -> List[KpiSnapshot]:
         """
          NOUVEAU [SENIOR] : Agrégation inter-projets par site.
         Calcule la performance de chaque site sur TOUS les projets pour une période donnée.
         Permet la "Vision Globale" réelle demandée par le management.
+        Si site_id est fourni, retourne uniquement les données pour ce site.
         """
         from app.models.site import Site
         
@@ -607,29 +645,56 @@ class AnalyticsService:
             KpiSnapshot.site_id.isnot(None),
             KpiSnapshot.developer_id.is_(None),
             KpiSnapshot.group_id.is_(None)
-        ).group_by(KpiSnapshot.site_id)
+        )
+        
+        # Filter by site_id if provided
+        if site_id is not None:
+            q = q.filter(KpiSnapshot.site_id == site_id)
+        
+        q = q.group_by(KpiSnapshot.site_id)
 
         rows = q.all()
         
         # 2. Récupérer les comptes uniques de développeurs par site pour cette période
         # (On ne peut pas faire ça simplement dans le même GROUP BY sans join complexe)
-        site_dev_counts = {}
-        for r in rows:
-            sid = r.site_id
-            cnt = (
-                self.db.query(func.count(distinct(DeveloperProject.developer_id)))
-                .join(DeveloperSite, DeveloperSite.developer_id == DeveloperProject.developer_id)
-                .filter(
-                    DeveloperProject.period_id == period_id,
-                    DeveloperProject.is_active == True,
-                    DeveloperSite.site_id == sid
-                ).scalar() or 0
+        from app.models.period import Period
+        period = self.db.query(Period).filter(Period.id == period_id).first()
+        if not period:
+            return []
+            
+        start_date = datetime(period.year, period.month, 1)
+        if period.month == 12:
+            end_date = datetime(period.year + 1, 1, 1)
+        else:
+            end_date = datetime(period.year, period.month + 1, 1)
+
+        # 2. Récupérer les comptes uniques de développeurs par site pour cette période (EN UNE SEULE REQUÊTE)
+        site_dev_counts_rows = (
+            self.db.query(DeveloperSite.site_id, func.count(distinct(Developer.id)))
+            .join(Developer, DeveloperSite.developer_id == Developer.id)
+            .join(DeveloperProject, DeveloperProject.developer_id == Developer.id)
+            .filter(
+                # Filtre Site : période d'affectation au site chevauche le mois
+                DeveloperSite.start_date < end_date,
+                (DeveloperSite.end_date >= start_date) | (DeveloperSite.is_active == True),
+                # Filtre Projet : mission active durant le mois
+                DeveloperProject.start_date < end_date,
+                (DeveloperProject.end_date >= start_date) | (DeveloperProject.is_active == True)
             )
-            site_dev_counts[sid] = cnt
+            .group_by(DeveloperSite.site_id)
+            .all()
+        )
+        site_dev_counts = {sid: cnt for sid, cnt in site_dev_counts_rows}
+
+        # ✅ [SENIOR] FIX 3 : Batch fetch sites
+        from app.models.site import Site
+        site_ids_needed = [r.site_id for r in rows if r.site_id]
+        sites_objs = self.db.query(Site).filter(Site.id.in_(site_ids_needed)).all()
+        site_map = {s.id: s for s in sites_objs}
 
         results = []
         for r in rows:
-            site_obj = self.db.query(Site).filter(Site.id == r.site_id).first()
+            site_obj = site_map.get(r.site_id)
             nb_devs = site_dev_counts.get(r.site_id, 0)
             snap = KpiSnapshot(
                 project_id=0,
@@ -652,7 +717,7 @@ class AnalyticsService:
                 bus_factor=0,
                 sprint_velocity=0.0,
                 code_churn_rate=0.0,
-                commit_rate_per_site=round(float(r.total_commits or 0) / float(r.total_devs) if r.total_devs else 0, 2),
+                commit_rate_per_site=round(float(r.total_commits or 0) / float(nb_devs) if nb_devs and nb_devs > 0 else 0, 2),
                 snapshot_date=date.today()
             )
             snap.site_name = site_obj.name if site_obj else f"Site {r.site_id}"
@@ -670,9 +735,13 @@ class AnalyticsService:
         Calcule les KPIs en temps réel pour un lot d'extraction spécifique.
         C'est l'approche "Senior" pour l'isolation des données demandée.
         """
-        # Filtres de base
+        # ✅ [ENTERPRISE PARITY] — Définition Unifiée d'un "Commit Libre" (4 critères)
+        # IDENTIQUE à commit_repository.py, extraction_lots.py et kpi_calculator.py
         filters_comm = [
-            Commit.is_merge_commit.is_(False)
+            Commit.is_merge_commit.is_(False),
+            func.lower(Commit.title).notlike("merge branch %"),
+            func.lower(Commit.title).notlike("merge pull request %"),
+            func.lower(Commit.title).notlike("merge %"),
         ]
         filters_mr   = [
             MergeRequest.is_draft.is_(False)
@@ -698,57 +767,93 @@ class AnalyticsService:
             filters_comm.append(Commit.group_id == group_id)
             filters_mr.append(MergeRequest.group_id == group_id)
             
-        # 1. Total Commits
+        # 1. Total Commits (STRICT MISSION FILTER)
         total_commits = (
             self.db.query(func.count(Commit.id))
             .join(Developer, Commit.developer_id == Developer.id)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == Commit.developer_id) &
+                (DeveloperProject.project_id   == Commit.project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .filter(*filters_comm)
-            .filter(Developer.is_active == True, Developer.is_bot == False)
+            .filter(Developer.is_bot.is_(False))
             .scalar() or 0
         )
         
-        # 2. Total MRs
+        # 2. Total MRs (STRICT MISSION FILTER)
         total_mrs = (
             self.db.query(func.count(MergeRequest.id))
             .join(Developer, MergeRequest.developer_id == Developer.id)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == MergeRequest.developer_id) &
+                (DeveloperProject.project_id   == MergeRequest.project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .filter(*filters_mr)
-            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .filter(Developer.is_validated.is_(True), Developer.is_bot.is_(False))
             .scalar() or 0
         )
         
-        # 3. Approved MRs
+        # 3. Approved MRs (STRICT MISSION FILTER)
         approved_mrs = (
             self.db.query(func.count(MergeRequest.id))
             .join(Developer, MergeRequest.developer_id == Developer.id)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == MergeRequest.developer_id) &
+                (DeveloperProject.project_id   == MergeRequest.project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .filter(*filters_mr, MergeRequest.approved == True)
-            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .filter(Developer.is_validated.is_(True), Developer.is_bot.is_(False))
             .scalar() or 0
         )
         
-        # 4. Merged MRs
+        # 4. Merged MRs (STRICT MISSION FILTER)
         merged_mrs = (
             self.db.query(func.count(MergeRequest.id))
             .join(Developer, MergeRequest.developer_id == Developer.id)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == MergeRequest.developer_id) &
+                (DeveloperProject.project_id   == MergeRequest.project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .filter(*filters_mr, MergeRequest.state == "merged")
-            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .filter(Developer.is_validated.is_(True), Developer.is_bot.is_(False))
             .scalar() or 0
         )
         
-        # 5. Review Time
+        # 5. Review Time (STRICT MISSION FILTER)
         avg_review = (
             self.db.query(func.avg(MergeRequest.review_time_hours))
             .join(Developer, MergeRequest.developer_id == Developer.id)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == MergeRequest.developer_id) &
+                (DeveloperProject.project_id   == MergeRequest.project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .filter(*filters_mr, MergeRequest.approved == True)
-            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .filter(Developer.is_validated.is_(True), Developer.is_bot.is_(False))
             .scalar() or 0.0
         )
         
-        # 6. NB Developers (Basé sur les auteurs de commits dans ce lot)
+        # 6. NB Developers (Basé sur les auteurs certifiés ayant contribué)
         nb_devs = (
             self.db.query(func.count(distinct(Commit.developer_id)))
             .join(Developer, Commit.developer_id == Developer.id)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == Commit.developer_id) &
+                (DeveloperProject.project_id   == Commit.project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .filter(*filters_comm)
-            .filter(Developer.is_active == True, Developer.is_validated == True, Developer.is_bot == False)
+            .filter(Developer.is_validated.is_(True), Developer.is_bot.is_(False))
             .scalar() or 0
         )
         
@@ -805,11 +910,17 @@ class AnalyticsService:
         
         # 1. Aggréger les stats par développeur pour ce lot
         # Note: On simplifie en se basant sur les commits et MRs
+        # ✅ [ENTERPRISE PARITY] — Définition Unifiée d'un "Commit Libre" (4 critères)
         q_comm = self.db.query(
                 Commit.developer_id,
                 func.count(Commit.id).label("commit_count"),
                 func.sum(Commit.total_changes).label("total_changes")
-            ).filter(Commit.is_merge_commit.is_(False))
+            ).filter(
+                Commit.is_merge_commit.is_(False),
+                func.lower(Commit.title).notlike("merge branch %"),
+                func.lower(Commit.title).notlike("merge pull request %"),
+                func.lower(Commit.title).notlike("merge %"),
+            )
         
         if project_id:
             q_comm = q_comm.filter(Commit.project_id == project_id)
@@ -832,9 +943,15 @@ class AnalyticsService:
 
         mr_query = q_mr.group_by(MergeRequest.developer_id).subquery()
         
-        # Jointure pour obtenir le classement
+        # Jointure pour obtenir le classement (AVEC CERTIFICATION DE MISSION)
         results = (
             self.db.query(Developer, query.c.commit_count, mr_query.c.mr_count, mr_query.c.approved_count, mr_query.c.avg_review)
+            .join(
+                DeveloperProject,
+                (DeveloperProject.developer_id == Developer.id) &
+                (DeveloperProject.project_id   == project_id) &
+                (DeveloperProject.is_active    == True)
+            )
             .outerjoin(query, Developer.id == query.c.developer_id)
             .outerjoin(mr_query, Developer.id == mr_query.c.developer_id)
             .filter(
@@ -926,6 +1043,17 @@ class AnalyticsService:
         results = []
         for s in snapshots:
             label = sites_map.get(s.site_id) if s.site_id else (groups_map.get(s.group_id) if s.group_id else "Global")
+            
+            # ✅ [SENIOR] Dynamic Headcount Virtualization Engine
+            # On ignore le chiffre statique de la base et on recalcule le réel "Point-in-Time"
+            nb_devs = self.dev_repo.count_active_for_period(
+                self.db, project_id, s.period_id, s.site_id, s.group_id
+            )
+            
+            # Recalcul des ratios de vitesse
+            dyn_velocity = round(float(s.total_commits or 0) / nb_devs, 2) if nb_devs > 0 else 0.0
+            dyn_mr_rate  = round(float(s.total_mrs_created or 0) / nb_devs, 2) if nb_devs > 0 else 0.0
+
             results.append({
                 "period_id":     s.period_id,
                 "snapshot_date": s.snapshot_date.isoformat(),
@@ -933,13 +1061,411 @@ class AnalyticsService:
                 "entity_id":     s.site_id or s.group_id or 0,
                 "entity_name":   label,
                 "metrics": {
-                    "velocity":      s.commit_rate_per_site,
-                    "mr_rate":       s.mr_rate_per_site,
+                    "velocity":      dyn_velocity,
+                    "mr_rate":       dyn_mr_rate,
                     "quality_score": s.approved_mr_rate,
+                    "merged_rate":   s.merged_mr_rate,
                     "review_time":   s.avg_review_time_hours,
                     "total_commits": s.total_commits,
                     "total_mrs":     s.total_mrs_created,
-                    "nb_developers": s.nb_developers,
+                    "nb_developers": nb_devs,
                 }
             })
         return results
+
+    # ✅ [REMOVED] get_project_diagnostic_metrics - Non fonctionnelle
+    # def get_project_diagnostic_metrics(
+    #     self,
+    #     project_id: int,
+    #     period_id: Optional[int] = None,
+    #     site_id: Optional[int] = None,
+    #     group_id: Optional[int] = None,
+    # ) -> Dict:
+    #     """
+    #     Calculates diagnostic analytics for a project:
+    #     1. Correlation between Merge Request size (additions, deletions, total_changes)
+    #        and review time / comment count.
+    #     2. Congestion/load metrics per reviewer.
+    #     """
+    #     from sqlalchemy import or_, func
+    #     from app.models.developer import Developer
+    #     from app.models.developer_site import DeveloperSite
+    #     from app.models.developer_group import DeveloperGroupLink
+    #     from app.models.merge_request import MergeRequest
+    #     from app.models.comment import Comment
+    #
+    #     # Get period if provided
+    #     period = None
+    #     if period_id:
+    #         period = self.period_repo.get_by_id(self.db, period_id)
+    #         if not period:
+    #             return {
+    #                 "mr_size_vs_review": [],
+    #                 "reviewer_load": []
+    #             }
+    #
+    #     # ── 1. Query for MR Size vs Review Time ──
+    #     q_mr = self.db.query(
+    #         MergeRequest.id.label("mr_id"),
+    #         MergeRequest.title.label("title"),
+    #         MergeRequest.additions.label("additions"),
+    #         MergeRequest.deletions.label("deletions"),
+    #         MergeRequest.total_changes.label("total_changes"),
+    #         MergeRequest.review_time_hours.label("review_time_hours"),
+    #         MergeRequest.user_notes_count.label("user_notes_count"),
+    #         MergeRequest.reviewer_id.label("reviewer_id"),
+    #         Developer.name.label("author_name")
+    #     ).outerjoin(Developer, MergeRequest.developer_id == Developer.id)
+    #
+    #     # Get certified developers for this project/period (Mission-Strict)
+    #     from app.utils.mission_utils import get_certified_developers_for_mission
+    #     certified_ids = get_certified_developers_for_mission(
+    #         db=self.db,
+    #         project_id=project_id,
+    #         period_id=period_id,
+    #     )
+    #
+    #     q_mr = q_mr.filter(MergeRequest.project_id == project_id)
+    #     q_mr = q_mr.filter(MergeRequest.is_draft.is_(False))
+    #     # Filter out bot actions
+    #     q_mr = q_mr.filter(or_(Developer.is_bot.is_(False), Developer.is_bot.is_(None)))
+    #     q_mr = q_mr.filter(MergeRequest.developer_id.in_(certified_ids))
+    #
+    #     if period:
+    #         q_mr = q_mr.filter(
+    #             MergeRequest.created_at_gitlab >= period.start_date,
+    #             MergeRequest.created_at_gitlab <= period.end_date
+    #         )
+    #
+    #     if site_id:
+    #         q_mr = q_mr.join(
+    #             DeveloperSite,
+    #             DeveloperSite.developer_id == MergeRequest.developer_id
+    #         ).filter(DeveloperSite.site_id == site_id)
+    #         if period:
+    #             q_mr = q_mr.filter(
+    #                 DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab),
+    #                 or_(
+    #                     DeveloperSite.end_date.is_(None),
+    #                     DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)
+    #                 )
+    #             )
+    #         else:
+    #             q_mr = q_mr.filter(DeveloperSite.is_active.is_(True))
+    #
+    #     if group_id:
+    #         q_mr = q_mr.join(
+    #             DeveloperGroupLink,
+    #             DeveloperGroupLink.developer_id == MergeRequest.developer_id
+    #         ).filter(DeveloperGroupLink.group_id == group_id)
+    #         if period:
+    #             q_mr = q_mr.filter(
+    #                 DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab),
+    #                 or_(
+    #                     DeveloperGroupLink.end_date.is_(None),
+    #                     DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)
+    #                 )
+    #             )
+    #         else:
+    #             q_mr = q_mr.filter(DeveloperGroupLink.is_active.is_(True))
+    #
+    #     mrs_data = q_mr.all()
+    #     mr_size_review_correlation_list = []
+    #     total_changes_sum = 0
+    #     review_time_sum = 0
+    #     mrs_count = len(mrs_data)
+    #
+    #     for row in mrs_data:
+    #         total_chg = row.total_changes if row.total_changes else ((row.additions or 0) + (row.deletions or 0))
+    #         rev_time = float(row.review_time_hours) if row.review_time_hours is not None else 0.0
+    #         total_changes_sum += total_chg
+    #         review_time_sum += rev_time
+    #
+    #         item = {
+    #             "mr_id": row.mr_id,
+    #             "title": row.title,
+    #             "additions": row.additions or 0,
+    #             "deletions": row.deletions or 0,
+    #             "total_changes": total_chg,
+    #             "lines_changed": total_chg,
+    #             "review_time_hours": round(rev_time, 2),
+    #             "user_notes_count": row.user_notes_count or 0,
+    #             "author_name": row.author_name or "Unknown",
+    #             "reviewer_count": 1 if row.reviewer_id else 0
+    #         }
+    #         mr_size_review_correlation_list.append(item)
+    #
+    #     # ── 2. Query for Reviewer Load / Congestion ──
+    #     q_rev = self.db.query(
+    #         MergeRequest.reviewer_id.label("reviewer_id"),
+    #         Developer.name.label("reviewer_name"),
+    #         func.count(MergeRequest.id).label("mr_count"),
+    #         func.avg(MergeRequest.review_time_hours).label("avg_review_time_hours")
+    #     ).join(Developer, MergeRequest.reviewer_id == Developer.id)
+    #
+    #     q_rev = q_rev.filter(MergeRequest.project_id == project_id)
+    #     q_rev = q_rev.filter(MergeRequest.is_draft.is_(False))
+    #     q_rev = q_rev.filter(MergeRequest.reviewer_id.isnot(None))
+    #     q_rev = q_rev.filter(Developer.is_bot.is_(False))
+    #     q_rev = q_rev.filter(MergeRequest.developer_id.in_(certified_ids))
+    #     q_rev = q_rev.filter(MergeRequest.reviewer_id.in_(certified_ids))
+    #
+    #     if period:
+    #         q_rev = q_rev.filter(
+    #             MergeRequest.created_at_gitlab >= period.start_date,
+    #             MergeRequest.created_at_gitlab <= period.end_date
+    #         )
+    #
+    #     if site_id:
+    #         q_rev = q_rev.join(
+    #             DeveloperSite,
+    #             DeveloperSite.developer_id == MergeRequest.reviewer_id
+    #         ).filter(DeveloperSite.site_id == site_id)
+    #         if period:
+    #             q_rev = q_rev.filter(
+    #                 DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab),
+    #                 or_(
+    #                     DeveloperSite.end_date.is_(None),
+    #                     DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)
+    #                 )
+    #             )
+    #         else:
+    #             q_rev = q_rev.filter(DeveloperSite.is_active.is_(True))
+    #
+    #     if group_id:
+    #         q_rev = q_rev.join(
+    #             DeveloperGroupLink,
+    #             DeveloperGroupLink.developer_id == MergeRequest.reviewer_id
+    #         ).filter(DeveloperGroupLink.group_id == group_id)
+    #         if period:
+    #             q_rev = q_rev.filter(
+    #                 DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab),
+    #                 or_(
+    #                     DeveloperGroupLink.end_date.is_(None),
+    #                     DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)
+    #                 )
+    #             )
+    #         else:
+    #             q_rev = q_rev.filter(DeveloperGroupLink.is_active.is_(True))
+    #
+    #     reviewer_stats = q_rev.group_by(MergeRequest.reviewer_id, Developer.name).all()
+    #
+    #     # Query comments count per reviewer for the matching project & period/site/group
+    #     q_comments = self.db.query(
+    #         Comment.developer_id.label("developer_id"),
+    #         func.count(Comment.id).label("comment_count")
+    #     ).join(MergeRequest, Comment.merge_request_id == MergeRequest.id)
+    #
+    #     q_comments = q_comments.filter(MergeRequest.project_id == project_id)
+    #     q_comments = q_comments.filter(MergeRequest.is_draft.is_(False))
+    #     q_comments = q_comments.filter(MergeRequest.developer_id.in_(certified_ids))
+    #     q_comments = q_comments.filter(Comment.developer_id.in_(certified_ids))
+    #
+    #     if period:
+    #         q_comments = q_comments.filter(
+    #             MergeRequest.created_at_gitlab >= period.start_date,
+    #             MergeRequest.created_at_gitlab <= period.end_date
+    #         )
+    #
+    #     if site_id:
+    #         q_comments = q_comments.join(
+    #             DeveloperSite,
+    #             DeveloperSite.developer_id == Comment.developer_id
+    #         ).filter(DeveloperSite.site_id == site_id)
+    #         if period:
+    #             q_comments = q_comments.filter(
+    #                 DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab),
+    #                 or_(
+    #                     DeveloperSite.end_date.is_(None),
+    #                     DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)
+    #                 )
+    #             )
+    #         else:
+    #             q_comments = q_comments.filter(DeveloperSite.is_active.is_(True))
+    #
+    #     if group_id:
+    #         q_comments = q_comments.join(
+    #             DeveloperGroupLink,
+    #             DeveloperGroupLink.developer_id == Comment.developer_id
+    #         ).filter(DeveloperGroupLink.group_id == group_id)
+    #         if period:
+    #             q_comments = q_comments.filter(
+    #                 DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab),
+    #                 or_(
+    #                     DeveloperGroupLink.end_date.is_(None),
+    #                     DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)
+    #                 )
+    #             )
+    #         else:
+    #             q_comments = q_comments.filter(DeveloperGroupLink.is_active.is_(True))
+    #
+    #     comments_stats = q_comments.group_by(Comment.developer_id).all()
+    #     comments_map = {r.developer_id: r.comment_count for r in comments_stats}
+    #
+    #     reviewer_load_list = []
+    #     overloaded_count = 0
+    #     for row in reviewer_stats:
+    #         mr_cnt = row.mr_count or 0
+    #         avg_rev = float(row.avg_review_time_hours) if row.avg_review_time_hours is not None else 0.0
+    #         congestion_flag = (mr_cnt > 10) or (avg_rev > 48.0)
+    #         if congestion_flag:
+    #             overloaded_count += 1
+    #
+    #         reviewer_load_list.append({
+    #             "reviewer_id": row.reviewer_id,
+    #             "reviewer_name": row.reviewer_name,
+    #             "mr_count": mr_cnt,
+    #             "review_count": mr_cnt,
+    #             "avg_review_time_hours": round(avg_rev, 2),
+    #             "avg_response_hours": round(avg_rev, 2),
+    #             "total_comments": comments_map.get(row.reviewer_id, 0),
+    #             "congestion_flag": congestion_flag
+    #         })
+    #
+    #     avg_lines_changed = (total_changes_sum / mrs_count) if mrs_count > 0 else 0.0
+    #     avg_review_time = (review_time_sum / mrs_count) if mrs_count > 0 else 0.0
+    #
+    #     period_label_val = "Période courante"
+    #     if period:
+    #         period_label_val = f"{_MOIS_FR.get(period.month, '')} {period.year}"
+    #
+    #     # ── 3. Query for Developer Lifecycle Movements ──
+    #     from datetime import timedelta
+    #     p_start = None
+    #     p_end = None
+    #     if period:
+    #         p_start = period.start_date
+    #         p_end = period.end_date
+    #     else:
+    #         # Check movements in the last 90 days from the latest period or today
+    #         from app.models.period import Period
+    #         latest_period = self.db.query(Period).order_by(Period.year.desc(), Period.month.desc()).first()
+    #         if latest_period:
+    #             p_end = latest_period.end_date
+    #             p_start = p_end - timedelta(days=90)
+    #         else:
+    #             p_end = date.today()
+    #             p_start = p_end - timedelta(days=90)
+    #
+    #     movements = []
+    #     if p_start and p_end:
+    #         from app.models.developer_project import DeveloperProject
+    #         from app.models.developer import Developer
+    #         from app.models.developer_site import DeveloperSite
+    #         from app.models.developer_group import DeveloperGroupLink, DeveloperGroup
+    #         from app.models.site import Site
+    #
+    #         # Get all developer project associations for this project
+    #         dp_list = self.db.query(DeveloperProject).filter(DeveloperProject.project_id == project_id).all()
+    #         dev_ids = [dp.developer_id for dp in dp_list]
+    #
+    #         if dev_ids:
+    #             # Fetch developer names
+    #             devs = self.db.query(Developer).filter(Developer.id.in_(dev_ids)).all()
+    #             dev_map = {d.id: d.name for d in devs}
+    #
+    #             # Project arrivals / departures
+    #             for dp in dp_list:
+    #                 dev_name = dev_map.get(dp.developer_id, f"Dev #{dp.developer_id}")
+    #                 start_d = dp.start_date or (dp.joined_at.date() if dp.joined_at else None)
+    #                 if start_d and p_start <= start_d <= p_end:
+    #                     movements.append({
+    #                         "date": start_d.isoformat(),
+    #                         "developer_name": dev_name,
+    #                         "type": "arrival",
+    #                         "description": "A rejoint le projet (Début de mission)."
+    #                     })
+    #                 if dp.end_date and p_start <= dp.end_date <= p_end:
+    #                     movements.append({
+    #                         "date": dp.end_date.isoformat(),
+    #                         "developer_name": dev_name,
+    #                         "type": "departure",
+    #                         "description": "A quitté le projet (Fin de mission)."
+    #                     })
+    #
+    #             # Site transfers/assignments
+    #             ds_list = self.db.query(DeveloperSite).filter(DeveloperSite.developer_id.in_(dev_ids)).all()
+    #             for ds in ds_list:
+    #                 if ds.start_date and p_start <= ds.start_date <= p_end:
+    #                     dev_name = dev_map.get(ds.developer_id, f"Dev #{ds.developer_id}")
+    #                     site_name = self.db.query(Site.name).filter(Site.id == ds.site_id).scalar() or "Inconnu"
+    #                     
+    #                     # Find if there was a previous site assignment that ended exactly on start_date
+    #                     prev_ds = next((other for other in ds_list if other.developer_id == ds.developer_id and other.end_date == ds.start_date), None)
+    #                     if prev_ds:
+    #                         prev_site_name = self.db.query(Site.name).filter(Site.id == prev_ds.site_id).scalar() or "Inconnu"
+    #                         movements.append({
+    #                             "date": ds.start_date.isoformat(),
+    #                             "developer_name": dev_name,
+    #                             "type": "transfer",
+    #                             "description": f"Muté(e) du site {prev_site_name} vers {site_name}."
+    #                         })
+    #                     else:
+    #                         # Or if they had any previous site assignment at all
+    #                         any_prev = any(other.start_date and other.start_date < ds.start_date for other in ds_list if other.developer_id == ds.developer_id)
+    #                         if any_prev:
+    #                             movements.append({
+    #                                 "date": ds.start_date.isoformat(),
+    #                                 "developer_name": dev_name,
+    #                                 "type": "transfer",
+    #                                 "description": f"Affecté(e) au site {site_name} (changement de site)."
+    #                             })
+    #                         else:
+    #                             movements.append({
+    #                                 "date": ds.start_date.isoformat(),
+    #                                 "developer_name": dev_name,
+    #                                 "type": "site_assignment",
+    #                                 "description": f"Affecté(e) au site {site_name}."
+    #                             })
+    #
+    #             # Group/team transfers/assignments
+    #             dgl_list = self.db.query(DeveloperGroupLink).filter(DeveloperGroupLink.developer_id.in_(dev_ids)).all()
+    #             for dgl in dgl_list:
+    #                 if dgl.start_date and p_start <= dgl.start_date <= p_end:
+    #                     dev_name = dev_map.get(dgl.developer_id, f"Dev #{dgl.developer_id}")
+    #                     grp_name = self.db.query(DeveloperGroup.name).filter(DeveloperGroup.id == dgl.group_id).scalar() or "Inconnu"
+    #                     
+    #                     prev_dgl = next((other for other in dgl_list if other.developer_id == dgl.developer_id and other.end_date == dgl.start_date), None)
+    #                     if prev_dgl:
+    #                         prev_grp_name = self.db.query(DeveloperGroup.name).filter(DeveloperGroup.id == prev_dgl.group_id).scalar() or "Inconnu"
+    #                         movements.append({
+    #                             "date": dgl.start_date.isoformat(),
+    #                             "developer_name": dev_name,
+    #                             "type": "group_transfer",
+    #                             "description": f"Transféré(e) de l'équipe {prev_grp_name} vers {grp_name}."
+    #                         })
+    #                     else:
+    #                         any_prev = any(other.start_date and other.start_date < dgl.start_date for other in dgl_list if other.developer_id == dgl.developer_id)
+    #                         if any_prev:
+    #                             movements.append({
+    #                                 "date": dgl.start_date.isoformat(),
+    #                                 "developer_name": dev_name,
+    #                                 "type": "group_transfer",
+    #                                 "description": f"Affecté(e) à l'équipe {grp_name} (changement d'équipe)."
+    #                             })
+    #                         else:
+    #                             movements.append({
+    #                                 "date": dgl.start_date.isoformat(),
+    #                                 "developer_name": dev_name,
+    #                                 "type": "group_assignment",
+    #                                 "description": f"Affecté(e) à l'équipe {grp_name}."
+    #                             })
+    #
+    #     # Sort movements descending
+    #     movements.sort(key=lambda x: x["date"], reverse=True)
+    #
+    #     return {
+    #         "project_id": project_id,
+    #         "period_label": period_label_val,
+    #         "mr_size_vs_review": mr_size_review_correlation_list,
+    #         "mr_size_review_correlation": mr_size_review_correlation_list,
+    #         "reviewer_load": reviewer_load_list,
+    #         "movements": movements,
+    #         "summary": {
+    #             "total_mrs_analyzed": mrs_count,
+    #             "avg_lines_changed": round(avg_lines_changed, 2),
+    #             "avg_review_time_hours": round(avg_review_time, 2),
+    #             "overloaded_reviewers": overloaded_count
+    #         }
+    #     }
+

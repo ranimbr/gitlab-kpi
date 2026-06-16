@@ -6,13 +6,16 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.api.dependencies import get_current_admin, get_current_user
 from app.core.security import decrypt_token
 from app.database.session import get_db
 from app.models.app_user import AppUser
+from app.models.developer import Developer
 from app.models.gitlab_config import GitLabConfig
+from app.models.merge_request import MergeRequest
 from app.models.project import Project, VisibilityEnum
 from app.models.extraction_lot import ExtractionLot
 from app.models.commit import Commit
@@ -25,6 +28,8 @@ from app.schemas.commit import CommitResponse
 from app.schemas.merge_request import MergeRequestResponse
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSiteAssign, ProjectUpdate, ProjectImportCreate
 from app.schemas.site import SiteResponse
+from app.utils.date_utils import resolve_period_dates_from_db
+from app.utils.mission_utils import get_certified_developers_for_mission
 
 logger     = logging.getLogger(__name__)
 router     = APIRouter(prefix="/projects", tags=["Projects"])
@@ -250,6 +255,14 @@ def get_project_sites(
     if not project_repo.get_by_id(db, project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable.")
     site_ids = project_site_repo.get_site_ids_for_project(db, project_id)
+    
+    # Filter sites for site_manager - only show their assigned site
+    if current_user.is_site_manager:
+        if current_user.site_id in site_ids:
+            site_ids = [current_user.site_id]
+        else:
+            site_ids = []
+    
     return [site_repo.get_by_id(db, sid) for sid in site_ids if site_repo.get_by_id(db, sid)]
 
 
@@ -320,14 +333,14 @@ def get_project_commits(
         if not lot:
             raise HTTPException(status_code=404, detail="Lot d'extraction introuvable.")
         
-        # On définit le périmètre à partir du lot
-        target_project_id = lot.project_id
-        target_period_id  = lot.period_id
-        
-        # On délègue à la logique de période qui est robuste et inclut tous les lots du mois
-        commits = commit_repo.get_by_period_paginated(
-            db, target_period_id, target_project_id, limit, offset,
-            exclude_merge_commits=exclude_merge_commits
+        # Isolation stricte par lot : appel à la méthode du dépôt qui filtre par lot_id
+        commits = commit_repo.get_project_commits_paginated(
+            db,
+            project_id=lot.project_id,
+            limit=limit,
+            offset=offset,
+            lot_id=lot_id,
+            exclude_merge_commits=exclude_merge_commits,
         )
         if dev_id is not None:
             commits = [c for c in commits if c.developer_id == dev_id]
@@ -367,6 +380,7 @@ def get_project_mrs(
     lot_id:        Optional[int] = Query(None, description="Filtrer par session d'extraction"),
     period_id:             Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
     developer_id:          Optional[str] = Query(None, description="Filtrer par développeur (Auteur)"),
+    author_only:   bool = Query(False, description="Filtrer uniquement sur l'auteur principal de la MR"),
     db:            Session = Depends(get_db),
     current_user:  AppUser = Depends(get_current_user),
 ):
@@ -383,26 +397,11 @@ def get_project_mrs(
             dev_id = int(developer_id)
         except (ValueError, TypeError):
             dev_id = None
-    
-    # ── LOGIQUE UNIFIÉE & INCLUSIVE (Senior Architecture) ──────────────────────
-    from app.models.developer import Developer
-    from app.models.merge_request import MergeRequest
-    from sqlalchemy.orm import aliased
-    from sqlalchemy import or_
 
     Rev = aliased(Developer)
     Ass = aliased(Developer)
 
-    def is_valid_human(dev_alias):
-        """Vérifie si le développeur est un humain actif et validé."""
-        return (
-            (dev_alias.id.isnot(None)) &
-            (dev_alias.is_active.is_(True)) &
-            (dev_alias.is_validated.is_(True)) &
-            (dev_alias.is_bot.is_(False))
-        )
-
-    # 1. Construction de la base avec chargement optimisé
+    # ── 1. Base query avec jointures optimisées ───────────────────────────────
     query = (
         db.query(MergeRequest)
         .outerjoin(Developer, MergeRequest.developer_id == Developer.id)
@@ -411,56 +410,83 @@ def get_project_mrs(
         .options(
             joinedload(MergeRequest.developer),
             joinedload(MergeRequest.reviewer),
-            joinedload(MergeRequest.assignee)
+            joinedload(MergeRequest.assignee),
         )
     )
 
-    # 2. Filtre par développeur (Vue 360 : Auteur, Reviewer ou Assignee)
-    if dev_id is not None:
-        query = query.filter(
-            or_(
-                MergeRequest.developer_id == dev_id,
-                MergeRequest.reviewer_id == dev_id,
-                MergeRequest.assignee_id == dev_id
-            )
-        )
-    else:
-        # Filtre Inclusif par défaut : On accepte la MR si l'auteur est externe OU si l'un des participants est un humain validé
-        query = query.filter(
-            or_(
-                Developer.id.is_(None), # Auteur externe
-                is_valid_human(Developer),
-                is_valid_human(Rev),
-                is_valid_human(Ass)
-            )
-        )
-
-    # 3. Application des filtres contextuels
-    if p_id is not None:
-        query = query.filter(MergeRequest.project_id == p_id)
-    
-    if exclude_draft:
-        query = query.filter(MergeRequest.is_draft.is_(False))
-    
-    # Priorité : Lot (Smart Contextual Filtering) > Période
+    # ── 2. Résolution de la période cible (period_id prioritaire sur lot_id) ──
     target_period_id = period_id
     if lot_id is not None:
         lot = db.query(ExtractionLot).filter(ExtractionLot.id == lot_id).first()
         if not lot:
             raise HTTPException(status_code=404, detail="Lot d'extraction introuvable.")
-        # On définit le périmètre à partir du lot
-        target_period_id = lot.period_id
-        if p_id is None: # Si project_id était 'all', on prend celui du lot
+        if target_period_id is None:
+            target_period_id = lot.period_id
+        if p_id is None:  # project_id='all' → périmètre limité au projet du lot
             query = query.filter(MergeRequest.project_id == lot.project_id)
 
-    if target_period_id is not None:
-        # On rejoint ExtractionLot pour filtrer par période, 
-        # mais on accepte TOUS les lots de cette période pour ce projet.
-        query = query.join(ExtractionLot, MergeRequest.extraction_lot_id == ExtractionLot.id).filter(
-            ExtractionLot.period_id == target_period_id
+    # ── 3. Filtre MISSION-STRICT sur les développeurs certifiés ──────────────
+    if dev_id is not None:
+        if author_only:
+            # Mode strict : uniquement si le développeur est l'auteur principal
+            query = query.filter(MergeRequest.developer_id == dev_id)
+        else:
+            # Vue 360 individuelle : MRs où le dev est Auteur, Reviewer ou Assignee
+            query = query.filter(
+                or_(
+                    MergeRequest.developer_id == dev_id,
+                    MergeRequest.reviewer_id  == dev_id,
+                    MergeRequest.assignee_id  == dev_id,
+                )
+            )
+    elif p_id is not None:
+        # Périmètre projet : uniquement les devs certifiés sur la mission
+        certified_ids = get_certified_developers_for_mission(
+            db=db,
+            project_id=p_id,
+            period_id=target_period_id,  # None accepté → tous les devs actifs
+        )
+        if author_only:
+            query = query.filter(MergeRequest.developer_id.in_(certified_ids))
+        else:
+            query = query.filter(
+                or_(
+                    MergeRequest.developer_id.in_(certified_ids),
+                    MergeRequest.reviewer_id.in_(certified_ids),
+                    MergeRequest.assignee_id.in_(certified_ids),
+                )
+            )
+    else:
+        # Vue globale "all projects" — filtre humain minimal (exclure les bots)
+        query = query.filter(
+            or_(
+                Developer.id.is_(None),
+                Developer.is_validated.is_(True) & Developer.is_bot.is_(False),
+            )
         )
 
-    # 4. Exécution paginée
+    # ── 4. Filtres contextuels ───────────────────────────────────────────────
+    if p_id is not None:
+        query = query.filter(MergeRequest.project_id == p_id)
+
+    if exclude_draft:
+        query = query.filter(MergeRequest.is_draft.is_(False))
+
+    # ── 5. ALIGNEMENT KPI — Filtre sur la date de CRÉATION réelle ou appartenance au lot ──
+    # Si lot_id est fourni, on filtre strictement par lot_id.
+    # Si target_period_id est fourni, on filtre strictement par la date de création de la période.
+    if lot_id is not None:
+        query = query.filter(MergeRequest.extraction_lot_id == lot_id)
+    elif target_period_id is not None:
+        date_range = resolve_period_dates_from_db(db, target_period_id)
+        if date_range:
+            start_dt, end_dt = date_range
+            query = query.filter(
+                MergeRequest.created_at_gitlab >= start_dt,
+                MergeRequest.created_at_gitlab <= end_dt,
+            )
+
+    # ── 6. Exécution paginée ─────────────────────────────────────────────────
     return (
         query
         .order_by(MergeRequest.created_at_gitlab.desc())
@@ -468,6 +494,8 @@ def get_project_mrs(
         .offset(offset)
         .all()
     )
+
+
 
 
 

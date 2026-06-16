@@ -72,6 +72,19 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  // Set target database select header AND query parameter for redundancy
+  const dbName = localStorage.getItem("selected_database") || "gitlab_kpi1";
+  config.headers["X-Database-Select"] = dbName;
+  
+  // Add query parameter as fallback
+  if (config.url && !config.url.includes('db=')) {
+    const separator = config.url.includes('?') ? '&' : '?';
+    config.url = `${config.url}${separator}db=${dbName}`;
+  }
+  
+  console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} - X-Database-Select: ${dbName}`);
+  
   return config;
 });
 

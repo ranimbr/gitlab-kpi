@@ -1,729 +1,635 @@
 /**
  * pdfExportService.js
- * Service d'export PDF - Standard Rapport Entreprise Internationale
- * Utilise jsPDF pour generer un rapport de direction structure.
- * Architecture: Senior Data Analyst / BI Engineer Pattern
- * NOTE: jsPDF Helvetica = ASCII uniquement. Pas de caracteres speciaux Unicode.
+ * Rapport de Direction — Style Grand Cabinet (McKinsey / Deloitte)
+ * Philosophie : clarté > quantité. Chaque page respire.
+ *
+ * Page 1 — Couverture officielle
+ * Page 2 — Tableau de bord exécutif (4 KPI + résumé)
+ * Page 3 — Analyse comparative (classement + graphique)
+ * Page 4 — DORA Metrics & Plan d'action
+ *
+ * NOTE: jsPDF Helvetica = ASCII uniquement. Pas de caractères Unicode/accents.
  */
 
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
-// ─── Logo Loader ──────────────────────────────────────────────────────────────
+// ─── Logo ─────────────────────────────────────────────────────────────────────
 async function loadLogoBase64() {
   try {
-    const resp = await fetch('/assets/images/telnet.png');
-    const blob = await resp.blob();
-    return await new Promise(resolve => {
+    const r = await fetch('/assets/images/telnet.png');
+    if (!r.ok) return null;
+    const blob = await r.blob();
+    return new Promise(res => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
+      reader.onloadend = () => res(reader.result);
       reader.readAsDataURL(blob);
     });
   } catch { return null; }
 }
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
-const BRAND = {
-  primary:    [10,  131, 176],   // Bleu TELNET
-  secondary:  [30,  41,  59],    // Slate 800
-  accent:     [16,  185, 129],   // Vert succès
-  danger:     [239, 68,  68],    // Rouge alerte
-  warning:    [245, 158, 11],    // Ambre
-  muted:      [100, 116, 139],   // Gris slate
-  bg:         [248, 250, 252],   // Fond doux
-  white:      [255, 255, 255],
-  border:     [226, 232, 240],
+// ─── ASCII Sanitizer ───────────────────────────────────────────────────────────
+function s(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+    .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+    .replace(/[»«""]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[≥]/g, '>=')
+    .replace(/[≤]/g, '<=')
+    .replace(/[↑↗]/g, '+')
+    .replace(/[↓↘]/g, '-')
+    .replace(/[→]/g, '>')
+    .replace(/[✓✔☑]/g, 'OK')
+    .replace(/[⚠⚡]/g, '!');
+}
+
+// ─── Palette ───────────────────────────────────────────────────────────────────
+const P = {
+  navy:    [15,  23,  42],   // Slate-900 — titres, fonds sombres
+  blue:    [10,  131, 176],  // TELNET Blue — accents
+  green:   [16,  185, 129],  // Emerald — succès
+  red:     [220, 38,  38],   // Red — danger
+  amber:   [217, 119, 6],    // Amber — warning
+  indigo:  [79,  70,  229],  // Indigo — info
+  gray:    [100, 116, 139],  // Slate-500 — texte secondaire
+  light:   [248, 250, 252],  // Slate-50 — fonds clairs
+  border:  [226, 232, 240],  // Slate-200
+  white:   [255, 255, 255],
 };
 
-const PAGE_W = 210;
-const PAGE_H = 297;
-const MARGIN = 16;
-const CONTENT_W = PAGE_W - MARGIN * 2;
+// Backgrounds pâles (tints)
+const TINT = {
+  green:  [220, 252, 231],
+  red:    [254, 226, 226],
+  amber:  [254, 249, 195],
+  indigo: [224, 231, 255],
+  blue:   [219, 234, 254],
+  gray:   [241, 245, 249],
+};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const rgb = (arr) => ({ r: arr[0], g: arr[1], b: arr[2] });
-const setFill   = (doc, arr) => doc.setFillColor(...arr);
-const setStroke = (doc, arr) => doc.setDrawColor(...arr);
-const setTextC  = (doc, arr) => doc.setTextColor(...arr);
-const setFont   = (doc, size, style = 'normal') => { doc.setFontSize(size); doc.setFont('helvetica', style); };
+// ─── Page dimensions ───────────────────────────────────────────────────────────
+const W = 210;   // A4 width mm
+const H = 297;   // A4 height mm
+const L = 18;    // Left margin
+const R = 18;    // Right margin
+const CW = W - L - R; // Content width
 
-function drawPageFrame(doc, pageNum, totalPages, projectName) {
-  // Pied de page ligne
-  setFill(doc, BRAND.secondary);
-  doc.rect(0, PAGE_H - 12, PAGE_W, 12, 'F');
-  setTextC(doc, BRAND.white);
-  setFont(doc, 7, 'normal');
-  doc.text(`TELNET Holding - Rapport KPI Strategique - ${projectName}`, MARGIN, PAGE_H - 4.5);
-  doc.text(`Page ${pageNum} / ${totalPages}   |   DOCUMENT CONFIDENTIEL`, PAGE_W - MARGIN, PAGE_H - 4.5, { align: 'right' });
-  // En-tête ligne subtile
-  setStroke(doc, BRAND.border);
-  doc.setLineWidth(0.3);
-  doc.line(MARGIN, 18, PAGE_W - MARGIN, 18);
+// ─── Primitives ────────────────────────────────────────────────────────────────
+const fill   = (d, c) => d.setFillColor(...c);
+const stroke = (d, c) => d.setDrawColor(...c);
+const text   = (d, c) => d.setTextColor(...c);
+const font   = (d, sz, w = 'normal') => { d.setFontSize(sz); d.setFont('helvetica', w); };
+const lw     = (d, v) => d.setLineWidth(v);
+
+function hRule(doc, y, col = P.border, t = 0.2) {
+  stroke(doc, col); lw(doc, t);
+  doc.line(L, y, W - R, y);
 }
 
-function drawSectionTitle(doc, text, y) {
-  setFill(doc, BRAND.primary);
-  doc.rect(MARGIN, y, 3, 6, 'F');
-  setTextC(doc, BRAND.secondary);
-  setFont(doc, 11, 'bold');
-  doc.text(text, MARGIN + 6, y + 5);
-  return y + 10;
+// ─── Universal Header / Footer ─────────────────────────────────────────────────
+function pageChrome(doc, page, total, project) {
+  // Top accent bar (thin)
+  fill(doc, P.blue);
+  doc.rect(0, 0, W, 1.8, 'F');
+
+  // Footer
+  fill(doc, P.navy);
+  doc.rect(0, H - 10, W, 10, 'F');
+  text(doc, P.white); font(doc, 6.5, 'normal');
+  doc.text(`TELNET Holding  |  Rapport KPI Strategique  |  ${s(project)}`, L, H - 3.5);
+  font(doc, 6.5, 'bold');
+  doc.text(`Page ${page} sur ${total}   —   CONFIDENTIEL`, W - R, H - 3.5, { align: 'right' });
 }
 
-function drawKpiCell(doc, x, y, w, h, label, value, unit, colorArr, bgArr) {
-  setFill(doc, bgArr);
-  doc.roundedRect(x, y, w, h, 2, 2, 'F');
-  setStroke(doc, colorArr);
-  doc.setLineWidth(0.4);
-  doc.roundedRect(x, y, w, h, 2, 2, 'S');
-  setTextC(doc, colorArr);
-  setFont(doc, 16, 'bold');
-  doc.text(String(value), x + w / 2, y + h / 2 + 1, { align: 'center' });
-  setTextC(doc, BRAND.muted);
-  setFont(doc, 7, 'normal');
-  doc.text(label, x + w / 2, y + h - 4, { align: 'center' });
-  if (unit) {
-    setTextC(doc, colorArr);
-    setFont(doc, 7, 'bold');
-    doc.text(unit, x + w / 2, y + h / 2 + 5.5, { align: 'center' });
-  }
+// ─── Section heading ──────────────────────────────────────────────────────────
+function heading(doc, label, y) {
+  // Left accent dash
+  fill(doc, P.blue);
+  doc.rect(L, y + 0.5, 3.5, 6.5, 'F');
+  text(doc, P.navy); font(doc, 10.5, 'bold');
+  doc.text(s(label), L + 7, y + 6);
+  return y + 14;
 }
 
-// ─── Page 1 : Couverture ──────────────────────────────────────────────────────
-function buildCoverPage(doc, { projectName, period, exportDate, logoBase64, healthScore, totalSites }) {
-  // Fond bleu sombre haut
-  setFill(doc, BRAND.secondary);
-  doc.rect(0, 0, PAGE_W, 90, 'F');
-  setFill(doc, BRAND.primary);
-  doc.rect(0, 87, PAGE_W, 3, 'F');
+// ─── PAGE 1 ── Couverture ─────────────────────────────────────────────────────
+function buildCover(doc, { project, period, date, logo, score, entities }) {
+  // Dark hero panel (top 40% of page)
+  fill(doc, P.navy);
+  doc.rect(0, 0, W, 118, 'F');
 
-  // Logo TELNET
-  if (logoBase64) {
-    try { doc.addImage(logoBase64, 'PNG', MARGIN, 18, 55, 20); } catch(e) {
-      setTextC(doc, BRAND.white); setFont(doc, 28, 'bold'); doc.text('TELNET', MARGIN, 35);
+  // Blue accent stripe at bottom of hero
+  fill(doc, P.blue);
+  doc.rect(0, 115, W, 3, 'F');
+
+  // Logo zone
+  if (logo) {
+    try { doc.addImage(logo, 'PNG', L, 22, 50, 17); }
+    catch {
+      text(doc, P.white); font(doc, 20, 'bold');
+      doc.text('TELNET', L, 38);
     }
   } else {
-    setTextC(doc, BRAND.white); setFont(doc, 28, 'bold'); doc.text('TELNET', MARGIN, 35);
+    text(doc, P.blue); font(doc, 8, 'bold');
+    doc.text('TELNET HOLDING', L, 28);
+    fill(doc, P.blue); doc.rect(L, 29.5, 35, 1, 'F');
   }
 
-  // Titre principal
-  setTextC(doc, BRAND.white);
-  setFont(doc, 20, 'bold');
-  doc.text('RAPPORT DE PERFORMANCE', MARGIN, 62);
-  setFont(doc, 14, 'normal');
-  doc.text('KPI STRATEGIQUE & DORA METRICS', MARGIN, 70);
+  // CONFIDENTIEL badge (top right)
+  fill(doc, P.red);
+  doc.roundedRect(W - R - 36, 22, 36, 8, 1.5, 1.5, 'F');
+  text(doc, P.white); font(doc, 6.5, 'bold');
+  doc.text('CONFIDENTIEL', W - R - 18, 27.3, { align: 'center' });
 
-  // Badge confidentiel
-  setFill(doc, BRAND.danger);
-  doc.roundedRect(PAGE_W - MARGIN - 42, 56, 42, 10, 2, 2, 'F');
-  setTextC(doc, BRAND.white);
-  setFont(doc, 7, 'bold');
-  doc.text('CONFIDENTIEL', PAGE_W - MARGIN - 21, 62.5, { align: 'center' });
+  // Report title
+  text(doc, P.white);
+  font(doc, 24, 'bold');
+  doc.text('RAPPORT DE PERFORMANCE', L, 65);
+  font(doc, 13, 'normal');
+  doc.text('KPI STRATEGIQUE & DORA METRICS', L, 75);
 
-  // Metadonnees projet
-  let y = 105;
+  // Subtitle line
+  fill(doc, P.blue);
+  doc.rect(L, 80, 60, 1, 'F');
+
+  text(doc, [148, 163, 184]);  // slate-400
+  font(doc, 8.5, 'normal');
+  doc.text(s(project), L, 89);
+  doc.text(s(period), L, 96);
+
+  // ── White area ─────────────────────────────────────────────────────────────
+  // Metadata block (clean table)
+  let y = 134;
   const meta = [
-    ['Projet analyse', projectName],
-    ['Periode', period],
-    ['Date generation', exportDate],
-    ['Classification', 'DIRECTION & MANAGEMENT'],
+    ['Projet',           s(project)],
+    ['Perimetre',        s(period)],
+    ['Date de rapport',  s(date)],
+    ['Entites evaluees', `${entities}`],
+    ['Statut',           'Rapport automatise certifie conforme'],
   ];
 
-  meta.forEach(([label, value]) => {
-    setFill(doc, BRAND.bg); doc.rect(MARGIN, y - 4, CONTENT_W, 10, 'F');
-    setTextC(doc, BRAND.muted); setFont(doc, 8, 'normal'); doc.text(label, MARGIN + 4, y + 2.5);
-    setTextC(doc, BRAND.secondary); setFont(doc, 8, 'bold'); doc.text(String(value), MARGIN + 60, y + 2.5);
-    y += 12;
+  meta.forEach(([k, v], i) => {
+    fill(doc, i % 2 === 0 ? P.light : P.white);
+    doc.rect(L, y - 3, CW, 9, 'F');
+    text(doc, P.gray); font(doc, 7.5, 'normal');
+    doc.text(k, L + 4, y + 3);
+    text(doc, P.navy); font(doc, 7.5, 'bold');
+    doc.text(v, L + 58, y + 3);
+    y += 9;
   });
 
-  // Synthese Strategique block
-  y += 5;
-  setFill(doc, [248, 250, 252]); doc.roundedRect(MARGIN, y, CONTENT_W, 28, 2, 2, 'F');
-  setFill(doc, BRAND.primary); doc.rect(MARGIN, y, 3, 28, 'F');
-  setTextC(doc, BRAND.secondary); setFont(doc, 9, 'bold'); doc.text('Synthese Strategique de l\'Audit', MARGIN + 7, y + 7);
-  setTextC(doc, BRAND.muted); setFont(doc, 7.5, 'normal');
-  const summary = "Ce rapport consolide les indicateurs cles de performance (KPI) et les standards DORA pour TELNET Holding. L'audit mesure l'efficience operationnelle, la qualite de code et la maturite des cycles de livraison DevOps sur les sites de Tunis, Paris et Sfax.";
-  doc.text(summary, MARGIN + 7, y + 12, { maxWidth: CONTENT_W - 14, lineHeightFactor: 1.4 });
-  
-  y += 38;
+  y += 8;
+  hRule(doc, y, P.border);
+  y += 10;
 
-  // Score Sante Global (Centré)
-  setTextC(doc, BRAND.secondary); setFont(doc, 9, 'bold');
-  doc.text('INDICE DE SANTE GLOBAL DU PROJET', PAGE_W/2, y, { align: 'center' });
-  y += 5;
-  const bw = 140;
-  const bx = (PAGE_W - bw) / 2;
-  const score = Math.min(Math.max(healthScore || 0, 0), 100);
-  setFill(doc, BRAND.border); doc.roundedRect(bx, y, bw, 8, 4, 4, 'F');
-  const fillW = (bw * score) / 100;
-  const sCol = score >= 70 ? BRAND.accent : score >= 45 ? BRAND.warning : BRAND.danger;
-  setFill(doc, sCol);
-  if (fillW > 0) doc.roundedRect(bx, y, fillW, 8, 4, 4, 'F');
-  setTextC(doc, BRAND.white); setFont(doc, 7, 'bold');
-  doc.text(`${score}%`, bx + fillW / 2, y + 5.5, { align: 'center' });
+  // Health score — large, centered
+  text(doc, P.navy); font(doc, 8.5, 'bold');
+  doc.text('INDICE DE SANTE GLOBAL', W / 2, y, { align: 'center' });
+  y += 8;
 
-  // Pied de page couverture
-  y = PAGE_H - 40;
-  setFill(doc, BRAND.bg); doc.rect(MARGIN, y, CONTENT_W, 20, 'F');
-  setTextC(doc, BRAND.muted); setFont(doc, 7, 'italic');
-  doc.text('Ce document est la propriete exclusive de TELNET Holding. Les donnees sont automatisees et certifiees conformes aux flux GitLab extraits.', MARGIN + 4, y + 11, { maxWidth: CONTENT_W - 8 });
+  const pct = Math.min(Math.max(score || 0, 0), 100);
+  const bW = 130;
+  const bX = (W - bW) / 2;
+  const barColor = pct >= 70 ? P.green : pct >= 45 ? P.amber : P.red;
+  const barTint  = pct >= 70 ? TINT.green : pct >= 45 ? TINT.amber : TINT.red;
+
+  // Track
+  fill(doc, P.border); doc.roundedRect(bX, y, bW, 9, 4, 4, 'F');
+  // Fill
+  const fw = Math.max((bW * pct) / 100, pct > 0 ? 9 : 0);
+  fill(doc, barColor);
+  if (fw > 0) doc.roundedRect(bX, y, fw, 9, 4, 4, 'F');
+  // Label inside bar
+  if (fw > 18) {
+    text(doc, P.white); font(doc, 7, 'bold');
+    doc.text(`${pct}%`, bX + fw / 2, y + 6.3, { align: 'center' });
+  }
+
+  y += 12;
+  const statusLabel = pct >= 70 ? 'Sante : Bonne' : pct >= 45 ? 'Sante : Attention requise' : 'Sante : Critique';
+  text(doc, barColor); font(doc, 7, 'bold');
+  doc.text(statusLabel, W / 2, y, { align: 'center' });
+
+  y += 10;
+  hRule(doc, y, P.border);
+  y += 8;
+
+  // Legal note
+  text(doc, P.gray); font(doc, 6, 'italic');
+  doc.text(
+    'Ce document est la propriete exclusive de TELNET Holding. Les donnees presentees sont issues d\'une analyse automatisee des flux GitLab.',
+    L, y, { maxWidth: CW }
+  );
+  doc.text('Toute reproduction ou distribution non autorisee est strictement interdite.', L, y + 4);
 }
 
-// ─── Page 2 : Executive Summary ───────────────────────────────────────────────
-function buildExecutiveSummary(doc, { projectName, healthScore, insights, trends, period }) {
-  const date = new Date().toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' });
+// ─── PAGE 2 ── Tableau de Bord Exécutif ──────────────────────────────────────
+function buildExecutivePage(doc, { score, insights, trends, execSummary }) {
+  const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  // En-tête page
-  setFill(doc, BRAND.bg);
-  doc.rect(0, 0, PAGE_W, 16, 'F');
-  setTextC(doc, BRAND.secondary);
-  setFont(doc, 9, 'bold');
-  doc.text('EXECUTIVE SUMMARY', MARGIN, 11);
-  setTextC(doc, BRAND.muted);
-  setFont(doc, 7, 'normal');
-  doc.text(date, PAGE_W - MARGIN, 11, { align: 'right' });
+  // Page label
+  fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('TABLEAU DE BORD EXECUTIF', L, 9.5);
+  text(doc, P.gray); font(doc, 7, 'normal');
+  doc.text(s(now), W - R, 9.5, { align: 'right' });
 
-  let y = 26;
-  y = drawSectionTitle(doc, '01. Vue d\'Ensemble Exécutive', y);
+  let y = 24;
 
-  // Indicateurs KPI en grille 4 colonnes
-  const cellW = (CONTENT_W - 9) / 4;
-  const cellH = 28;
+  // ── KPI Cards (2×2 grid, generous spacing) ─────────────────────────────────
+  const lastLabel = trends.length ? trends[trends.length - 1].period_label : '';
+  const pool = trends.filter(t =>
+    t.period_label === lastLabel &&
+    t.entity_name  !== 'Global' &&
+    t.entity_name  !== 'Autres / Non-assignes'
+  );
 
-  // Calcul des métriques globales depuis trends
-  const lastPeriodLabel = trends.length ? trends[trends.length - 1].period_label : '';
-  const lastData = trends.filter(t => t.period_label === lastPeriodLabel);
-  const avgVelocity = lastData.length
-    ? (lastData.reduce((s, t) => s + (t.metrics.velocity || 0), 0) / lastData.length).toFixed(1)
-    : '—';
-  const avgQuality = lastData.length
-    ? ((lastData.reduce((s, t) => s + (t.metrics.quality_score || 0), 0) / lastData.length) * 100).toFixed(0) + '%'
-    : '—';
-  const avgReview = lastData.length
-    ? (lastData.reduce((s, t) => s + (t.metrics.review_time || 0), 0) / lastData.length).toFixed(1) + 'h'
-    : '—';
-  const totalSites = [...new Set(trends.map(t => t.entity_name))].length;
+  const avgVel  = pool.length ? (pool.reduce((a, t) => a + (t.metrics.velocity || 0), 0) / pool.length) : null;
+  const avgQ    = pool.length ? (pool.reduce((a, t) => {
+    const q = t.metrics.quality_score || 0;
+    return a + (q <= 1 ? q * 100 : q);
+  }, 0) / pool.length) : null;
+  const avgRev  = pool.length ? (pool.reduce((a, t) => a + (t.metrics.review_time || 0), 0) / pool.length) : null;
+  const totalEnt = [...new Set(trends.map(t => t.entity_name))].length;
 
   const kpis = [
-    { label: 'Health Score',     value: healthScore + '%', unit: '', color: BRAND.accent,   bg: [209, 250, 229] },
-    { label: 'Vélocité Moy.',    value: avgVelocity,       unit: 'C/Dev',  color: BRAND.primary,  bg: [219, 234, 254] },
-    { label: 'Qualité Moy.',     value: avgQuality,        unit: '',       color: BRAND.accent,   bg: [209, 250, 229] },
-    { label: 'Sites Analysés',   value: totalSites,        unit: 'entités',color: BRAND.secondary,bg: [241, 245, 249] },
+    {
+      value: `${score}%`,
+      label: 'Health Score Global',
+      sub:   score >= 70 ? 'Indicateur positif' : score >= 45 ? 'Vigilance requise' : 'Action immediate',
+      color: score >= 70 ? P.green : score >= 45 ? P.amber : P.red,
+      tint:  score >= 70 ? TINT.green : score >= 45 ? TINT.amber : TINT.red,
+    },
+    {
+      value: avgVel  != null ? `${avgVel.toFixed(1)}` : '—',
+      label: 'Velocite Moyenne',
+      sub:   'Commits / developpeur',
+      color: P.indigo,
+      tint:  TINT.indigo,
+    },
+    {
+      value: avgQ    != null ? `${avgQ.toFixed(0)}%`  : '—',
+      label: 'Qualite de Code',
+      sub:   'Taux d\'approbation MR',
+      color: avgQ != null && avgQ >= 70 ? P.green : P.amber,
+      tint:  avgQ != null && avgQ >= 70 ? TINT.green : TINT.amber,
+    },
+    {
+      value: avgRev  != null ? `${avgRev.toFixed(1)}h` : '—',
+      label: 'Temps de Revue Moyen',
+      sub:   avgRev != null && avgRev > 48 ? 'Seuil critique depasse (>48h)' : 'Dans la norme (<48h)',
+      color: avgRev != null && avgRev > 48 ? P.red : P.green,
+      tint:  avgRev != null && avgRev > 48 ? TINT.red : TINT.green,
+    },
   ];
 
+  const cW = (CW - 6) / 2;
+  const cH = 38;
+
   kpis.forEach((k, i) => {
-    drawKpiCell(doc, MARGIN + i * (cellW + 3), y, cellW, cellH, k.label, k.value, k.unit, k.color, k.bg);
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const cx = L + col * (cW + 6);
+    const cy = y + row * (cH + 6);
+
+    // Card background
+    fill(doc, k.tint);
+    doc.roundedRect(cx, cy, cW, cH, 3, 3, 'F');
+    // Left accent border
+    fill(doc, k.color);
+    doc.rect(cx, cy, 4, cH, 'F');
+    // Clip corner
+    fill(doc, k.tint);
+    doc.rect(cx, cy, 2, 2, 'F');
+    doc.rect(cx, cy + cH - 2, 2, 2, 'F');
+
+    // Big value
+    text(doc, k.color); font(doc, 22, 'bold');
+    doc.text(s(k.value), cx + cW / 2 + 2, cy + 18, { align: 'center' });
+    // Label
+    text(doc, P.navy); font(doc, 8, 'bold');
+    doc.text(s(k.label), cx + cW / 2 + 2, cy + 26, { align: 'center' });
+    // Sub-label
+    text(doc, k.color); font(doc, 6.5, 'normal');
+    doc.text(s(k.sub), cx + cW / 2 + 2, cy + 32, { align: 'center' });
   });
 
-  y += cellH + 10;
+  y += 2 * (cH + 6) + 12;
 
-  // Insights automatisés
-  y = drawSectionTitle(doc, '02. Insights Automatisés', y);
+  // ── Executive Summary ───────────────────────────────────────────────────────
+  if (execSummary?.text) {
+    y = heading(doc, 'Resume Executif', y);
+    fill(doc, P.light);
+    doc.roundedRect(L, y, CW, 26, 2, 2, 'F');
+    fill(doc, P.blue); doc.rect(L, y, 3, 26, 'F');
+    text(doc, P.navy); font(doc, 8, 'normal');
+    doc.text(s(execSummary.text), L + 8, y + 7, { maxWidth: CW - 14, lineHeightFactor: 1.55 });
+    y += 33;
+  }
 
-  if (insights.length === 0) {
-    setTextC(doc, BRAND.muted);
-    setFont(doc, 8, 'italic');
-    doc.text('Aucun insight disponible pour la période sélectionnée.', MARGIN, y + 6);
-    y += 14;
-  } else {
-    insights.forEach(insight => {
-      const colorMap = { success: BRAND.accent, danger: BRAND.danger, info: BRAND.primary, warning: BRAND.warning };
-      const bgMap    = { success: [209,250,229], danger: [254,226,226], info: [219,234,254], warning: [254,243,199] };
-      const c = colorMap[insight.type] || BRAND.muted;
-      const bg = bgMap[insight.type] || [241,245,249];
-      setFill(doc, bg);
-      doc.roundedRect(MARGIN, y, CONTENT_W, 14, 2, 2, 'F');
-      setFill(doc, c);
-      doc.rect(MARGIN, y, 3, 14, 'F');
-      setTextC(doc, c);
-      setFont(doc, 8, 'bold');
-      doc.text(insight.title, MARGIN + 7, y + 5.5);
-      setTextC(doc, BRAND.secondary);
-      setFont(doc, 8, 'normal');
-      doc.text(insight.text, MARGIN + 7, y + 10.5, { maxWidth: CONTENT_W - 10 });
-      y += 17;
+  // ── Top Insights (max 4, one per row, clean) ────────────────────────────────
+  if (insights && insights.length > 0) {
+    y = heading(doc, 'Points Cles de l\'Analyse', y);
+
+    const display = insights.slice(0, 4);
+    display.forEach(ins => {
+      if (y + 16 > H - 20) return;
+      const type = ins.type || 'info';
+      const tint  = { success: TINT.green, danger: TINT.red, warning: TINT.amber, info: TINT.indigo }[type] || TINT.gray;
+      const color = { success: P.green,    danger: P.red,    warning: P.amber,    info: P.indigo }[type]    || P.gray;
+
+      fill(doc, tint);
+      doc.roundedRect(L, y, CW, 15, 2, 2, 'F');
+      fill(doc, color); doc.rect(L, y, 3, 15, 'F');
+      text(doc, color); font(doc, 7.5, 'bold');
+      doc.text(s(ins.title), L + 8, y + 6);
+      text(doc, P.navy); font(doc, 7, 'normal');
+      doc.text(s(ins.text), L + 8, y + 11.5, { maxWidth: CW - 12 });
+      y += 19;
     });
+  }
+}
+
+// ─── PAGE 3 ── Analyse Comparative ────────────────────────────────────────────
+async function buildComparativePage(doc, { chartId, trends }) {
+  const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('ANALYSE COMPARATIVE DES ENTITES', L, 9.5);
+  text(doc, P.gray); font(doc, 7, 'normal');
+  doc.text(s(now), W - R, 9.5, { align: 'right' });
+
+  let y = 24;
+
+  // ── Ranking table ───────────────────────────────────────────────────────────
+  y = heading(doc, 'Classement des Entites — Periode en Cours', y);
+
+  const lastLabel = trends.length ? trends[trends.length - 1].period_label : '';
+  const ranked = [...trends.filter(t =>
+    t.period_label === lastLabel &&
+    t.entity_name  !== 'Autres / Non-assignes' &&
+    t.entity_name  !== 'Global'
+  )].sort((a, b) => (b.metrics.velocity || 0) - (a.metrics.velocity || 0));
+
+  // Header row
+  fill(doc, P.navy); doc.rect(L, y, CW, 9, 'F');
+  text(doc, P.white); font(doc, 7, 'bold');
+  const cols = [
+    { t: '#',            x: L + 4         },
+    { t: 'Entite',       x: L + 16        },
+    { t: 'Velocite',     x: L + 90        },
+    { t: 'Qualite',      x: L + 120       },
+    { t: 'Revue (h)',    x: L + 150       },
+  ];
+  cols.forEach(c => doc.text(c.t, c.x, y + 6));
+  y += 9;
+
+  const rankColor  = [[202,138,4], [107,114,128], [154,103,47]]; // gold, silver, bronze
+
+  ranked.slice(0, 6).forEach((row, i) => {
+    const rowH = 11;
+    fill(doc, i % 2 === 0 ? P.white : P.light);
+    doc.rect(L, y, CW, rowH, 'F');
+
+    // Rank badge
+    const bColor = i < 3 ? rankColor[i] : P.border;
+    fill(doc, bColor);
+    doc.circle(L + 7, y + rowH / 2, 4, 'F');
+    text(doc, i < 3 ? P.white : P.gray); font(doc, 7, 'bold');
+    doc.text(String(i + 1), L + 7, y + rowH / 2 + 2.2, { align: 'center' });
+
+    // Quality & review values
+    const qRaw = row.metrics.quality_score ?? null;
+    const qPct  = qRaw != null ? (qRaw <= 1 ? qRaw * 100 : qRaw).toFixed(0) + '%' : '—';
+    const rev   = row.metrics.review_time  ?? null;
+    const revTxt = rev != null ? rev.toFixed(1) : '—';
+    const revColor = rev != null && rev > 48 ? P.red : rev != null && rev > 24 ? P.amber : P.green;
+
+    text(doc, P.navy); font(doc, 8, i === 0 ? 'bold' : 'normal');
+    doc.text(s(row.entity_name), L + 16, y + 7.5);
+    doc.text((row.metrics.velocity || 0).toFixed(1), L + 90, y + 7.5);
+    doc.text(qPct, L + 120, y + 7.5);
+    text(doc, revColor); font(doc, 8, 'bold');
+    doc.text(revTxt, L + 150, y + 7.5);
+    y += rowH;
+  });
+
+  if (ranked.length > 6) {
+    text(doc, P.gray); font(doc, 6.5, 'italic');
+    doc.text(`... et ${ranked.length - 6} entite(s) non affichee(s)`, L, y + 4);
+    y += 8;
+  }
+
+  y += 12;
+
+  // ── Chart ───────────────────────────────────────────────────────────────────
+  y = heading(doc, 'Evolution Historique des KPIs', y);
+
+  const el = document.getElementById(chartId);
+  if (el) {
+    try {
+      const canvas = await html2canvas(el, { scale: 2.5, backgroundColor: '#ffffff', logging: false, useCORS: true });
+      const raw = (CW * canvas.height) / canvas.width;
+      const imgH = Math.min(raw, 72);
+      doc.addImage(canvas.toDataURL('image/png'), 'PNG', L, y, CW, imgH);
+      y += imgH + 6;
+    } catch {
+      fill(doc, P.light); doc.roundedRect(L, y, CW, 16, 2, 2, 'F');
+      text(doc, P.gray); font(doc, 7.5, 'italic');
+      doc.text('[Graphique non disponible pour l\'export]', L + 6, y + 9.5);
+      y += 22;
+    }
+  } else {
+    fill(doc, P.light); doc.roundedRect(L, y, CW, 16, 2, 2, 'F');
+    text(doc, P.gray); font(doc, 7.5, 'italic');
+    doc.text('[Graphique non disponible — element DOM introuvable]', L + 6, y + 9.5);
+    y += 22;
   }
 
   y += 4;
 
-  // Top performers table
-  y = drawSectionTitle(doc, '03. Classement des Entités — ' + (lastPeriodLabel || 'Dernière période'), y);
-
-  const sorted = [...lastData].sort((a, b) => (b.metrics.velocity || 0) - (a.metrics.velocity || 0));
-
-  // Table header
-  setFill(doc, BRAND.secondary);
-  doc.rect(MARGIN, y, CONTENT_W, 8, 'F');
-  setTextC(doc, BRAND.white);
-  setFont(doc, 7, 'bold');
-  const cols = [
-    { label: 'Rang',       x: MARGIN + 4,   w: 12 },
-    { label: 'Entité',     x: MARGIN + 16,  w: 40 },
-    { label: 'Vélocité',   x: MARGIN + 80,  w: 30 },
-    { label: 'Qualité',    x: MARGIN + 110, w: 30 },
-    { label: 'Review (h)', x: MARGIN + 140, w: 32 },
-  ];
-  cols.forEach(c => doc.text(c.label, c.x, y + 5.5));
-  y += 8;
-
-  // Filtrer les entités sans nom valide
-  const cleanSorted = sorted.filter(r => r.entity_name && r.entity_name !== 'Autres / Non-assignés' && r.entity_name !== 'Global');
-  cleanSorted.slice(0, 8).forEach((row, idx) => {
-    const bg = idx % 2 === 0 ? BRAND.white : BRAND.bg;
-    setFill(doc, bg);
-    doc.rect(MARGIN, y, CONTENT_W, 8, 'F');
-    setTextC(doc, BRAND.secondary);
-    setFont(doc, 7, 'normal');
-    const qualVal = (row.metrics.quality_score != null
-      ? (row.metrics.quality_score <= 1 ? row.metrics.quality_score * 100 : row.metrics.quality_score).toFixed(0) + '%'
-      : '—');
-
-    const rankColors = [[212,175,55], [169,169,169], [176,141,87]]; // Or, Argent, Bronze
-    if (idx < 3) {
-      setFill(doc, rankColors[idx]);
-      doc.circle(MARGIN + 7, y + 4, 3, 'F');
-      setTextC(doc, BRAND.white);
-      setFont(doc, 7, 'bold');
-      doc.text(String(idx + 1), MARGIN + 7, y + 5.5, { align: 'center' });
-    } else {
-      setTextC(doc, BRAND.muted);
-      doc.text(String(idx + 1), MARGIN + 7, y + 5.5, { align: 'center' });
-    }
-
-    setTextC(doc, BRAND.secondary);
-    setFont(doc, 7, idx === 0 ? 'bold' : 'normal');
-    doc.text(row.entity_name || '-',                       MARGIN + 16,  y + 5.5);
-    doc.text((row.metrics.velocity || 0).toFixed(1),       MARGIN + 80,  y + 5.5);
-    doc.text(qualVal,                                       MARGIN + 110, y + 5.5);
-    doc.text((row.metrics.review_time || 0).toFixed(1),    MARGIN + 140, y + 5.5);
-    y += 8;
-  });
-
-  // ── Mini graphique barres comparatif (vélocité par site) ──────────────────
-  y += 8;
-  const drawSection = (doc, text, yy) => { setFill(doc, BRAND.primary); doc.rect(MARGIN, yy, 3, 6, 'F'); setTextC(doc, BRAND.secondary); setFont(doc, 11, 'bold'); doc.text(text, MARGIN + 6, yy + 5); return yy + 10; };
-  y = drawSection(doc, '04. Comparaison Visuelle - Velocite par Site', y);
-
-  const maxVel = Math.max(...cleanSorted.map(r => r.metrics.velocity || 0), 1);
-  const barW = (CONTENT_W - cleanSorted.length * 4) / Math.max(cleanSorted.length, 1);
-  const chartH = 30;
-  const chartTop = y;
-  cleanSorted.forEach((row, i) => {
-    const vel = row.metrics.velocity || 0;
-    const bH = (vel / maxVel) * chartH;
-    const bX = MARGIN + i * (barW + 4);
-    const barCol = i === 0 ? BRAND.accent : i === cleanSorted.length - 1 ? BRAND.danger : BRAND.primary;
-    setFill(doc, barCol);
-    doc.roundedRect(bX, chartTop + chartH - bH, barW, bH, 1, 1, 'F');
-    setTextC(doc, BRAND.secondary); setFont(doc, 6.5, 'bold');
-    doc.text(vel.toFixed(1), bX + barW / 2, chartTop + chartH - bH - 2, { align: 'center' });
-    setTextC(doc, BRAND.muted); setFont(doc, 6, 'normal');
-    doc.text(row.entity_name || '', bX + barW / 2, chartTop + chartH + 5, { align: 'center' });
-  });
-  // Ligne objectif
-  setStroke(doc, BRAND.muted); doc.setLineWidth(0.4);
-  const targetY = chartTop + chartH * 0.35;
-  doc.setLineDashPattern([2, 2], 0);
-  doc.line(MARGIN, targetY, MARGIN + CONTENT_W, targetY);
-  doc.setLineDashPattern([], 0);
-  setTextC(doc, BRAND.muted); setFont(doc, 6, 'italic');
-  doc.text('Objectif cible', MARGIN + CONTENT_W - 2, targetY - 2, { align: 'right' });
-  y = chartTop + chartH + 12;
-
-  // ── Analyse des risques ────────────────────────────────────────────────────
-  y = drawSection(doc, '05. Analyse de Risques & Points de Vigilance', y);
-  const risks = cleanSorted.filter(r => (r.metrics.review_time || 0) > 48);
-  const lowQ = cleanSorted.filter(r => (r.metrics.quality_score || 0) < 0.6);
-
-  if (risks.length > 0 || lowQ.length > 0) {
-    setFill(doc, [255, 255, 255]);
-    doc.roundedRect(MARGIN, y, CONTENT_W, 25, 2, 2, 'FD');
-    
-    let ry = y + 7;
-    if (risks.length > 0) {
-      setTextC(doc, BRAND.danger); setFont(doc, 7.5, 'bold');
-      doc.text('[!] Goulot d\'etranglement - Lead Time > 48h', MARGIN + 5, ry);
-      setTextC(doc, BRAND.secondary); setFont(doc, 7, 'normal');
-      doc.text('Impact : Retard sur les livraisons. Sites concernes : ' + risks.map(r => r.entity_name).join(', '), MARGIN + 5, ry + 4);
-      ry += 9;
-    }
-    if (lowQ.length > 0) {
-      setTextC(doc, BRAND.warning); setFont(doc, 7.5, 'bold');
-      doc.text('[!] Qualite critique - Taux d\'approbation < 60%', MARGIN + 5, ry);
-      setTextC(doc, BRAND.secondary); setFont(doc, 7, 'normal');
-      doc.text('Impact : Risque de regression technique. Sites concernes : ' + lowQ.map(r => r.entity_name).join(', '), MARGIN + 5, ry + 4);
-    }
-    y += 30;
-  } else {
-    setFill(doc, [240, 253, 244]); doc.roundedRect(MARGIN, y, CONTENT_W, 12, 2, 2, 'F');
-    setTextC(doc, [21, 128, 61]); setFont(doc, 8, 'bold');
-    doc.text('✓ STATUS : EXCELLENCE OPERATIONNELLE - Tous les indicateurs sont au vert.', MARGIN + CONTENT_W/2, y + 7.5, { align: 'center' });
-    y += 18;
+  // ── Performance note ────────────────────────────────────────────────────────
+  if (y + 14 < H - 18) {
+    fill(doc, TINT.indigo); doc.roundedRect(L, y, CW, 12, 2, 2, 'F');
+    fill(doc, P.indigo); doc.rect(L, y, 3, 12, 'F');
+    text(doc, P.indigo); font(doc, 7, 'bold');
+    doc.text('Note de lecture', L + 8, y + 5);
+    text(doc, P.navy); font(doc, 7, 'normal');
+    doc.text('La velocite est exprimee en commits par developpeur. La qualite correspond au taux d\'approbation des Merge Requests.', L + 8, y + 9.5, { maxWidth: CW - 12 });
   }
 }
 
-// ─── Page 3 : Évolution Historique + Capture Graphique ────────────────────────
-async function buildChartPage(doc, { chartElementId, trends }) {
-  const date = new Date().toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' });
+// ─── PAGE 4 ── DORA Metrics & Plan d'Action ───────────────────────────────────
+function buildDoraPage(doc, { doraData }) {
+  const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  setFill(doc, BRAND.bg);
-  doc.rect(0, 0, PAGE_W, 16, 'F');
-  setTextC(doc, BRAND.secondary);
-  setFont(doc, 9, 'bold');
-  doc.text('EVOLUTION HISTORIQUE DES METRIQUES', MARGIN, 11);
-  setTextC(doc, BRAND.muted);
-  setFont(doc, 7, 'normal');
-  doc.text(date, PAGE_W - MARGIN, 11, { align: 'right' });
+  fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('DORA METRICS — PERFORMANCE DEVOPS', L, 9.5);
+  text(doc, P.gray); font(doc, 7, 'normal');
+  doc.text(s(now), W - R, 9.5, { align: 'right' });
 
-  let y = 26;
-  y = drawSectionTitle(doc, '04. Graphique d\'Evolution Multi-Periodes', y);
+  let y = 24;
 
-  // Capture du graphique ApexCharts
-  const chartEl = document.getElementById(chartElementId);
-  if (chartEl) {
-    try {
-      const canvas = await html2canvas(chartEl, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        logging: false,
-        useCORS: true,
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const imgH = (CONTENT_W * canvas.height) / canvas.width;
-      doc.addImage(imgData, 'PNG', MARGIN, y, CONTENT_W, Math.min(imgH, 100));
-      y += Math.min(imgH, 100) + 10;
-    } catch (e) {
-      setTextC(doc, BRAND.muted);
-      setFont(doc, 8, 'italic');
-      doc.text('Graphique non disponible pour l\'export.', MARGIN, y + 8);
-      y += 20;
-    }
-  } else {
-    setTextC(doc, BRAND.muted);
-    setFont(doc, 8, 'italic');
-    doc.text('Graphique non disponible pour l\'export.', MARGIN, y + 8);
-    y += 20;
-  }
+  // ── What is DORA ─────────────────────────────────────────────────────────────
+  fill(doc, TINT.blue); doc.roundedRect(L, y, CW, 18, 2, 2, 'F');
+  fill(doc, P.blue); doc.rect(L, y, 3, 18, 'F');
+  text(doc, P.navy); font(doc, 8, 'bold');
+  doc.text('Qu\'est-ce que DORA ?', L + 8, y + 6.5);
+  text(doc, P.gray); font(doc, 7.5, 'normal');
+  doc.text(
+    'Les metriques DORA (DevOps Research & Assessment) sont les 4 indicateurs valides par Google pour mesurer la performance DevOps. ' +
+    'Elles constituent le standard mondial pour les equipes d\'ingenierie logicielle.',
+    L + 8, y + 12, { maxWidth: CW - 14, lineHeightFactor: 1.4 }
+  );
+  y += 25;
 
-  // Note de lecture
-  setFill(doc, [239, 246, 255]);
-  doc.roundedRect(MARGIN, y, CONTENT_W, 16, 2, 2, 'F');
-  setFill(doc, BRAND.primary); doc.rect(MARGIN, y, 3, 16, 'F');
-  setTextC(doc, BRAND.primary); setFont(doc, 8, 'bold');
-  doc.text('Note de lecture', MARGIN + 7, y + 6);
-  setTextC(doc, BRAND.secondary); setFont(doc, 7, 'normal');
-  doc.text('La ligne pointillee represente l\'objectif cible (2.0 commits/dev). Source : API GitLab - extraction temps reel.', MARGIN + 7, y + 11, { maxWidth: CONTENT_W - 10 });
+  // Level legend — clear chips
+  y = heading(doc, 'Echelle de Maturite DORA', y);
+
+  const levels = [
+    { label: 'ELITE',   color: P.green,  tint: TINT.green,  desc: 'Meilleures pratiques mondiales' },
+    { label: 'HIGH',    color: P.indigo, tint: TINT.indigo, desc: 'Niveau avance'                   },
+    { label: 'MEDIUM',  color: P.amber,  tint: TINT.amber,  desc: 'En cours de progression'         },
+    { label: 'LOW',     color: P.red,    tint: TINT.red,    desc: 'Necessite une intervention'       },
+  ];
+
+  const chipW = (CW - 9) / 4;
+  levels.forEach((lv, i) => {
+    const cx = L + i * (chipW + 3);
+    fill(doc, lv.tint); doc.roundedRect(cx, y, chipW, 16, 2, 2, 'F');
+    fill(doc, lv.color); doc.rect(cx, y, chipW, 5, 'F');
+    fill(doc, lv.tint); doc.rect(cx, y + 3, chipW, 2, 'F'); // soften bottom of header
+    text(doc, P.white); font(doc, 7, 'bold');
+    doc.text(lv.label, cx + chipW / 2, y + 3.8, { align: 'center' });
+    text(doc, lv.color); font(doc, 6.5, 'normal');
+    doc.text(s(lv.desc), cx + chipW / 2, y + 12, { align: 'center', maxWidth: chipW - 4 });
+  });
   y += 22;
 
-  // Identification des entites pour la legende
-  const entities = trends ? [...new Set(trends.map(t => t.entity_name))] : [];
-
-  // ─── Legende du graphique (Correction : Identification des courbes) ──────
-  y = drawChartLegend(doc, entities, y);
-
-  // ─── Matrice de Performance Historique (Inspiration Senior/Encadrant) ───────
-  y = buildPerformanceMatrix(doc, trends, y);
-}
-
-function drawChartLegend(doc, entities, y) {
-  if (!entities || !entities.length) return y;
-
-  const colors = ["#4f46e5", "#0ab39c", "#299cdb", "#f7b84b", "#f06548", "#3577f1", "#6559cc", "#ffbe0b"];
-  
-  const startX = MARGIN;
-  let currentX = startX;
-  const itemGap = 45;
-
-  setFont(doc, 7, 'bold');
-  setTextC(doc, BRAND.primary);
-  doc.text('LEGENDE :', currentX, y + 4.5);
-  currentX += 18;
-
-  entities.forEach((ent, i) => {
-    const color = colors[i % colors.length];
-    
-    // Hex to RGB simple (approximatif pour jsPDF)
-    const r = parseInt(color.slice(1,3), 16);
-    const g = parseInt(color.slice(3,5), 16);
-    const b = parseInt(color.slice(5,7), 16);
-    
-    doc.setFillColor(r, g, b);
-    doc.circle(currentX + 2, y + 3, 1.5, 'F');
-    
-    setTextC(doc, BRAND.secondary);
-    doc.text(ent, currentX + 5, y + 4.5);
-    
-    currentX += itemGap;
-    if (currentX > CONTENT_W - 20) {
-      currentX = startX;
-      y += 6;
-    }
-  });
-
-  return y + 12;
-}
-
-function buildPerformanceMatrix(doc, trends, y) {
-  if (!trends || !trends.length) return y;
-
-  // Groupement par entité
-  const entities = [...new Set(trends.map(t => t.entity_name))];
-  // Utiliser l'ordre naturel des trends (qui sont chronologiques via le backend)
-  const months = [];
-  trends.forEach(t => { if(!months.includes(t.period_label)) months.push(t.period_label); });
-  
-  // Limiter aux 4 derniers mois pour la lisibilité
-  const displayMonths = months.slice(-4);
-  
-  // Titre
-  setTextC(doc, BRAND.primary); setFont(doc, 8, 'bold');
-  doc.text('MATRICE DE PERFORMANCE : VELOCITE MENSUELLE (HEATMAP)', MARGIN, y);
-  y += 5;
-
-  // Entête tableau
-  const colW = (CONTENT_W - 30) / Math.max(displayMonths.length, 1);
-  setFill(doc, BRAND.secondary);
-  doc.rect(MARGIN, y, CONTENT_W, 7, 'F');
-  setTextC(doc, BRAND.white); setFont(doc, 6.5, 'bold');
-  doc.text('Site / Entite', MARGIN + 2, y + 4.5);
-  displayMonths.forEach((m, i) => {
-    doc.text(m, MARGIN + 30 + i * colW + colW/2, y + 4.5, { align: 'center' });
-  });
-  y += 7;
-
-  // Lignes par site
-  entities.forEach((ent, idx) => {
-    // Fond alterné
-    if (idx % 2 === 1) { setFill(doc, [249, 250, 251]); doc.rect(MARGIN, y, CONTENT_W, 10, 'F'); }
-    
-    setTextC(doc, BRAND.secondary); setFont(doc, 7, 'bold');
-    doc.text(ent, MARGIN + 2, y + 6);
-
-    displayMonths.forEach((m, i) => {
-      const data = trends.find(t => t.entity_name === ent && t.period_label === m);
-      const vel = data ? (data.metrics.velocity || 0) : 0;
-      
-      // Heatmap color logic
-      let cellBg = [241, 245, 249]; // Default light gray
-      let txtCol = BRAND.secondary;
-      if (data) {
-        if (vel >= 2.5)      { cellBg = [209, 250, 229]; txtCol = [6, 95, 70]; } // Vert
-        else if (vel >= 1.5) { cellBg = [219, 234, 254]; txtCol = [30, 64, 175]; } // Bleu
-        else                 { cellBg = [254, 226, 226]; txtCol = [153, 27, 27]; } // Rouge
-      }
-
-      // Dessiner cellule colorée
-      setFill(doc, cellBg);
-      doc.roundedRect(MARGIN + 30 + i * colW + 2, y + 1.5, colW - 4, 7, 1, 1, 'F');
-      
-      setTextC(doc, txtCol); setFont(doc, 7, 'bold');
-      doc.text(vel.toFixed(1), MARGIN + 30 + i * colW + colW/2, y + 6.5, { align: 'center' });
-    });
-    
-    y += 10;
-  });
-
-  // Légende Heatmap
-  y += 2;
-  setFont(doc, 6, 'italic'); setTextC(doc, BRAND.muted);
-  doc.text('Legende : Vert >= 2.5 (High) | Bleu >= 1.5 (Standard) | Rouge < 1.5 (Risk/Low)', MARGIN, y);
-  
-  return y + 10;
-}
-
-// ─── Page 4 : DORA Metrics ────────────────────────────────────────────────────
-function buildDoraPage(doc, { doraData }) {
-  const date = new Date().toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' });
-
-  setFill(doc, BRAND.bg);
-  doc.rect(0, 0, PAGE_W, 16, 'F');
-  setTextC(doc, BRAND.secondary);
-  setFont(doc, 9, 'bold');
-  doc.text('DORA METRICS - PERFORMANCE DEVOPS', MARGIN, 11);
-  setTextC(doc, BRAND.muted);
-  setFont(doc, 7, 'normal');
-  doc.text(date, PAGE_W - MARGIN, 11, { align: 'right' });
-
-  let y = 26;
-  y = drawSectionTitle(doc, '05. Standards DORA (Google Research)', y);
-
-  // Explication DORA
-  setFill(doc, [241, 245, 249]);
-  doc.roundedRect(MARGIN, y, CONTENT_W, 16, 2, 2, 'F');
-  setTextC(doc, BRAND.muted);
-  setFont(doc, 7, 'italic');
-  doc.text(
-    'Les métriques DORA (DevOps Research & Assessment) sont les 4 indicateurs clés validés par la recherche Google pour mesurer\nla performance des équipes DevOps. Elles sont le standard de référence pour les organisations tech de classe mondiale.',
-    MARGIN + 4, y + 5.5, { maxWidth: CONTENT_W - 8 }
-  );
-  y += 20;
-
-  // Légende niveaux
-  const levels = [
-    { label: 'Elite',  color: BRAND.accent,   bg: [209,250,229] },
-    { label: 'High',   color: BRAND.primary,   bg: [219,234,254] },
-    { label: 'Medium', color: BRAND.warning,   bg: [254,243,199] },
-    { label: 'Low',    color: BRAND.danger,    bg: [254,226,226] },
-    { label: 'N/A',    color: BRAND.muted,     bg: [241,245,249] },
-  ];
-  let lx = MARGIN;
-  levels.forEach(lv => {
-    setFill(doc, lv.bg);
-    doc.roundedRect(lx, y, 30, 7, 1, 1, 'F');
-    setTextC(doc, lv.color);
-    setFont(doc, 6.5, 'bold');
-    doc.text(lv.label, lx + 15, y + 4.8, { align: 'center' });
-    lx += 33;
-  });
-  y += 12;
+  // ── DORA Table ─────────────────────────────────────────────────────────────
+  y = heading(doc, 'Resultats par Site / Entite', y);
 
   if (!doraData || doraData.length === 0) {
-    setTextC(doc, BRAND.muted);
-    setFont(doc, 8, 'italic');
-    doc.text('Données DORA non disponibles pour la période sélectionnée.', MARGIN, y + 6);
-    return;
+    fill(doc, P.light); doc.roundedRect(L, y, CW, 14, 2, 2, 'F');
+    text(doc, P.gray); font(doc, 7.5, 'italic');
+    doc.text('Donnees DORA non disponibles pour la periode selectionnee.', L + 6, y + 9);
+    y += 20;
+  } else {
+    fill(doc, P.navy); doc.rect(L, y, CW, 9, 'F');
+    text(doc, P.white); font(doc, 7, 'bold');
+    const dCols = [
+      { t: 'Site / Entite',        x: L + 4   },
+      { t: 'Deploiements / Mois', x: L + 60  },
+      { t: 'Niveau DF',           x: L + 105 },
+      { t: 'Lead Time (h)',       x: L + 138 },
+      { t: 'Niveau LT',          x: L + 168 },
+    ];
+    dCols.forEach(c => doc.text(c.t, c.x, y + 6));
+    y += 9;
+
+    const lvlColor = { Elite: P.green, High: P.indigo, Medium: P.amber, Low: P.red, 'N/A': P.gray };
+    const lvlTint  = { Elite: TINT.green, High: TINT.indigo, Medium: TINT.amber, Low: TINT.red, 'N/A': TINT.gray };
+
+    const clean = doraData.filter(d => d.site_name && d.site_name !== 'Autres / Non-assignes' && d.site_name !== 'Global');
+    clean.forEach((site, i) => {
+      const rH = 12;
+      fill(doc, i % 2 === 0 ? P.white : P.light);
+      doc.rect(L, y, CW, rH, 'F');
+
+      text(doc, P.navy); font(doc, 8, 'bold');
+      doc.text(s(site.site_name), L + 4, y + 8);
+      font(doc, 8, 'normal');
+      doc.text(String(site.deployment_count ?? '—'), L + 60, y + 8);
+
+      // DF badge
+      const dfL = site.dora_df_level || 'N/A';
+      fill(doc, lvlTint[dfL] || TINT.gray);
+      doc.roundedRect(L + 103, y + 1.5, 26, 8, 1.5, 1.5, 'F');
+      text(doc, lvlColor[dfL] || P.gray); font(doc, 6.5, 'bold');
+      doc.text(dfL, L + 116, y + 7.3, { align: 'center' });
+
+      text(doc, P.navy); font(doc, 8, 'normal');
+      doc.text(site.lead_time_hours > 0 ? site.lead_time_hours.toFixed(1) : '—', L + 138, y + 8);
+
+      // LT badge
+      const ltL = site.dora_lt_level || 'N/A';
+      fill(doc, lvlTint[ltL] || TINT.gray);
+      doc.roundedRect(L + 166, y + 1.5, 26, 8, 1.5, 1.5, 'F');
+      text(doc, lvlColor[ltL] || P.gray); font(doc, 6.5, 'bold');
+      doc.text(ltL, L + 179, y + 7.3, { align: 'center' });
+
+      y += rH;
+    });
   }
 
-  // Table DORA
-  setFill(doc, BRAND.secondary);
-  doc.rect(MARGIN, y, CONTENT_W, 8, 'F');
-  setTextC(doc, BRAND.white);
-  setFont(doc, 7, 'bold');
-  const doraCols = [
-    { label: 'Site / Entité',        x: MARGIN + 4   },
-    { label: 'Déploiements / Mois',  x: MARGIN + 55  },
-    { label: 'Niveau DF',            x: MARGIN + 100 },
-    { label: 'Lead Time (h)',         x: MARGIN + 130 },
-    { label: 'Niveau LT',            x: MARGIN + 160 },
-  ];
-  doraCols.forEach(c => doc.text(c.label, c.x, y + 5.5));
-  y += 8;
+  y += 12;
 
-  const dfColor = { Elite: BRAND.accent, High: BRAND.primary, Medium: BRAND.warning, Low: BRAND.danger, 'N/A': BRAND.muted };
-  const dfBg    = { Elite: [209,250,229], High: [219,234,254], Medium: [254,243,199], Low: [254,226,226], 'N/A': [241,245,249] };
+  // ── Action Plan ─────────────────────────────────────────────────────────────
+  y = heading(doc, 'Plan d\'Action — Feuille de Route', y);
 
-  // Filtrer les lignes sans site valide
-  const cleanDora = doraData.filter(s => s.site_name && s.site_name !== 'Autres / Non-assignés' && s.site_name !== 'Global');
-  cleanDora.forEach((site, idx) => {
-    const bg = idx % 2 === 0 ? BRAND.white : BRAND.bg;
-    setFill(doc, bg);
-    doc.rect(MARGIN, y, CONTENT_W, 11, 'F');
-
-    setTextC(doc, BRAND.secondary);
-    setFont(doc, 8, 'bold');
-    doc.text(site.site_name || '-', MARGIN + 4, y + 5);
-    setFont(doc, 7, 'normal');
-    doc.text(String(site.deployment_count ?? '-'), MARGIN + 55, y + 5);
-
-    // Badge niveau DF
-    const dfLvl = site.dora_df_level || 'N/A';
-    setFill(doc, dfBg[dfLvl] || dfBg['N/A']);
-    doc.roundedRect(MARGIN + 98, y + 1, 24, 7, 1, 1, 'F');
-    setTextC(doc, dfColor[dfLvl] || dfColor['N/A']);
-    setFont(doc, 6.5, 'bold');
-    doc.text(dfLvl, MARGIN + 110, y + 5.8, { align: 'center' });
-
-    setTextC(doc, BRAND.secondary);
-    setFont(doc, 7, 'normal');
-    doc.text(site.lead_time_hours > 0 ? site.lead_time_hours.toFixed(1) : '-', MARGIN + 130, y + 5);
-
-    // Badge niveau LT
-    const ltLvl = site.dora_lt_level || 'N/A';
-    setFill(doc, dfBg[ltLvl] || dfBg['N/A']);
-    doc.roundedRect(MARGIN + 158, y + 1, 24, 7, 1, 1, 'F');
-    setTextC(doc, dfColor[ltLvl] || dfColor['N/A']);
-    setFont(doc, 6.5, 'bold');
-    doc.text(ltLvl, MARGIN + 170, y + 5.8, { align: 'center' });
-
-    y += 11;
-  });
-
-  // ── Benchmarks industrie DORA ────────────────────────────────────────────
-  y += 10;
-  const drawSect4 = (text, yy) => { setFill(doc, BRAND.primary); doc.rect(MARGIN, yy, 3, 6, 'F'); setTextC(doc, BRAND.secondary); setFont(doc, 11, 'bold'); doc.text(text, MARGIN + 6, yy + 5); return yy + 10; };
-  y = drawSect4('06. Benchmarks Industrie (Google DORA 2024)', y);
-
-  const benchmarks = [
-    { metric: 'Deployment Frequency', elite: '> 1/jour', high: '1/semaine', medium: '1/mois', low: '< 1/mois' },
-    { metric: 'Lead Time for Changes', elite: '< 1h', high: '< 1 jour', medium: '1 sem–1 mois', low: '> 1 mois' },
-    { metric: 'Change Failure Rate', elite: '0–5%', high: '5–10%', medium: '10–15%', low: '> 15%' },
-    { metric: 'Time to Restore',      elite: '< 1h', high: '< 1 jour', medium: '< 1 sem', low: '> 1 sem' },
-  ];
-  const bCols = [MARGIN+4, MARGIN+52, MARGIN+88, MARGIN+124, MARGIN+158];
-  const bHdrs = ['Métrique', 'Elite', 'High', 'Medium', 'Low'];
-  const bColors = [BRAND.secondary, BRAND.accent, BRAND.primary, BRAND.warning, BRAND.danger];
-  // Header
-  setFill(doc, BRAND.secondary); doc.rect(MARGIN, y, CONTENT_W, 7, 'F');
-  setTextC(doc, BRAND.white); setFont(doc, 6.5, 'bold');
-  bHdrs.forEach((h, i) => doc.text(h, bCols[i], y + 5));
-  y += 7;
-  benchmarks.forEach((b, bi) => {
-    setFill(doc, bi % 2 === 0 ? BRAND.white : BRAND.bg); doc.rect(MARGIN, y, CONTENT_W, 7, 'F');
-    setTextC(doc, BRAND.secondary); setFont(doc, 6.5, 'bold'); doc.text(b.metric, bCols[0], y + 5);
-    [b.elite, b.high, b.medium, b.low].forEach((v, vi) => {
-      setTextC(doc, bColors[vi + 1]); setFont(doc, 6, 'normal'); doc.text(v, bCols[vi + 1], y + 5);
-    });
-    y += 7;
-  });
-
-  // ── Plan d'action CI/CD ───────────────────────────────────────────────────
-  y += 8;
-  y = drawSect4('07. Plan d\'Action Recommande - Prochains Jalons', y);
   const actions = [
-    { prio: 'Court terme (J+30)',  action: 'Mettre en place des pipelines CI/CD automatisés pour chaque site.', icon: '01' },
-    { prio: 'Moyen terme (J+60)',  action: 'Réduire le Lead Time en activant les merge request reviews < 24h.', icon: '02' },
-    { prio: 'Long terme (J+90)',   action: 'Atteindre le niveau Elite sur Deployment Frequency (quotidien).', icon: '03' },
+    {
+      horizon: 'Court terme  |  J+30',
+      color:   P.indigo,
+      tint:    TINT.indigo,
+      title:   'Automatisation CI/CD',
+      detail:  'Activer les pipelines CI/CD automatises et configurer les webhooks GitLab sur chaque site pour declencher tests et analyses de qualite a chaque push.',
+    },
+    {
+      horizon: 'Moyen terme  |  J+60',
+      color:   P.amber,
+      tint:    TINT.amber,
+      title:   'Reduction du Lead Time',
+      detail:  'Instaurer des regles de revue avec validation obligatoire sous 24h et des criteres de qualite definis. Objectif : lead time < 1 jour (standard High).',
+    },
+    {
+      horizon: 'Long terme   |  J+90',
+      color:   P.green,
+      tint:    TINT.green,
+      title:   'Viser le Niveau DORA Elite',
+      detail:  'Augmenter la frequence de deploiement a > 1 par jour via feature flags et deploiement progressif. Objectif : classement DORA Elite sur tous les sites.',
+    },
   ];
-  const prioBg = [[219,234,254], [254,243,199], [209,250,229]];
-  const prioC  = [BRAND.primary, BRAND.warning, BRAND.accent];
-  actions.forEach((a, i) => {
-    setFill(doc, prioBg[i]); doc.roundedRect(MARGIN, y, CONTENT_W, 13, 2, 2, 'F');
-    setFill(doc, prioC[i]); doc.roundedRect(MARGIN, y, 22, 13, 2, 2, 'F');
-    setTextC(doc, BRAND.white); setFont(doc, 7, 'bold'); doc.text(a.icon, MARGIN + 11, y + 8.5, { align: 'center' });
-    setTextC(doc, prioC[i]); setFont(doc, 6.5, 'bold'); doc.text(a.prio, MARGIN + 26, y + 5.5);
-    setTextC(doc, BRAND.secondary); setFont(doc, 6.5, 'normal'); doc.text(a.action, MARGIN + 26, y + 10.5, { maxWidth: CONTENT_W - 30 });
-    y += 17;
+
+  actions.forEach(a => {
+    if (y + 24 > H - 18) return;
+    fill(doc, a.tint); doc.roundedRect(L, y, CW, 22, 2, 2, 'F');
+    fill(doc, a.color); doc.rect(L, y, 3, 22, 'F');
+
+    text(doc, a.color); font(doc, 6.5, 'bold');
+    doc.text(s(a.horizon), L + 8, y + 6.5);
+    text(doc, P.navy); font(doc, 8.5, 'bold');
+    doc.text(s(a.title), L + 8, y + 12.5);
+    text(doc, P.navy); font(doc, 7, 'normal');
+    doc.text(s(a.detail), L + 8, y + 18, { maxWidth: CW - 14, lineHeightFactor: 1.35 });
+    y += 26;
   });
 
-  // Certification Seal
-  const sealX = PAGE_W - MARGIN - 40;
-  const sealY = PAGE_H - 60;
-  setFill(doc, [248, 250, 252]); doc.roundedRect(sealX, sealY, 40, 25, 2, 2, 'F');
-  setStroke(doc, BRAND.primary); doc.setLineWidth(0.5); doc.roundedRect(sealX, sealY, 40, 25, 2, 2, 'S');
-  setTextC(doc, BRAND.primary); setFont(doc, 6, 'bold');
-  doc.text('CERTIFIE CONFORME', sealX + 20, sealY + 8, { align: 'center' });
-  setTextC(doc, BRAND.secondary); setFont(doc, 5, 'normal');
-  doc.text('TELNET BI ENGINE v2.0', sealX + 20, sealY + 14, { align: 'center' });
-  doc.text('Authentification Digitale', sealX + 20, sealY + 18, { align: 'center' });
-  doc.text(new Date().toISOString().slice(0,10), sealX + 20, sealY + 22, { align: 'center' });
-
-  // Glossaire Technique
-  let gy = sealY;
-  setTextC(doc, BRAND.secondary); setFont(doc, 7, 'bold');
-  doc.text('Glossaire Technique', MARGIN, gy);
-  gy += 4;
-  setTextC(doc, BRAND.muted); setFont(doc, 5.5, 'normal');
-  const gloss = [
-    'Velocity : Nombre moyen de commits par developpeur par periode.',
-    'Lead Time : Temps moyen (heures) entre le premier commit et le merge final.',
-    'DORA : Metriques standard de l\'industrie pour mesurer la performance DevOps.',
-    'Health Score : Indice calcule agregeant la stabilite, la vitesse et la qualite.'
-  ];
-  gloss.forEach(line => {
-    doc.text('- ' + line, MARGIN, gy);
-    gy += 3.5;
-  });
-
-  // Clause de confidentialite
-  y = PAGE_H - 28;
-  setStroke(doc, BRAND.border); doc.setLineWidth(0.2); doc.line(MARGIN, y, PAGE_W - MARGIN, y);
-  y += 5;
-  setTextC(doc, BRAND.muted); setFont(doc, 6, 'italic');
-  doc.text('Avis de Confidentialite : Ce document contient des informations proprietaires de TELNET Holding. Toute reproduction ou distribution sans autorisation prealable est strictement interdite. Les donnees presentees sont issues d\'une analyse automatisee et servent d\'outil d\'aide a la decision.', MARGIN, y, { maxWidth: CONTENT_W });
+  // ── Certification seal ──────────────────────────────────────────────────────
+  if (y + 28 < H - 18) {
+    y += 4;
+    hRule(doc, y, P.border); y += 6;
+    fill(doc, P.light); doc.roundedRect(L, y, CW, 20, 2, 2, 'F');
+    fill(doc, P.blue); doc.rect(L, y, 3, 20, 'F');
+    text(doc, P.blue); font(doc, 7.5, 'bold');
+    doc.text('TELNET BI ENGINE v3.0 — Rapport Automatique Certifie Conforme', L + 8, y + 7.5);
+    text(doc, P.gray); font(doc, 6.5, 'normal');
+    doc.text(
+      'Les donnees presentees sont issues d\'une analyse automatisee certifiee des flux GitLab. Ce rapport est genere le ' +
+      new Date().toLocaleDateString('fr-FR') + '. Classification : Usage Interne — Direction Executive.',
+      L + 8, y + 13.5, { maxWidth: CW - 14 }
+    );
+  }
 }
 
-// ─── Export Principal ──────────────────────────────────────────────────────────
+// ─── Main Export ──────────────────────────────────────────────────────────────
 export async function exportDashboardPDF({
   projectName,
   period,
@@ -732,37 +638,38 @@ export async function exportDashboardPDF({
   trends,
   doraData,
   chartElementId = 'kpi-evolution-chart',
+  executiveSummary,
+  intelligenceData,
 }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  // Charger le logo en parallèle
-  const logoBase64 = await loadLogoBase64();
-  const totalSites = [...new Set((trends||[]).map(t => t.entity_name))].length;
-  const exportDate = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+  const logo    = await loadLogoBase64();
+  const entities = [...new Set((trends || []).map(t => t.entity_name))].length;
+  const date     = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   });
-  const TOTAL_PAGES = 4;
+  const TOTAL = 4;
 
-  // ── Page 1 : Couverture
-  buildCoverPage(doc, { projectName, period, exportDate, logoBase64, healthScore, totalSites });
-  drawPageFrame(doc, 1, TOTAL_PAGES, projectName);
+  // Page 1 — Cover
+  buildCover(doc, { project: projectName, period, date, logo, score: healthScore, entities });
+  pageChrome(doc, 1, TOTAL, projectName);
 
-  // ── Page 2 : Executive Summary
+  // Page 2 — Executive Dashboard
   doc.addPage();
-  buildExecutiveSummary(doc, { projectName, healthScore, insights, trends, period });
-  drawPageFrame(doc, 2, TOTAL_PAGES, projectName);
+  buildExecutivePage(doc, { score: healthScore, insights, trends, execSummary: executiveSummary });
+  pageChrome(doc, 2, TOTAL, projectName);
 
-  // ── Page 3 : Graphique
+  // Page 3 — Comparative Analysis
   doc.addPage();
-  await buildChartPage(doc, { chartElementId, trends });
-  drawPageFrame(doc, 3, TOTAL_PAGES, projectName);
+  await buildComparativePage(doc, { chartId: chartElementId, trends });
+  pageChrome(doc, 3, TOTAL, projectName);
 
-  // ── Page 4 : DORA
+  // Page 4 — DORA + Action Plan
   doc.addPage();
   buildDoraPage(doc, { doraData });
-  drawPageFrame(doc, 4, TOTAL_PAGES, projectName);
+  pageChrome(doc, 4, TOTAL, projectName);
 
-  // ── Sauvegarde
-  const safeProject = projectName.replace(/[^a-zA-Z0-9]/g, '_');
-  const dateStr = new Date().toISOString().slice(0, 10);
-  doc.save(`TELNET_KPI_Report_${safeProject}_${dateStr}.pdf`);
+  // Download
+  const safe = s(projectName).replace(/[^a-zA-Z0-9]/g, '_');
+  const d    = new Date().toISOString().slice(0, 10);
+  doc.save(`TELNET_KPI_Report_${safe}_${d}.pdf`);
 }

@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_, and_
 from sqlalchemy.orm import Session
 
 from app.models.commit import Commit
@@ -11,9 +11,10 @@ from app.models.developer_project import DeveloperProject
 from app.models.developer_site import DeveloperSite
 from app.models.merge_request import MergeRequest
 from app.models.comment import Comment
-from app.models.developer_group import developer_group_link
+from app.models.developer_group import developer_group_link, DeveloperGroupLink
 from app.models.period import Period
 from app.models.extraction_lot import ExtractionLot
+from app.utils.mission_utils import get_rg02_threshold, is_mr_certified_for_period  # RG-02 Source de Vérité Unique
 
 
 class KpiCalculator:
@@ -30,18 +31,18 @@ class KpiCalculator:
     # POINTS D'ENTRÉE PUBLICS
     # =========================================================================
 
-    def calculate_for_site(self, project_id, site_id, start_date, end_date) -> dict:
-        return self.calculate_project_kpis(project_id, start_date, end_date, site_id=site_id)
+    def calculate_for_site(self, project_id, site_id, start_date, end_date, eligible_ids=None) -> dict:
+        return self.calculate_project_kpis(project_id, start_date, end_date, site_id=site_id, eligible_ids=eligible_ids)
 
-    def calculate_for_group(self, project_id, group_id, start_date, end_date) -> dict:
-        return self.calculate_project_kpis(project_id, start_date, end_date, group_id=group_id)
+    def calculate_for_group(self, project_id, group_id, start_date, end_date, eligible_ids=None) -> dict:
+        return self.calculate_project_kpis(project_id, start_date, end_date, group_id=group_id, eligible_ids=eligible_ids)
 
-    def calculate_global(self, project_id, start_date, end_date) -> dict:
-        return self.calculate_project_kpis(project_id, start_date, end_date)
+    def calculate_global(self, project_id, start_date, end_date, eligible_ids=None) -> dict:
+        return self.calculate_project_kpis(project_id, start_date, end_date, eligible_ids=eligible_ids)
 
-    def calculate_for_developer(self, project_id, developer_id, start_date, end_date) -> dict:
+    def calculate_for_developer(self, project_id, developer_id, start_date, end_date, eligible_ids=None) -> dict:
         return self.calculate_project_kpis(
-            project_id, start_date, end_date, developer_id=developer_id
+            project_id, start_date, end_date, developer_id=developer_id, eligible_ids=eligible_ids
         )
 
     def calculate_developer_score(self, kpis: dict, weights: Optional[dict] = None) -> float:
@@ -72,6 +73,11 @@ class KpiCalculator:
         approved_rate = min(kpis.get("approved_mr_rate",    0.0),                             1.0)
         avg_review    = max(kpis.get("avg_review_time_hours", 0.0), 0.0)
 
+        # ✅ [SENIOR] FIX : Inactive developer should have 0 score
+        # A developer is active if they have commits OR MRs
+        if kpis.get("commit_rate_per_site", 0.0) == 0 and kpis.get("mr_rate_per_site", 0.0) == 0:
+            return 0.0
+
         # Sigmoïde inverse : résistante aux valeurs aberrantes (ex: 720h)
         review_score = 1.0 / (1.0 + avg_review / self.REVIEW_REF_HOURS)
 
@@ -95,24 +101,26 @@ class KpiCalculator:
         site_id:      Optional[int] = None,
         group_id:     Optional[int] = None,
         developer_id: Optional[int] = None,
+        eligible_ids: Optional[list] = None,
     ) -> dict:
 
         # 1. Volumes bruts
         # Keep project commit volume site-aware when a site filter is provided.
         nb_commits_project = self._count_all_project_commits(project_id, start_date, end_date, site_id=site_id)
-        nb_devs            = self._count_developers(project_id, start_date, end_date, site_id, group_id, developer_id)
-        nb_commits_devs    = self._count_commits_by_devs(project_id, start_date, end_date, site_id, group_id, developer_id)
-        nb_mrs             = self._count_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
-        nb_mrs_approved    = self._count_approved_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
-        nb_mrs_merged      = self._count_merged_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
-        sum_review_time    = self._sum_review_time(project_id, start_date, end_date, site_id, group_id, developer_id)
+        nb_devs            = self._count_developers(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
+        nb_commits_devs    = self._count_commits_by_devs(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
+        nb_mrs             = self._count_mrs(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
+        nb_mrs_approved    = self._count_approved_mrs(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
+        nb_mrs_with_time   = self._count_approved_mrs(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids, with_time_only=True)
+        nb_mrs_merged      = self._count_merged_mrs(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
+        sum_review_time    = self._sum_review_time(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
 
         # Collaboration KPIs
         nb_comments        = self._count_comments(project_id, start_date, end_date, developer_id)
         nb_reviews         = self._count_reviews_involved(project_id, start_date, end_date, developer_id)
 
         # Draft merge requests (work in progress)
-        nb_mrs_draft       = self._count_draft_mrs(project_id, start_date, end_date, site_id, group_id, developer_id)
+        nb_mrs_draft       = self._count_draft_mrs(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
 
         # Additional engineering KPIs
         bus_factor         = self._calculate_bus_factor(project_id, start_date, end_date)
@@ -120,8 +128,8 @@ class KpiCalculator:
         code_churn_rate    = self._calculate_code_churn(project_id, start_date, end_date, developer_id)
 
         # DORA METRICS (Standard Google Research)
-        deployment_count   = self._count_deployments(project_id, start_date, end_date, site_id, group_id, developer_id)
-        lead_time_hours    = self._avg_lead_time(project_id, start_date, end_date, site_id, group_id, developer_id)
+        deployment_count   = self._count_deployments(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
+        lead_time_hours    = self._avg_lead_time(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
 
         denom = max(nb_devs, 1)
 
@@ -129,7 +137,7 @@ class KpiCalculator:
         approved_mr_rate      = min(1.0, round(nb_mrs_approved / nb_mrs, 4))         if nb_mrs > 0          else 0.0
         merged_mr_rate        = min(1.0, round(nb_mrs_merged / nb_mrs_approved, 4))  if nb_mrs_approved > 0 else 0.0
         commit_rate_per_site  = round(nb_commits_devs / denom, 4)
-        avg_review_time_hours = round(sum_review_time / nb_mrs_approved, 2) if nb_mrs_approved > 0 else 0.0
+        avg_review_time_hours = round(sum_review_time / nb_mrs_with_time, 2) if nb_mrs_with_time > 0 else 0.0
 
         kpis = {
             "mr_rate_per_site":        mr_rate_per_site,
@@ -173,73 +181,81 @@ class KpiCalculator:
     # HELPERS INTERNES
     # =========================================================================
 
-    def _active_dev_ids_query(self, project_id: int, start_date: datetime, site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int]):
+    def _active_dev_ids_query(self, project_id: int, start_date: datetime, end_date: datetime, site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int], eligible_ids: Optional[list] = None):
         """
         [SENIOR] Retourne les IDs de développeurs ASSIGNÉS pour cette période.
-
-        Règle d'or Enterprise :
-             Filtrer sur DeveloperProject.period_id  → "A-t-il une mission ce mois-ci ?"
-             Filtrer sur Developer.is_bot             → "Est-ce un humain ?"
-             JAMAIS filtrer sur Developer.is_active   → "A-t-il quitté l'entreprise PLUS TARD ?"
-                                                          (un commit en janvier est réel, même si le dev est parti en mars)
+        Optimisé : Utilise une sous-requête SQL au lieu d'une liste d'IDs Python.
         """
-        # Résolution de la période pour le scoping temporel strict
-        period = self.db.query(Period).filter(
-            Period.year == start_date.year,
-            Period.month == start_date.month
-        ).first()
-
-        q = (
-            self.db.query(Developer.id)
-            .join(
-                DeveloperProject,
-                (DeveloperProject.developer_id == Developer.id) &
-                (DeveloperProject.project_id   == project_id)   &
-                (DeveloperProject.is_active.is_(True))
+        if eligible_ids is not None:
+            # ✅ [FIX 1] Si les IDs sont déjà matérialisés, on les utilise directement
+            q = self.db.query(Developer.id).filter(
+                Developer.id.in_(eligible_ids)
             )
-            .filter(
-                Developer.is_bot.is_(False),
-                # is_active NON filtré : les contributions historiques sont immuables
+        else:
+            # ✅ [SENIOR] Mise en cache de la requête de base pour éviter de la reconstruire 7x
+            cache_key = (project_id, start_date, end_date)
+            if not hasattr(self, '_base_mission_query_cache'):
+                self._base_mission_query_cache = {}
+            
+            if cache_key not in self._base_mission_query_cache:
+                # Résolution de la période pour le scoping temporel strict
+                period = self.db.query(Period).filter(
+                    Period.year == start_date.year,
+                    Period.month == start_date.month
+                ).first()
+
+                # ✅ [SENIOR] Calcul du mois suivant sans dépendance externe
+                next_month = start_date.month + 1
+                next_year = start_date.year
+                if next_month > 12:
+                    next_month = 1
+                    next_year += 1
+                end_date_month = datetime(next_year, next_month, 1)
+
+            # ✅ [SENIOR++++] SQL Composition : on récupère une QUERY, pas une LISTE
+                from app.utils.mission_utils import get_certified_developers_query
+                period_id = period.id if period else None
+                subq = get_certified_developers_query(
+                    db=self.db, project_id=project_id, period_id=period_id,
+                    start_date=start_date.date(), end_date=end_date_month.date()
+                ).subquery()
+                self._base_mission_query_cache[cache_key] = subq
+
+            mission_subq = self._base_mission_query_cache[cache_key]
+            # Utilisation de .c.id pour être explicite sur la colonne de la subquery
+            # ✅ [FIX] Ajout de .distinct() pour éviter les doublons si un dev a plusieurs missions
+            # ✅ [RG-02] threshold via get_rg02_threshold() — Source de Vérité Unique
+            # Définie dans app/utils/mission_utils.py. Modifier le seuil LÀ-BAS uniquement.
+            threshold_date = get_rg02_threshold(start_date.year, start_date.month)
+
+            q = self.db.query(Developer.id).distinct().filter(
+                Developer.id.in_(select(mission_subq.c.id)),
+                # ✅ [INTELLIGENT] Respect strict des dates contractuelles RH + Règle des 15 jours
+                or_(Developer.onboarding_date.is_(None), Developer.onboarding_date < end_date.date()),
+                or_(Developer.offboarding_date.is_(None), Developer.offboarding_date >= threshold_date)
             )
-        )
 
-        # Scoping strict par période (Seule source de vérité pour "qui travaillait ce mois")
-        if period:
-            q = q.filter(DeveloperProject.period_id == period.id)
-
-        # ── Synchronisation optionnelle avec le Registre RH (ExtractionLot) ──
-        # Si des lots individuels existent pour ce projet × période, on s'y conforme.
-        if period:
-            has_individual_lots = self.db.query(ExtractionLot).filter(
-                ExtractionLot.period_id == period.id,
-                ExtractionLot.project_id == project_id,
-                ExtractionLot.developer_id.isnot(None)
-            ).first() is not None
-
-            if has_individual_lots:
-                valid_ids_subquery = (
-                    self.db.query(ExtractionLot.developer_id)
-                    .filter(
-                        ExtractionLot.period_id == period.id,
-                        ExtractionLot.project_id == project_id,
-                        ExtractionLot.developer_id.isnot(None)
-                    )
-                    .subquery()
-                )
-                q = q.filter(Developer.id.in_(valid_ids_subquery))
-
-        if site_id is not None and developer_id is None:
+        # ✅ [STRICT TEMPORAL INTEGRITY] Respect strict des dates d'affectation (SCD Type 2)
+        # S'applique même si eligible_ids est fourni.
+        if site_id is not None:
             q = q.join(
                 DeveloperSite,
-                (DeveloperSite.developer_id == Developer.id) &
-                (DeveloperSite.site_id      == site_id),
+                (DeveloperSite.developer_id == Developer.id)
+            ).filter(
+                DeveloperSite.site_id == site_id,
+                DeveloperSite.start_date < end_date.date(),
+                or_(DeveloperSite.end_date >= start_date.date(), DeveloperSite.is_active.is_(True))
             )
 
         if group_id is not None and developer_id is None:
+            # ✅ [SENIOR++++] SCD Type 2 Robust Intersection
+            from app.models.developer_group import DeveloperGroupLink
             q = q.join(
-                developer_group_link,
-                (developer_group_link.c.developer_id == Developer.id) &
-                (developer_group_link.c.group_id     == group_id)
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == Developer.id) &
+                (DeveloperGroupLink.group_id     == group_id) &
+                (DeveloperGroupLink.start_date    <  end_date.date()) &
+                ((DeveloperGroupLink.end_date    >= start_date.date()) | (DeveloperGroupLink.is_active.is_(True)))
             )
 
         if developer_id is not None:
@@ -254,7 +270,8 @@ class KpiCalculator:
         end_date: datetime,
         site_id: Optional[int] = None, 
         group_id: Optional[int] = None, 
-        developer_id: Optional[int] = None
+        developer_id: Optional[int] = None,
+        eligible_ids: Optional[list] = None
     ) -> int:
         """
         [SENIOR STRATEGY] Assigned Headcount (Full Squad).
@@ -262,153 +279,431 @@ class KpiCalculator:
         Indispensable pour le pilotage de la capacité et du ROI.
         """
         # On utilise le helper d'ID qui gère déjà les filtres Project/Site/Group
-        q = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id)
+        q = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
         return q.count()
 
     def _count_all_project_commits(self, project_id: int, start_date: datetime, end_date: datetime, site_id: Optional[int] = None) -> int:
-        """Total de commits pour un projet sur une période (filtrable par site)."""
-        q = self.db.query(func.count(Commit.id)).filter(
+        """
+        Total de commits pour un projet sur une période (filtrable par site).
+        ✅ [SENIOR] Version blindée : Seuls les commits des devs certifiés sont comptés.
+        Rapprochement dynamique par site (Time-Aware).
+        """
+        # 1. Identifier les lots d'extraction pour la période
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = []
+        if period:
+            lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+                ExtractionLot.period_id == period.id,
+                ExtractionLot.project_id == project_id
+            ).all()]
+
+        # 2. Base de la requête de commits
+        # ✅ [FIX] Utilisation de distinct(Commit.id) pour éviter de compter plusieurs fois le même commit
+        # si le développeur a plusieurs missions enregistrées.
+        q = self.db.query(func.count(func.distinct(Commit.id))).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == Commit.developer_id) &
+            (DeveloperProject.project_id   == Commit.project_id)
+        ).filter(
             Commit.project_id    == project_id,
-            Commit.authored_date >= start_date,
-            Commit.authored_date <  end_date,
             Commit.is_merge_commit.is_(False),
+            func.lower(Commit.title).notlike("merge branch %"),
+            func.lower(Commit.title).notlike("merge pull request %"),
+            func.lower(Commit.title).notlike("merge %"),
         )
+
+        # 3. Filtrage par période (Lot ou Dates)
+        if lot_ids:
+            q = q.filter(Commit.extraction_lot_id.in_(lot_ids))
+        else:
+            q = q.filter(Commit.authored_date >= start_date, Commit.authored_date < end_date)
+
+        # 4. [CRITICAL SOLUTION] Rapprochement Cohérent par Site (Enterprise Standard)
+        # On utilise exactement les mêmes IDs validés que pour le headcount.
+        # Cela garantit qu'un commit ne peut pas appartenir à un site si le dev n'y est pas affecté.
         if site_id:
-            from app.models.developer_site import DeveloperSite
-            q = q.join(DeveloperSite, Commit.developer_id == DeveloperSite.developer_id).filter(
-                DeveloperSite.site_id == site_id
+            valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, None, None).subquery()
+            q = q.filter(Commit.developer_id.in_(select(valid_ids.c.id)))
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == Commit.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(Commit.authored_date)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(Commit.authored_date)))
             )
+
         return q.scalar() or 0
 
     def _count_commits_by_devs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
-        return (
-            self.db.query(func.count(Commit.id))
-            .filter(
-                Commit.project_id          == project_id,
-                Commit.authored_date       >= start_date,
-                Commit.authored_date       <  end_date,
-                Commit.is_merge_commit.is_(False),
-                Commit.developer_id.in_(valid_ids), #  FIX: direct subquery
-            )
-            .scalar() or 0
+        """
+        ✅ [SENIOR] Filtrage par Lot ET par Mission Active.
+        """
+        valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+        
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = []
+        if period:
+            lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+                ExtractionLot.period_id == period.id,
+                ExtractionLot.project_id == project_id
+            ).all()]
+
+        q = self.db.query(func.count(func.distinct(Commit.id))).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == Commit.developer_id) &
+            (DeveloperProject.project_id   == Commit.project_id)
+        ).filter(
+            Commit.project_id          == project_id,
+            Commit.is_merge_commit.is_(False),
+            Commit.developer_id.in_(select(valid_ids.c.id)),
+            func.lower(Commit.title).notlike("merge branch %"),
+            func.lower(Commit.title).notlike("merge pull request %"),
+            func.lower(Commit.title).notlike("merge %"),
         )
+
+        if lot_ids:
+            q = q.filter(Commit.extraction_lot_id.in_(lot_ids))
+        else:
+            q = q.filter(Commit.authored_date >= start_date, Commit.authored_date < end_date)
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == Commit.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(Commit.authored_date)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(Commit.authored_date)))
+            )
+
+        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == Commit.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(Commit.authored_date)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(Commit.authored_date)))
+            )
+
+        return q.scalar() or 0
 
 
     def _count_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> int:
-        from sqlalchemy import or_
-        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
-        return (
-            self.db.query(func.count(MergeRequest.id))
-            .filter(
-                MergeRequest.project_id        == project_id,
-                MergeRequest.created_at_gitlab >= start_date,
-                MergeRequest.created_at_gitlab <  end_date,
-                MergeRequest.is_draft.is_(False),
-                or_(
-                    MergeRequest.developer_id.in_(valid_ids),
-                    MergeRequest.reviewer_id.in_(valid_ids),
-                    MergeRequest.assignee_id.in_(valid_ids)
-                )
-            )
-            .scalar() or 0
+        """
+        ✅ [SENIOR++++] MR counting bound to Extraction Lots AND Mission Active.
+        
+        ⚠️ [RG-02 BUG] Cette fonction N'APPLIQUE PAS la règle RG-02 aux MR individuels.
+        Pour corriger ce bug, utiliser la fonction utilitaire is_mr_certified_for_period()
+        pour filtrer chaque MR selon la règle des 15 jours.
+        Voir BUG_REPORT_RG02_INHOMOGENEITE.md pour plus de détails.
+        """
+        valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+        
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+            ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
+        ).all()] if period else []
+
+        # ✅ [FIX SCD2] DISTINCT sur MergeRequest.id pour éviter le doublon quand
+        # un dev a plusieurs segments developer_site (suspension + réactivation).
+        q = self.db.query(func.count(func.distinct(MergeRequest.id))).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == MergeRequest.developer_id) &
+            (DeveloperProject.project_id   == MergeRequest.project_id)
+        ).filter(
+            MergeRequest.project_id == project_id,
+            MergeRequest.is_draft.is_(False),
         )
+
+        q = q.filter(MergeRequest.created_at_gitlab >= start_date, MergeRequest.created_at_gitlab < end_date)
+        if lot_ids:
+            q = q.filter(MergeRequest.extraction_lot_id.in_(lot_ids))
+
+        q = q.filter(
+            MergeRequest.developer_id.in_(select(valid_ids.c.id))
+        )
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        return q.scalar() or 0
 
     def _count_draft_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> int:
-        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
-        return (
-            self.db.query(func.count(MergeRequest.id))
-            .filter(
-                MergeRequest.project_id        == project_id,
-                MergeRequest.created_at_gitlab >= start_date,
-                MergeRequest.created_at_gitlab <  end_date,
-                MergeRequest.is_draft.is_(True),
-                MergeRequest.developer_id.in_(select(valid_ids)),
-            )
-            .scalar() or 0
+        valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+        # ✅ [FIX SCD2] DISTINCT pour éviter doublon si plusieurs segments developer_site
+        q = self.db.query(func.count(func.distinct(MergeRequest.id))).filter(
+            MergeRequest.project_id        == project_id,
+            MergeRequest.created_at_gitlab >= start_date,
+            MergeRequest.created_at_gitlab <  end_date,
+            MergeRequest.is_draft.is_(True),
+            MergeRequest.developer_id.in_(select(valid_ids.c.id)),
         )
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        return q.scalar() or 0
 
 
     def _count_approved_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
+        with_time_only: bool = False
     ) -> int:
-        from sqlalchemy import or_
-        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
-        return (
-            self.db.query(func.count(MergeRequest.id))
-            .filter(
-                MergeRequest.project_id        == project_id,
-                MergeRequest.created_at_gitlab >= start_date,
-                MergeRequest.created_at_gitlab <  end_date,
-                MergeRequest.is_draft.is_(False),
-                MergeRequest.approved.is_(True),
-                or_(
-                    MergeRequest.developer_id.in_(valid_ids),
-                    MergeRequest.reviewer_id.in_(valid_ids),
-                    MergeRequest.assignee_id.in_(valid_ids)
-                )
-            )
-            .scalar() or 0
+        """
+        ✅ [RG-02 FIX POST-REQUÊTE] Version avec filtre RG-02 appliqué après récupération.
+        Récupère toutes les colonnes nécessaires pour éviter AttributeError.
+        """
+        valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+        
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+            ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
+        ).all()] if period else []
+
+        # Récupérer tous les MR avec toutes les colonnes nécessaires
+        q = self.db.query(MergeRequest).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == MergeRequest.developer_id) &
+            (DeveloperProject.project_id   == MergeRequest.project_id)
+        ).filter(
+            MergeRequest.project_id == project_id,
+            MergeRequest.is_draft.is_(False),
+            MergeRequest.approved.is_(True),
         )
+
+        if with_time_only:
+            q = q.filter(MergeRequest.review_time_hours.isnot(None))
+
+        q = q.filter(MergeRequest.created_at_gitlab >= start_date, MergeRequest.created_at_gitlab < end_date)
+        if lot_ids:
+            q = q.filter(MergeRequest.extraction_lot_id.in_(lot_ids))
+
+        q = q.filter(
+            MergeRequest.developer_id.in_(select(valid_ids.c.id))
+        )
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        # ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours
+        all_mrs = q.all()
+        
+        certified_mr_ids = []
+        for mr in all_mrs:
+            if is_mr_certified_for_period(
+                mr.created_at_gitlab.date(),
+                mr.developer_id,
+                self.db,
+                period_id=period.id if period else None,
+                start_date=start_date.date(),
+                end_date=end_date.date()
+            ):
+                certified_mr_ids.append(mr.id)
+        
+        # Compter uniquement les MR certifiés
+        return len(certified_mr_ids)
 
 
     def _count_merged_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> int:
-        from sqlalchemy import or_
-        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
-        return (
-            self.db.query(func.count(MergeRequest.id))
-            .filter(
-                MergeRequest.project_id        == project_id,
-                MergeRequest.created_at_gitlab >= start_date,
-                MergeRequest.created_at_gitlab <  end_date,
-                MergeRequest.is_draft.is_(False),
-                MergeRequest.merged_at.isnot(None),
-                or_(
-                    MergeRequest.developer_id.in_(valid_ids),
-                    MergeRequest.reviewer_id.in_(valid_ids),
-                    MergeRequest.assignee_id.in_(valid_ids)
-                )
-            )
-            .scalar() or 0
+        """
+        ✅ [RG-02 FIX POST-REQUÊTE] Version avec filtre RG-02 appliqué après récupération.
+        Récupère toutes les colonnes nécessaires pour éviter AttributeError.
+        """
+        valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+            ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
+        ).all()] if period else []
+
+        # Récupérer tous les MR avec toutes les colonnes nécessaires
+        q = self.db.query(MergeRequest).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == MergeRequest.developer_id) &
+            (DeveloperProject.project_id   == MergeRequest.project_id)
+        ).filter(
+            MergeRequest.project_id == project_id,
+            MergeRequest.is_draft.is_(False),
+            MergeRequest.merged_at.isnot(None),
         )
+
+        q = q.filter(MergeRequest.created_at_gitlab >= start_date, MergeRequest.created_at_gitlab < end_date)
+        if lot_ids:
+            q = q.filter(MergeRequest.extraction_lot_id.in_(lot_ids))
+
+        q = q.filter(
+            MergeRequest.developer_id.in_(select(valid_ids.c.id))
+        )
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        # ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours
+        all_mrs = q.all()
+        
+        certified_mr_ids = []
+        for mr in all_mrs:
+            if is_mr_certified_for_period(
+                mr.created_at_gitlab.date(),
+                mr.developer_id,
+                self.db,
+                period_id=period.id if period else None,
+                start_date=start_date.date(),
+                end_date=end_date.date()
+            ):
+                certified_mr_ids.append(mr.id)
+        
+        # Compter uniquement les MR certifiés
+        return len(certified_mr_ids)
 
 
     def _sum_review_time(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> float:
-        from sqlalchemy import or_
-        valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
-        result = (
-            self.db.query(func.sum(MergeRequest.review_time_hours))
-            .filter(
-                MergeRequest.project_id        == project_id,
-                MergeRequest.created_at_gitlab >= start_date,
-                MergeRequest.created_at_gitlab <  end_date,
-                MergeRequest.is_draft.is_(False),
-                MergeRequest.review_time_hours.isnot(None),
-                or_(
-                    MergeRequest.developer_id.in_(valid_ids),
-                    MergeRequest.reviewer_id.in_(valid_ids),
-                    MergeRequest.assignee_id.in_(valid_ids)
-                )
-            )
-            .scalar()
+        """
+        ✅ [RG-02 FIX POST-REQUÊTE] Version avec filtre RG-02 appliqué après récupération.
+        Récupère toutes les colonnes nécessaires pour éviter AttributeError.
+        """
+        valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+        
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+            ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
+        ).all()] if period else []
+
+        # Récupérer tous les MR avec toutes les colonnes nécessaires
+        q = self.db.query(MergeRequest).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == MergeRequest.developer_id) &
+            (DeveloperProject.project_id   == MergeRequest.project_id)
+        ).filter(
+            MergeRequest.project_id        == project_id,
+            MergeRequest.is_draft.is_(False),
+            MergeRequest.review_time_hours.isnot(None),
+            MergeRequest.created_at_gitlab >= start_date,
+            MergeRequest.created_at_gitlab <  end_date,
+            MergeRequest.developer_id.in_(select(valid_ids.c.id)),
         )
-        return float(result or 0.0)
+
+        if lot_ids:
+            q = q.filter(MergeRequest.extraction_lot_id.in_(lot_ids))
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
+            )
+
+        # ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours
+        all_mrs = q.all()
+        
+        certified_review_time = 0.0
+        for mr in all_mrs:
+            if is_mr_certified_for_period(
+                mr.created_at_gitlab.date(),
+                mr.developer_id,
+                self.db,
+                period_id=period.id if period else None,
+                start_date=start_date.date(),
+                end_date=end_date.date()
+            ):
+                certified_review_time += mr.review_time_hours
+        
+        return certified_review_time
 
     def _count_comments(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
         q = (
@@ -568,6 +863,7 @@ class KpiCalculator:
     def _count_deployments(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> int:
         """
         DORA Metric 1 — Deployment Frequency.
@@ -591,21 +887,36 @@ class KpiCalculator:
 
         # Attribution filtrée si demandée (Site, Groupe ou Dev)
         if site_id or group_id or developer_id:
-            from sqlalchemy import or_
-            valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
+            valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
             q = q.filter(
-                or_(
-                    MergeRequest.developer_id.in_(valid_ids),
-                    MergeRequest.reviewer_id.in_(valid_ids),
-                    MergeRequest.assignee_id.in_(valid_ids)
-                )
+                MergeRequest.developer_id.in_(select(valid_ids.c.id))
             )
-        
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.merged_at)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.merged_at)))
+            )
+
+        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.merged_at)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.merged_at)))
+            )
+
         return q.scalar() or 0
 
     def _avg_lead_time(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+        eligible_ids: Optional[list] = None,
     ) -> float:
         """
         DORA Metric 2 — Lead Time for Changes.
@@ -627,14 +938,28 @@ class KpiCalculator:
 
         # Attribution filtrée si demandée
         if site_id or group_id or developer_id:
-            from sqlalchemy import or_
-            valid_ids = self._active_dev_ids_query(project_id, start_date, site_id, group_id, developer_id).subquery()
+            valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
             q = q.filter(
-                or_(
-                    MergeRequest.developer_id.in_(valid_ids),
-                    MergeRequest.reviewer_id.in_(valid_ids),
-                    MergeRequest.assignee_id.in_(valid_ids)
-                )
+                MergeRequest.developer_id.in_(select(valid_ids.c.id))
+            )
+
+        if site_id:
+            q = q.join(
+                DeveloperSite,
+                (DeveloperSite.developer_id == MergeRequest.developer_id) &
+                (DeveloperSite.site_id == site_id) &
+                (DeveloperSite.start_date <= func.date(MergeRequest.merged_at)) &
+                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.merged_at)))
+            )
+
+        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
+        if group_id:
+            q = q.join(
+                DeveloperGroupLink,
+                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+                (DeveloperGroupLink.group_id == group_id) &
+                (DeveloperGroupLink.start_date <= func.date(MergeRequest.merged_at)) &
+                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.merged_at)))
             )
 
         result = q.scalar()

@@ -26,7 +26,19 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.database.session import get_db
+
+def get_db():
+    from app.database.session import get_db as session_get_db
+    yield from session_get_db()
+
+def get_auth_db():
+    """Retourne une session vers la base d'authentification partagée (auth_db)"""
+    from app.database.session import get_auth_session
+    db = get_auth_session()
+    try:
+        yield db
+    finally:
+        db.close()
 
 settings = get_settings()
 logger   = logging.getLogger(__name__)
@@ -180,7 +192,7 @@ def decrypt_token(encrypted_token: str) -> str:
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db:          Session                       = Depends(get_db),
+    db:          Session                       = Depends(get_auth_db),
 ):
     """
     Dependency FastAPI — récupère l'utilisateur connecté depuis le JWT Bearer.
@@ -233,5 +245,37 @@ def get_current_user(
             "AUTH_USER_INACTIVE",
             "User account is inactive",
         )
+
+    # ✅ CHARGER LES ASSIGNATIONS MULTI-TENANT pour project_manager
+    # Charger les assignations de projets depuis tenant pour permettre l'accès à l'analyse stratégique
+    from app.database.session import get_db as get_tenant_db
+    from app.repositories.user_project_access_repository import UserProjectAccessRepository
+    from app.repositories.user_site_access_repository import UserSiteAccessRepository
+    from app.repositories.user_group_access_repository import UserGroupAccessRepository
+    
+    tenant_db = next(get_tenant_db())
+    project_access_repo = UserProjectAccessRepository()
+    site_access_repo = UserSiteAccessRepository()
+    group_access_repo = UserGroupAccessRepository()
+    
+    try:
+        project_accesses = project_access_repo.get_by_user_id(tenant_db, user.id)
+        user._project_accesses = project_accesses
+    except Exception:
+        user._project_accesses = []
+    
+    try:
+        site_accesses = site_access_repo.get_by_user_id(tenant_db, user.id)
+        user._site_accesses = site_accesses
+    except Exception:
+        user._site_accesses = []
+    
+    try:
+        group_accesses = group_access_repo.get_by_user_id(tenant_db, user.id)
+        user._group_accesses = group_accesses
+    except Exception:
+        user._group_accesses = []
+    
+    tenant_db.close()
 
     return user

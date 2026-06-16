@@ -25,6 +25,8 @@ from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
+# INDICATEUR DE VERSION - MODIFIÉ POUR DÉBOGGER
+print("[CONFIG] Module loaded - VERSION 2026-06-09-00:18")
 
 class Settings(BaseSettings):
 
@@ -43,6 +45,12 @@ class Settings(BaseSettings):
     # DATABASE_URL peut être fourni directement dans .env (ex: docker-compose)
     # Sinon, il est construit depuis les variables POSTGRES_* ci-dessus.
     DATABASE_URL: Optional[str] = None
+    AUTO_CREATE_SCHEMAS: bool = True
+
+    # ── Schema Mode (pour Supabase/Cloud) ───────────────────────────────────────
+    # false = utilise des bases de données séparées (local/docker)
+    # true  = utilise des schémas dans une seule base (Supabase/Cloud)
+    USE_SCHEMAS: bool = False
 
     # ── GitLab ───────────────────────────────────────────────────────────────
     GITLAB_BASE_URL: str           = "https://gitlab.com/api/v4"
@@ -62,6 +70,25 @@ class Settings(BaseSettings):
 
     # ── Scheduler ────────────────────────────────────────────────────────────
     SCHEDULER_ENABLED: bool = True
+
+    # ── Notifications (Email) ────────────────────────────────────────────────
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: str = "kpi-dashboard@telnet.com"
+    SMTP_USE_TLS: bool = True
+    ADMIN_EMAILS: List[str] = []  # List of admin emails for alerts
+
+    # ── Frontend URL (for password reset links) ─────────────────────────────
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    # ── Notifications (Slack) ────────────────────────────────────────────────
+    SLACK_WEBHOOK_URL: Optional[str] = None
+
+    # ── Retry Configuration ───────────────────────────────────────────────────
+    EXTRACTION_MAX_RETRIES: int = 3
+    EXTRACTION_RETRY_DELAYS: List[int] = [60, 300, 1500, 7200, 36000]  # seconds: 1min, 5min, 25min, 2h, 10h
 
     # ── CORS ─────────────────────────────────────────────────────────────────
     # Dev  → ["http://localhost:5173", "http://localhost:3000"]

@@ -47,6 +47,8 @@ from app.models.project         import Project
 # ── Utilisateurs & Accès ───────────────────────────────────────────────────
 from app.models.app_user        import AppUser
 from app.models.audit_log       import AuditLog
+from app.models.user_site_access   import UserSiteAccess
+from app.models.user_group_access  import UserGroupAccess
 
 # ── Organisation Développeurs ──────────────────────────────────────────────
 from app.models.developer_group     import DeveloperGroup
@@ -79,13 +81,23 @@ from app.models.alert           import Alert
 # ── Dashboard ──────────────────────────────────────────────────────────────
 from app.models.dashboard       import Dashboard
 
+# ── Profile & Menu Management ───────────────────────────────────────────────
+from app.models.profile          import Profile
+from app.models.menu_item       import MenuItem
+from app.models.profile_menu_item import ProfileMenuItem
+
+# ── Dynamic Role & Permission Management ────────────────────────────────────
+from app.models.role             import Role
+from app.models.permission      import Permission
+from app.models.role_permission import RolePermission
+
 
 __all__ = [
     "Base",
     # Configuration
     "GitLabConfig", "Site", "Project",
     # Utilisateurs
-    "AppUser", "AuditLog",
+    "AppUser", "AuditLog", "UserSiteAccess", "UserGroupAccess",
     # Organisation
     "DeveloperGroup", "Developer", "DeveloperImportLog", "DeveloperStatusHistory", "DeveloperStatusEnum",
     # Many-to-Many
@@ -98,4 +110,8 @@ __all__ = [
     "KpiDefinition", "KpiSnapshot", "KpiThreshold", "Alert",
     # Dashboard
     "Dashboard",
+    # Profile & Menu Management
+    "Profile", "MenuItem", "ProfileMenuItem",
+    # Dynamic Role & Permission Management
+    "Role", "Permission", "RolePermission",
 ]

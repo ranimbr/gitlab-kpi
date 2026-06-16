@@ -3,7 +3,7 @@ schemas/extraction_lot.py
 
 """
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from app.schemas.enums import ExtractionTypeEnum
@@ -11,7 +11,7 @@ from app.schemas.enums import ExtractionTypeEnum
 
 # ── Objets imbriqués légers (évite de serializer toute l'entité) ──────────────
 
-class DeveloperSummary(BaseModel):
+class DeveloperLotSummary(BaseModel):
     """Résumé minimal d'un développeur pour les lots d'extraction."""
     id:               int
     name:             Optional[str] = None
@@ -109,6 +109,7 @@ class ExtractionLotResponse(BaseModel):
     triggered_by:    Optional[int]
     generated_file:  Optional[str]
     md5sum:          Optional[str]
+    source_filename: Optional[str] = None
     error_message:   Optional[str]
     created_at:      datetime
     completed_at:    Optional[datetime]
@@ -122,13 +123,14 @@ class ExtractionLotResponse(BaseModel):
     items_count:       int            = 0
     api_calls_count:   int            = 0
     retry_count:       int            = 0
-    metadata_summary:  Optional[str]  = None
+    metadata_summary:  Optional[Dict[str, Any]]  = None
 
     # ✅ AJOUT : objets imbriqués — évite d'afficher "User #1" et "Dev #42"
-    developer:          Optional[DeveloperSummary] = None
+    developer:          Optional[DeveloperLotSummary] = None
     triggered_by_user:  Optional[UserSummary]      = None
     period:             Optional[PeriodSummary]    = None
     project:            Optional[ProjectSummary]   = None
+    project_members:    Optional[List[DeveloperLotSummary]] = []
 
     model_config = {
         "from_attributes": True,

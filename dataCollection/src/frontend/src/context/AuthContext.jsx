@@ -6,22 +6,26 @@ const AuthContext = createContext(null);
 
 // ── Rôles valides (miroir du backend UserRoleEnum) ────────────────────────────
 export const ROLES = {
-  SUPER_ADMIN:  "super_admin",
-  SITE_MANAGER: "site_manager",
-  TEAM_LEAD:    "team_lead",
-  DEVELOPER:    "developer",
+  SUPER_ADMIN:     "super_admin",
+  PROJECT_MANAGER: "project_manager",
+  SITE_MANAGER:    "site_manager",
+  TEAM_LEAD:       "team_lead",
+  VIEWER:          "viewer",
+  DEVELOPER:       "developer",
 };
 
 /**
  * Hiérarchie des rôles — un rôle "supérieur" a accès à tout ce qu'un rôle
  * inférieur peut faire.
- * super_admin > site_manager > team_lead > developer
+ * super_admin > project_manager > site_manager > team_lead > viewer > developer
  */
 const ROLE_HIERARCHY = {
-  [ROLES.SUPER_ADMIN]:  4,
-  [ROLES.SITE_MANAGER]: 3,
-  [ROLES.TEAM_LEAD]:    2,
-  [ROLES.DEVELOPER]:    1,
+  [ROLES.SUPER_ADMIN]:     6,
+  [ROLES.PROJECT_MANAGER]: 5,
+  [ROLES.SITE_MANAGER]:    4,
+  [ROLES.TEAM_LEAD]:       3,
+  [ROLES.VIEWER]:          2,
+  [ROLES.DEVELOPER]:       1,
 };
 
 // ── Décodage JWT local ────────────────────────────────────────────────────────
@@ -49,6 +53,7 @@ const decodeToken = () => {
       name:             payload.name             ?? null,
       site_id:          payload.site_id          ?? null,
       group_id:         payload.group_id         ?? null,
+      project_ids:      payload.project_ids      ?? [],
       dashboard_access: payload.dashboard_access ?? [],
     };
   } catch {
@@ -84,9 +89,25 @@ export function AuthProvider({ children }) {
           name:             me.name             ?? prev?.name,
           site_id:          me.site_id          ?? prev?.site_id,
           group_id:         me.group_id         ?? prev?.group_id,
+          project_ids:      me.project_ids      ?? prev?.project_ids ?? [],
           dashboard_access: me.dashboard_access ?? prev?.dashboard_access ?? [],
           login:            me.login            ?? null,
         }));
+        
+        // ✅ Récupérer les assignations multi-tenant pour le filtrage automatique
+        if (me.role === 'site_manager' || me.role === 'team_lead' || me.role === 'project_manager' || me.role === 'viewer') {
+          try {
+            const assignments = await authService.getUserAssignments();
+            setUser(prev => ({
+              ...prev,
+              site_ids: assignments.site_ids || [],
+              group_ids: assignments.group_ids || [],
+              project_ids: assignments.project_ids || []
+            }));
+          } catch (e) {
+            console.error("Erreur lors de la récupération des assignments:", e);
+          }
+        }
       } catch {
         // /auth/me optionnel — on garde les données du JWT
       }
@@ -115,6 +136,21 @@ export function AuthProvider({ children }) {
     try {
       const me = await authService.getMe(true);
       setUser(prev => ({ ...prev, ...me }));
+      
+      // ✅ Récupérer les assignations multi-tenant pour le filtrage automatique
+      if (me.role === 'site_manager' || me.role === 'team_lead' || me.role === 'project_manager' || me.role === 'viewer') {
+        try {
+          const assignments = await authService.getUserAssignments();
+          setUser(prev => ({
+            ...prev,
+            site_ids: assignments.site_ids || [],
+            group_ids: assignments.group_ids || [],
+            project_ids: assignments.project_ids || []
+          }));
+        } catch (e) {
+          console.error("Erreur lors de la récupération des assignations:", e);
+        }
+      }
     } catch {
       // token expiré → api.js interceptor redirige vers /login
     }
@@ -156,15 +192,30 @@ export function AuthProvider({ children }) {
     return hasRoleOrAbove(ROLES.TEAM_LEAD);
   }, [hasRoleOrAbove]);
 
+  /** project_manager OU super_admin */
+  const isProjectManager = useCallback(() => {
+    return hasRoleOrAbove(ROLES.PROJECT_MANAGER);
+  }, [hasRoleOrAbove]);
+
+  /** viewer OU super_admin */
+  const isViewer = useCallback(() => {
+    return hasRoleOrAbove(ROLES.VIEWER);
+  }, [hasRoleOrAbove]);
+
   /**
    * Vérifie si l'utilisateur peut gérer un site donné.
    * super_admin → tous les sites.
    * site_manager → uniquement son site.
+   * viewer → uniquement ses sites assignés.
    */
   const canManageSite = useCallback((siteId) => {
     if (!user) return false;
     if (user.role === ROLES.SUPER_ADMIN) return true;
     if (user.role === ROLES.SITE_MANAGER) return user.site_id === siteId;
+    if (user.role === ROLES.VIEWER) {
+      const accessibleSiteIds = user.site_ids || [];
+      return accessibleSiteIds.includes(siteId);
+    }
     return false;
   }, [user]);
 
@@ -172,11 +223,31 @@ export function AuthProvider({ children }) {
    * Vérifie si l'utilisateur peut gérer un groupe.
    * super_admin et site_manager → tous les groupes de leur périmètre.
    * team_lead → uniquement son groupe.
+   * viewer → uniquement ses groupes assignés.
    */
   const canManageGroup = useCallback((groupId) => {
     if (!user) return false;
     if ([ROLES.SUPER_ADMIN, ROLES.SITE_MANAGER].includes(user.role)) return true;
     if (user.role === ROLES.TEAM_LEAD) return user.group_id === groupId;
+    if (user.role === ROLES.VIEWER) {
+      const accessibleGroupIds = user.group_ids || [];
+      return accessibleGroupIds.includes(groupId);
+    }
+    return false;
+  }, [user]);
+
+  /**
+   * Vérifie si l'utilisateur peut gérer un projet.
+   * super_admin → tous les projets.
+   * project_manager → uniquement ses projets assignés.
+   * viewer → uniquement ses projets assignés.
+   */
+  const canManageProject = useCallback((projectId) => {
+    if (!user) return false;
+    if (user.role === ROLES.SUPER_ADMIN) return true;
+    if (user.role === ROLES.PROJECT_MANAGER || user.role === ROLES.VIEWER) {
+      return (user.project_ids ?? []).includes(projectId);
+    }
     return false;
   }, [user]);
 
@@ -204,8 +275,11 @@ export function AuthProvider({ children }) {
         isAdmin,
         isSiteManager,
         isTeamLead,
+        isProjectManager,
+        isViewer,
         canManageSite,
         canManageGroup,
+        canManageProject,
         canAccessDashboard,
         // Constantes utiles dans les composants
         ROLES,

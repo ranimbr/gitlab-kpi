@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, contains_eager
 
 from app.models.alert import Alert, AlertLevelEnum
 from app.models.kpi_snapshot import KpiSnapshot
@@ -70,10 +70,11 @@ class AlertRepository(BaseRepository[Alert]):
         """Alertes non résolues, multi-critères."""
         q = (
             db.query(Alert)
+            .join(KpiThreshold, Alert.threshold_id == KpiThreshold.id)
             .options(
                 joinedload(Alert.acknowledger),
                 joinedload(Alert.developer),
-                joinedload(Alert.threshold).joinedload(KpiThreshold.project),
+                contains_eager(Alert.threshold).joinedload(KpiThreshold.project),
             )
             .filter(Alert.is_resolved.is_(False))
         )
