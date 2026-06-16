@@ -27,6 +27,7 @@ apscheduler==3.10.4
 # ── Utils ─────────────────────────────────────────────────────────────────────
 python-multipart==0.0.12
 python-dotenv==1.0.1
+requests==2.32.3
 
 # ── Machine Learning & Statistique ─────────────────────────────────────────────
 scikit-learn==1.5.0
