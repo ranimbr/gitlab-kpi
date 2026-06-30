@@ -1,0 +1,57 @@
+services:
+  # Service Backend (multi-tenant avec auth_db + tenant DBs Neon)
+  - type: pserv
+    name: gitlab-kpi-backend
+    env: python
+    plan: free
+    buildCommand: cd dataCollection/src/backend && pip install -r requirements.txt
+    startCommand: cd dataCollection/src/backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 8000
+      # Base Auth (Neon)
+      - key: POSTGRES_AUTH_HOST
+        sync: false
+      - key: POSTGRES_AUTH_PORT
+        value: 5432
+      - key: POSTGRES_AUTH_USER
+        sync: false
+      - key: POSTGRES_AUTH_PASSWORD
+        sync: false
+      - key: POSTGRES_AUTH_DB
+        sync: false
+      # Base Tenant Telnet (Neon)
+      - key: POSTGRES_TELNET_HOST
+        sync: false
+      - key: POSTGRES_TELNET_PORT
+        value: 5432
+      - key: POSTGRES_TELNET_USER
+        sync: false
+      - key: POSTGRES_TELNET_PASSWORD
+        sync: false
+      - key: POSTGRES_TELNET_DB
+        sync: false
+      # Base Tenant GitLab KPI (Neon)
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        value: 5432
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_DB
+        sync: false
+      # GitLab & Auth
+      - key: GITLAB_TOKEN
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
