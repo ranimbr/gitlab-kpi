@@ -157,7 +157,7 @@ app = FastAPI(
 # ── CORS (TOLERANT POLICY FOR PFE DEFENSE) ─────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex = ".*",    # Autorise TOUT (même via IP) sans crasher avec credentials
+    allow_origins      = settings.ALLOWED_ORIGINS,  # Utilise settings.ALLOWED_ORIGINS (list)
     allow_credentials  = True,
     allow_methods      = ["*"],
     allow_headers      = ["*"],
