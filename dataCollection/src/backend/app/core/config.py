@@ -110,11 +110,16 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def parse_allowed_origins(cls, v):
+        print(f"[CONFIG] parse_allowed_origins called with v={v}, type={type(v)}")
         if isinstance(v, str):
             try:
-                return json.loads(v)
-            except:
+                result = json.loads(v)
+                print(f"[CONFIG] Parsed ALLOWED_ORIGINS: {result}")
+                return result
+            except Exception as e:
+                print(f"[CONFIG] Failed to parse ALLOWED_ORIGINS: {e}")
                 return []
+        print(f"[CONFIG] ALLOWED_ORIGINS is not a string: {v}")
         return v
 
     # ── Fichiers dump extraction ──────────────────────────────────────────────
