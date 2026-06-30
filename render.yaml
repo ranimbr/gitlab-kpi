@@ -4,6 +4,7 @@ services:
     name: gitlab-kpi-backend
     env: python
     plan: free
+    pythonVersion: 3.11.9
     buildCommand: cd dataCollection/src/backend && pip install -r requirements.txt
     startCommand: cd dataCollection/src/backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
