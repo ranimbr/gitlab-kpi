@@ -52,7 +52,8 @@ from app.models.kpi_threshold        import KpiThreshold       # noqa: F401
 from app.models.alert                import Alert              # noqa: F401
 
 # ── Dashboard ──────────────────────────────────────────────────────────────
-from app.models.dashboard            import Dashboard          # noqa: F401
+# DISABLED: Dashboard functionality removed
+# from app.models.dashboard            import Dashboard          # noqa: F401
 
 logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -131,13 +132,8 @@ def init_db() -> None:
         dashboard → period_filter
         audit_log
     """
-    from app.core.config import get_settings
-    settings = get_settings()
-    if settings.USE_SCHEMAS:
-        logger.info("ℹ️ Mode schémas activé (Supabase) : l'initialisation des tables se fait dynamiquement. Ignorer init_db().")
-        return
-
     try:
+        # Multi-tenant: utiliser toujours des bases séparées (pas de mode schémas)
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Toutes les tables créées / vérifiées avec succès.")
         logger.info("✅ Index DDL (COALESCE, index partiels) appliqués.")
