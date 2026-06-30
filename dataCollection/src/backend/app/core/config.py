@@ -107,20 +107,17 @@ class Settings(BaseSettings):
     # .env → ALLOWED_ORIGINS='["https://dashboard.example.com"]'
     ALLOWED_ORIGINS: List[str] = []
     
-    @model_validator(mode="before")
-    @classmethod
-    def parse_allowed_origins(cls, v):
-        print(f"[CONFIG] parse_allowed_origins called with v={v}, type={type(v)}")
-        if isinstance(v, str):
+    @model_validator(mode="after")
+    def parse_allowed_origins(self) -> "Settings":
+        print(f"[CONFIG] parse_allowed_origins called - ALLOWED_ORIGINS={self.ALLOWED_ORIGINS}, type={type(self.ALLOWED_ORIGINS)}")
+        if isinstance(self.ALLOWED_ORIGINS, str):
             try:
-                result = json.loads(v)
-                print(f"[CONFIG] Parsed ALLOWED_ORIGINS: {result}")
-                return result
+                self.ALLOWED_ORIGINS = json.loads(self.ALLOWED_ORIGINS)
+                print(f"[CONFIG] Parsed ALLOWED_ORIGINS: {self.ALLOWED_ORIGINS}")
             except Exception as e:
                 print(f"[CONFIG] Failed to parse ALLOWED_ORIGINS: {e}")
-                return []
-        print(f"[CONFIG] ALLOWED_ORIGINS is not a string: {v}")
-        return v
+                self.ALLOWED_ORIGINS = []
+        return self
 
     # ── Fichiers dump extraction ──────────────────────────────────────────────
     # Dev  → "dumps"
