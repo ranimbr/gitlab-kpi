@@ -36,21 +36,31 @@ class Settings(BaseSettings):
     DEBUG:       bool = False
 
     # ── Database ─────────────────────────────────────────────────────────────
+    # Base Auth (pour login/users)
+    POSTGRES_AUTH_HOST:     str = "localhost"
+    POSTGRES_AUTH_PORT:     str = "5432"
+    POSTGRES_AUTH_USER:     str = "postgres"
+    POSTGRES_AUTH_PASSWORD: str = "postgres"
+    POSTGRES_AUTH_DB:       str = "auth_db"
+
+    # Base Tenant Telnet (accessible via topbar)
+    POSTGRES_TELNET_HOST:     str = "localhost"
+    POSTGRES_TELNET_PORT:     str = "5432"
+    POSTGRES_TELNET_USER:     str = "postgres"
+    POSTGRES_TELNET_PASSWORD: str = "postgres"
+    POSTGRES_TELNET_DB:       str = "telnet_db"
+
+    # Base Tenant GitLab KPI (accessible via topbar - DB principale)
     POSTGRES_USER:     str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_HOST:     str = "localhost"
     POSTGRES_PORT:     str = "5432"
-    POSTGRES_DB:       str = "kpi_dashboard"
+    POSTGRES_DB:       str = "gitlab_kpi1"
 
     # DATABASE_URL peut être fourni directement dans .env (ex: docker-compose)
     # Sinon, il est construit depuis les variables POSTGRES_* ci-dessus.
     DATABASE_URL: Optional[str] = None
     AUTO_CREATE_SCHEMAS: bool = True
-
-    # ── Schema Mode (pour Supabase/Cloud) ───────────────────────────────────────
-    # false = utilise des bases de données séparées (local/docker)
-    # true  = utilise des schémas dans une seule base (Supabase/Cloud)
-    USE_SCHEMAS: bool = False
 
     # ── GitLab ───────────────────────────────────────────────────────────────
     GITLAB_BASE_URL: str           = "https://gitlab.com/api/v4"

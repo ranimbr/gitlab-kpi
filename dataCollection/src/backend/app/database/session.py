@@ -34,20 +34,26 @@ _sessionmakers = {}
 # Base de données partagée pour l'authentification
 AUTH_DB = "auth_db"
 
-# Mapping des noms de bases vers les noms de schémas (pour mode Supabase)
-DB_TO_SCHEMA_MAP = {
-    "auth_db": "auth_schema",
-    "telnetdb": "telnet_schema",
-    "gitlab_kpi1": "gitlab_kpi_schema",
-}
-
-def get_schema_name(db_name: str) -> str:
-    """Retourne le nom du schéma correspondant pour le mode schema"""
-    return DB_TO_SCHEMA_MAP.get(db_name, db_name)
-
 def get_auth_engine():
     """Returns the engine for the shared auth database (auth_db)"""
-    return get_engine_for_db(AUTH_DB)
+    # Build auth_db URL from specific settings
+    auth_url = (
+        f"postgresql://{settings.POSTGRES_AUTH_USER}:{settings.POSTGRES_AUTH_PASSWORD}"
+        f"@{settings.POSTGRES_AUTH_HOST}:{settings.POSTGRES_AUTH_PORT}/{settings.POSTGRES_AUTH_DB}"
+        "?sslmode=require"
+    )
+    # Create engine directly for auth_db
+    if "auth_db" not in _engines:
+        _engines["auth_db"] = create_engine(
+            auth_url,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            pool_recycle=1800,
+            echo=settings.DEBUG,
+        )
+    return _engines["auth_db"]
 
 def get_auth_session():
     """Returns a session for the shared auth database (auth_db)"""
@@ -72,100 +78,6 @@ def get_engine_for_db(db_name: str):
         db_name = DEFAULT_DB
 
     with db_lock:
-        # Mode schémas (Supabase/Cloud) : utiliser un seul engine avec search_path
-        if settings.USE_SCHEMAS:
-            schema_name = get_schema_name(db_name)
-            cache_key = f"schema_{schema_name}"
-
-            if cache_key in _engines:
-                _last_used[cache_key] = time.time()
-                return _engines[cache_key]
-
-            # Manage LRU cache for schema engines
-            evictable = [key for key in _engines if key.startswith("schema_") and key != cache_key]
-            if len(_engines) >= MAX_CACHED_ENGINES and evictable:
-                oldest_key = min(evictable, key=lambda k: _last_used.get(k, 0))
-                logger.info(f"[Schema Engine Eviction] Closing engine for '{oldest_key}'")
-                try:
-                    _engines[oldest_key].dispose()
-                except Exception as e:
-                    logger.warning(f"Failed to dispose of engine for '{oldest_key}': {e}")
-                _engines.pop(oldest_key, None)
-                _sessionmakers.pop(oldest_key, None)
-                _last_used.pop(oldest_key, None)
-
-            # Create schema if it doesn't exist
-            create_schema_if_not_exists(schema_name)
-
-            # Use the main database URL (no path modification for schema mode)
-            db_url = settings.DATABASE_URL
-
-            # Create the engine with schema in connect_args
-            new_engine = create_engine(
-                db_url,
-                pool_pre_ping = True,
-                pool_size     = 10,
-                max_overflow  = 20,
-                pool_timeout  = 30,
-                pool_recycle  = 1800,
-                echo          = settings.DEBUG,
-                connect_args  = {"options": f"-c search_path={schema_name}"} if schema_name else {}
-            )
-
-            _engines[cache_key] = new_engine
-            _last_used[cache_key] = time.time()
-
-            # Initialize schema and seed defaults safely
-            if settings.AUTO_CREATE_SCHEMAS:
-                try:
-                    with new_engine.begin() as connection:
-                        db_hash = hash(schema_name) % (2**31 - 1)
-                        connection.execute(text(f"SELECT pg_advisory_xact_lock({db_hash})"))
-
-                        from app.models.base import Base
-                        import app.models.gitlab_config        # noqa: F401
-                        import app.models.site                 # noqa: F401
-                        import app.models.project              # noqa: F401
-                        import app.models.app_user             # noqa: F401
-                        import app.models.audit_log            # noqa: F401
-                        import app.models.developer_group      # noqa: F401
-                        import app.models.developer            # noqa: F401
-                        import app.models.developer_import_log # noqa: F401
-                        import app.models.project_site         # noqa: F401
-                        import app.models.developer_project    # noqa: F401
-                        import app.models.developer_site       # noqa: F401
-                        import app.models.period               # noqa: F401
-                        import app.models.period_filter        # noqa: F401
-                        import app.models.extraction_lot       # noqa: F401
-                        import app.models.commit               # noqa: F401
-                        import app.models.merge_request        # noqa: F401
-                        import app.models.commit_merge_request # noqa: F401
-                        import app.models.kpi_definition       # noqa: F401
-                        import app.models.kpi_snapshot         # noqa: F401
-                        import app.models.kpi_threshold        # noqa: F401
-                        import app.models.alert                # noqa: F401
-                        import app.models.dashboard            # noqa: F401
-                        import app.models.menu_item            # noqa: F401
-                        import app.models.profile              # noqa: F401
-
-                        # Set search_path before creating tables
-                        connection.execute(text(f"SET search_path TO {schema_name}"))
-                        Base.metadata.create_all(bind=connection)
-                        logger.info(f"✅ Schema initialized automatically for '{schema_name}'.")
-
-                        from app.core.seed_data import seed_kpi_definitions, seed_admin_user
-                        TempSessionLocal = sessionmaker(bind=connection, autoflush=False, autocommit=False)
-                        with TempSessionLocal() as db_session:
-                            seed_kpi_definitions(db_session)
-                            if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD:
-                                seed_admin_user(db_session, settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD)
-                            db_session.commit()
-                except Exception as e:
-                    logger.error(f"❌ Failed to initialize schema/seed for '{schema_name}': {e}", exc_info=True)
-
-            return new_engine
-
-        # Mode bases séparées (local/docker) : système actuel
         if db_name in _engines:
             _last_used[db_name] = time.time()
             return _engines[db_name]
@@ -183,12 +95,25 @@ def get_engine_for_db(db_name: str):
             _sessionmakers.pop(oldest_db, None)
             _last_used.pop(oldest_db, None)
 
-        # Check/create database if it doesn't exist on server
-        create_db_if_not_exists(db_name)
-
-        # Construct URL for the specific database name
-        parsed = urllib.parse.urlparse(settings.DATABASE_URL)
-        db_url = urllib.parse.urlunparse(parsed._replace(path=f"/{db_name}"))
+        # Build URL based on database name for multi-tenant support
+        if db_name == "telnet_db" or db_name == "telnetdb":
+            # Use telnet_db specific connection
+            db_url = (
+                f"postgresql://{settings.POSTGRES_TELNET_USER}:{settings.POSTGRES_TELNET_PASSWORD}"
+                f"@{settings.POSTGRES_TELNET_HOST}:{settings.POSTGRES_TELNET_PORT}/{settings.POSTGRES_TELNET_DB}"
+                "?sslmode=require"
+            )
+        elif db_name == "gitlab_kpi1":
+            # Use gitlab_kpi1 specific connection
+            db_url = (
+                f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
+                f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+                "?sslmode=require"
+            )
+        else:
+            # Fallback to default DATABASE_URL
+            parsed = urllib.parse.urlparse(settings.DATABASE_URL)
+            db_url = urllib.parse.urlunparse(parsed._replace(path=f"/{db_name}"))
 
         # Create the engine
         new_engine = create_engine(
@@ -236,7 +161,8 @@ def get_engine_for_db(db_name: str):
                     import app.models.kpi_snapshot         # noqa: F401
                     import app.models.kpi_threshold        # noqa: F401
                     import app.models.alert                # noqa: F401
-                    import app.models.dashboard            # noqa: F401
+                    # DISABLED: Dashboard functionality removed
+                    # import app.models.dashboard            # noqa: F401
                     import app.models.menu_item            # noqa: F401
                     import app.models.profile              # noqa: F401
 
@@ -255,21 +181,6 @@ def get_engine_for_db(db_name: str):
                 logger.error(f"❌ Failed to initialize schema/seed for database '{db_name}': {e}", exc_info=True)
 
         return new_engine
-
-def create_schema_if_not_exists(schema_name: str):
-    """Crée un schéma PostgreSQL s'il n'existe pas (mode Supabase)"""
-    try:
-        parsed = urllib.parse.urlparse(settings.DATABASE_URL)
-        temp_engine = create_engine(settings.DATABASE_URL, isolation_level="AUTOCOMMIT")
-        with temp_engine.connect() as conn:
-            # Check if schema exists
-            res = conn.execute(text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :schema_name"), {"schema_name": schema_name})
-            if not res.fetchone():
-                conn.execute(text(f'CREATE SCHEMA "{schema_name}"'))
-                logger.info(f"✅ Created schema '{schema_name}' on PostgreSQL server.")
-        temp_engine.dispose()
-    except Exception as e:
-        logger.error(f"⚠️ Error checking/creating schema '{schema_name}': {e}")
 
 def create_db_if_not_exists(db_name: str):
     # Don't try to create system databases
