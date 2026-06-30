@@ -62,6 +62,11 @@ class KpiSnapshotResponse(BaseModel):
     # Formule : review_time_hours (somme) / total_mrs_approved
     avg_review_time_hours: float = 0.0
 
+    # ── KPI #8 : Commits moyen par MR (Complexité) ─────────────────────────────
+    # Formule : sum(commits_count) / total_mrs_created
+    # Apport : Identifie les MRs complexes avec beaucoup de commits
+    avg_commits_per_mr: float = 0.0
+
     # ── Deltas vs snapshot précédent (trend indicators) ───────────────────────
     # NULL = premier snapshot — pas de comparaison disponible
     delta_mr_rate:          Optional[float] = None
@@ -210,24 +215,25 @@ class KpiHistoryResponse(BaseModel):
         )
 
 
-class DashboardSummaryResponse(BaseModel):
-    """
-    Résumé complet pour le Dashboard KPI frontend.
-    Retourné par GET /kpis/dashboard.
-    """
-    latest_metrics:  Optional[KpiSnapshotResponse]
-    history:         List[KpiSnapshotResponse]
-    total_snapshots: int
-
-    # Contexte de filtrage actif
-    project_id:   Optional[int] = None
-    site_id:      Optional[int] = None
-    group_id:     Optional[int] = None
-    developer_id: Optional[int] = None
-    period_label: Optional[str] = None     # ex: "Mars 2025"
-
-    # Leaderboard du site (si site_id fourni)
-    leaderboard: Optional[DeveloperLeaderboardResponse] = None
+# DISABLED: Dashboard functionality removed
+# class DashboardSummaryResponse(BaseModel):
+#     """
+#     Résumé complet pour le Dashboard KPI frontend.
+#     Retourné par GET /kpis/dashboard.
+#     """
+#     latest_metrics:  Optional[KpiSnapshotResponse]
+#     history:         List[KpiSnapshotResponse]
+#     total_snapshots: int
+#
+#     # Contexte de filtrage actif
+#     project_id:   Optional[int] = None
+#     site_id:      Optional[int] = None
+#     group_id:     Optional[int] = None
+#     developer_id: Optional[int] = None
+#     period_label: Optional[str] = None     # ex: "Mars 2025"
+#
+#     # Leaderboard du site (si site_id fourni)
+#     leaderboard: Optional[DeveloperLeaderboardResponse] = None
 
 
 class SnapshotGeneratedResponse(BaseModel):

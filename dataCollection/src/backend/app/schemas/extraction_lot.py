@@ -115,6 +115,7 @@ class ExtractionLotResponse(BaseModel):
     completed_at:    Optional[datetime]
     commit_count:    int = 0
     mr_count:        int = 0
+    gitlab_config_id: Optional[int] = None
 
     # ── [SENIOR] Observabilité & Monitoring ──
     step_progress:     int            = 0

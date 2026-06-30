@@ -126,7 +126,6 @@ function MRDetailModal({ mr, onClose }) {
                 {icon:"ri-folder-2-line",      label:"Projet",  value:mr.project||"Unknown"},
                 {icon:"ri-calendar-event-line",label:"Créée",   value:fmtDate(mr.created_at_gitlab)},
                 {icon:"ri-history-line",       label:"Activité",value:fmtDate(mr.updated_at_gitlab)},
-                {icon: "ri-chat-1-line",       label: "Comm.",    value: mr.user_notes_count || 0},
                 {icon: "ri-git-commit-line",   label: "Commits",  value: mr.commits_count || 0},
                 {icon:"ri-time-line",          label:"Délai",   value:timeSince(mr.created_at_gitlab)},
                 {icon:"ri-check-double-line",  label:"Temps revue", value: (() => {
@@ -136,7 +135,7 @@ function MRDetailModal({ mr, onClose }) {
                     return rt.isExact ? label : `~${label} (Lead Time)`;
                   })()},
               ].map((item,i)=>(
-                <div key={i} className={item.label === "Comm." || item.label === "Commits" ? "col-3" : "col-6"}>
+                <div key={i} className={item.label === "Commits" ? "col-3" : "col-6"}>
                   <div className="rounded-3 p-3" style={{background:"#f8f9fc",border:"1px solid #e9ecef"}}>
                     <div style={{fontSize:10,color:"#9ca3af",textTransform:"uppercase",fontWeight:600,letterSpacing:0.8,marginBottom:4}}><i className={`${item.icon} me-1`}></i>{item.label}</div>
                     <div className="fw-semibold text-dark fs-13">{item.value}</div>
@@ -651,7 +650,6 @@ function MRTable({ mrs, onDetail, lots = [], filters = {}, developers = [], sele
     {key:"project",          label:"Projet",        sortable:true },
     {key:"state",            label:"Statut",        sortable:true },
     {key:"approved",         label:"Approuvé",      sortable:false},
-    {key:"user_notes_count", label:"Comms",         sortable:true, tooltip:"Commentaires" },
     {key:"commits_count",    label:"Commits",       sortable:true, tooltip:"Commits dans la MR" },
     {key:"time_to_approve",  label:"Revue",         sortable:true, tooltip:"Délai d'approbation (h) ou Lead Time DORA" },
     {key:"created_at_gitlab",label:"Créée",         sortable:true },

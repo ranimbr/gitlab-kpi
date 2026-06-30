@@ -7,6 +7,7 @@ Garantit que 100% du staff actif durant la période est archivé via un Master L
 Optimise les appels API GitLab en regroupant les extractions par projet au lieu de par développeur.
 """
 import logging
+from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.models.period import PeriodStatusEnum
@@ -27,20 +28,20 @@ class TeamMonthlyDumpService:
         self.extraction_service = ExtractionService()
         self.aggregator         = KpiAggregator(db)
 
-    async def run(self) -> dict:
+    async def run(self, year: Optional[int] = None, month: Optional[int] = None) -> dict:
         """
         [SENIOR REFACTOR] - Extraction par Cohorte.
         Délègue l'extraction à ExtractionService qui gère désormais la sélection 
         temporelle intelligente (Tenure Window) par projet.
         """
         now   = datetime.now(timezone.utc)
-        year  = now.year
-        month = now.month
+        target_year  = year or now.year
+        target_month = month or now.month
         
-        logger.info(f"[TeamMonthlyDump] Starting Cohort-Centric sync for {year}/{month:02d}")
+        logger.info(f"[TeamMonthlyDump] Starting Cohort-Centric sync for {target_year}/{target_month:02d}")
         
         summary = {
-            "period": f"{year}/{month:02d}", 
+            "period": f"{target_year}/{target_month:02d}", 
             "projects_processed": 0, 
             "projects_failed": [], 
             "total_snapshots": 0
@@ -48,9 +49,9 @@ class TeamMonthlyDumpService:
         
         try:
             # 1. Gestion de la période
-            period = self.period_repo.get_or_create(self.db, year, month)
+            period = self.period_repo.get_or_create(self.db, target_year, target_month)
             if period.status == PeriodStatusEnum.closed:
-                logger.warning(f"[TeamMonthlyDump] Period {year}/{month:02d} already closed — skipping")
+                logger.warning(f"[TeamMonthlyDump] Period {target_year}/{target_month:02d} already closed — skipping")
                 return summary
                 
             # 2. Clôture de la période (Senior Practice)

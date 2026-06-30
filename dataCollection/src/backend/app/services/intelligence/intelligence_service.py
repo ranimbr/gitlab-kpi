@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.models.kpi_snapshot import KpiSnapshot
 from app.repositories.kpi_snapshot_repository import KpiSnapshotRepository
 from .anomaly_detector import AnomalyDetector
-from .correlation_analyzer import CorrelationAnalyzer
 from .trend_analyzer import TrendAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -18,7 +17,6 @@ class IntelligenceService:
         self.db = db
         self.snapshot_repo = KpiSnapshotRepository()
         self.anomaly_detector = AnomalyDetector(contamination=0.1)
-        self.correlation_analyzer = CorrelationAnalyzer()
         self.trend_analyzer = None  # Initialisé dynamiquement avec le project_id
     
     def get_admin_intelligence(
@@ -54,7 +52,6 @@ class IntelligenceService:
             return {
                 "error": "Aucune donnée disponible pour l'analyse",
                 "anomalies": [],
-                "correlations": None,
                 "recommendations": [],
                 "trend_analysis": None,
             }
@@ -65,20 +62,13 @@ class IntelligenceService:
         quality_anomalies  = self.anomaly_detector.detect_quality_anomalies(snapshots)
         all_anomalies = velocity_anomalies + review_anomalies + quality_anomalies
         
-        # Analyse des corrélations (existante)
-        correlation_analysis = self.correlation_analyzer.analyze_site_correlations(snapshots)
-        
-        # Filtrer le message "Aucune corrélation significative détectée" pour ne pas compter comme insight
-        if correlation_analysis.get("insights"):
-            correlation_analysis["insights"] = [ins for ins in correlation_analysis["insights"] if ins != "Aucune corrélation significative détectée"]
-        
         # ── Analyse multi-périodes (NOUVEAU) ──────────────────────────────
         trend_analysis = self._run_trend_analysis(project_id, None, site_ids)
 
         # ── Recommandations enrichies ─────────────────────────────────────
         recommendations = self._generate_recommendations(
             all_anomalies,
-            correlation_analysis.get("insights", []),
+            [],
             trend_analysis,
             site_id=site_id,
             site_ids=site_ids
@@ -89,9 +79,8 @@ class IntelligenceService:
             "period_id":      period_id,
             "period_label":   self._get_period_label(period_id),
             "anomalies":      all_anomalies,
-            "correlations":   correlation_analysis,
             "recommendations": recommendations,
-            "summary":        self._generate_summary(all_anomalies, correlation_analysis, trend_analysis),
+            "summary":        self._generate_summary(all_anomalies, None, trend_analysis),
             "trend_analysis": trend_analysis,             # ← NOUVEAU
         }
     
@@ -128,7 +117,6 @@ class IntelligenceService:
             return {
                 "error": "Aucune donnée disponible pour l'analyse des équipes",
                 "anomalies": [],
-                "correlations": None,
                 "recommendations": [],
                 "trend_analysis": None,
             }
@@ -139,20 +127,13 @@ class IntelligenceService:
         quality_anomalies  = self.anomaly_detector.detect_quality_anomalies(snapshots)
         all_anomalies = velocity_anomalies + review_anomalies + quality_anomalies
         
-        # Analyse des corrélations (existante)
-        correlation_analysis = self.correlation_analyzer.analyze_site_correlations(snapshots)
-        
-        # Filtrer le message "Aucune corrélation significative détectée" pour ne pas compter comme insight
-        if correlation_analysis.get("insights"):
-            correlation_analysis["insights"] = [ins for ins in correlation_analysis["insights"] if ins != "Aucune corrélation significative détectée"]
-        
         # ── Analyse multi-périodes (NOUVEAU) ──────────────────────────────
         trend_analysis = self._run_team_trend_analysis(project_id, group_id, group_ids)
 
         # ── Recommandations enrichies ─────────────────────────────────────
         recommendations = self._generate_recommendations(
             all_anomalies,
-            correlation_analysis.get("insights", []),
+            [],
             trend_analysis,
             group_id=group_id,
             group_ids=group_ids
@@ -163,9 +144,8 @@ class IntelligenceService:
             "period_id":      period_id,
             "period_label":   self._get_period_label(period_id),
             "anomalies":      all_anomalies,
-            "correlations":   correlation_analysis,
             "recommendations": recommendations,
-            "summary":        self._generate_summary(all_anomalies, correlation_analysis, trend_analysis),
+            "summary":        self._generate_summary(all_anomalies, None, trend_analysis),
             "trend_analysis": trend_analysis,
         }
     
@@ -308,7 +288,6 @@ class IntelligenceService:
         """
         Génère des recommandations enrichies en combinant :
         - Anomalies ponctuelles (existant)
-        - Insights de corrélation (existant)
         - Recommandations RH multi-périodes (nouveau)
         
         Args:
@@ -341,23 +320,6 @@ class IntelligenceService:
                 f"⏱️ Goulot d'étranglement de revue sur : {sites}. "
                 "Considérer : augmentation du nombre de reviewers, revues asynchrones, ou automatisation."
             )
-        
-        # ── Insights de corrélation (existant) ───────────────────────────
-        # Filtrer le message "Aucune corrélation significative détectée" pour ne pas compter comme recommandation
-        correlation_insights_filtered = [ins for ins in correlation_insights if ins != "Aucune corrélation significative détectée"]
-        
-        # Pour site_manager avec site_ids spécifiques, ignorer les insights de corrélation généraux
-        # car ils sont basés sur tous les sites et non filtrés par site
-        if site_ids and len(site_ids) == 1:
-            # Site_manager avec un seul site: pas d'insights de corrélation inter-sites
-            correlation_insights_filtered = []
-        
-        # Pour team_lead avec group_id spécifique, ignorer les insights de corrélation généraux
-        if group_id and not group_ids:
-            # Team_lead avec un seul groupe: pas d'insights de corrélation inter-groupes
-            correlation_insights_filtered = []
-        
-        recommendations.extend(correlation_insights_filtered)
 
         # ── Recommandations RH multi-périodes (nouveau) ───────────────────
         if trend_analysis and trend_analysis.get("rh_recommendations"):
@@ -380,7 +342,7 @@ class IntelligenceService:
     def _generate_summary(
         self,
         anomalies: List[Dict[str, Any]],
-        correlation_analysis: Dict[str, Any],
+        correlation_analysis: Optional[Dict[str, Any]],
         trend_analysis: Optional[Dict[str, Any]],
     ) -> str:
         """Génère un résumé exécutif enrichi avec l'analyse de tendances."""
@@ -394,15 +356,6 @@ class IntelligenceService:
         
         if anomaly_count == 0:
             return "✅ Performance globale stable - Aucune anomalie détectée"
-        if high_severity > 0:
-            return f"⚠️ {anomaly_count} anomalie(s) détectée(s) dont {high_severity} critique(s) - Action requise"
-        """Génère un résumé exécutif pour le Super Admin."""
-        anomaly_count = len(anomalies)
-        high_severity = len([a for a in anomalies if a["severity"] == "high"])
-        
-        if anomaly_count == 0:
-            return "✅ Performance globale stable - Aucune anomalie détectée"
-        
         if high_severity > 0:
             return f"⚠️ {anomaly_count} anomalie(s) détectée(s) dont {high_severity} critique(s) - Action requise"
         

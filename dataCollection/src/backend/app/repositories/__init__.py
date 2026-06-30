@@ -23,7 +23,8 @@ from app.repositories.kpi_definition_repository     import KpiDefinitionReposito
 from app.repositories.kpi_snapshot_repository       import KpiSnapshotRepository
 from app.repositories.kpi_threshold_repository      import KpiThresholdRepository
 from app.repositories.alert_repository              import AlertRepository
-from app.repositories.dashboard_repository          import DashboardRepository
+# DISABLED: Dashboard functionality removed
+# from app.repositories.dashboard_repository          import DashboardRepository
 from app.repositories.audit_log_repository          import AuditLogRepository
 # Profile & Menu Management
 from app.repositories.profile_repository           import ProfileRepository

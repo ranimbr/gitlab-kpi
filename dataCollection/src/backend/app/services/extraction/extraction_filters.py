@@ -10,14 +10,25 @@ from app.services.extraction.developer_identity import normalize_email, normaliz
 
 
 def build_period_window(period: Optional[Period]) -> Tuple[Optional[str], Optional[str], Optional[datetime], Optional[datetime]]:
-    """Return API date bounds and strict datetime bounds for a period."""
+    """Return API date bounds and strict datetime bounds for a period.
+    
+    GitLab API treats 'until' as EXCLUSIVE, so we use start of next month.
+    Local filtering uses INCLUSIVE bounds with end of month.
+    """
     if not period:
         return None, None, None, None
 
     year, month = period.year, period.month
     since = f"{year}-{month:02d}-01T00:00:00Z"
+    
+    # API 'until' is exclusive: use start of NEXT month
+    if month == 12:
+        until = f"{year + 1}-01-01T00:00:00Z"
+    else:
+        until = f"{year}-{month + 1:02d}-01T00:00:00Z"
+    
+    # Local filtering uses inclusive bounds: end of current month
     last_day = calendar.monthrange(year, month)[1]
-    until = f"{year}-{month:02d}-{last_day:02d}T23:59:59Z"
     start = datetime(year, month, 1, tzinfo=timezone.utc)
     end = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
     return since, until, start, end
@@ -29,6 +40,14 @@ def is_in_period(dt_str: Optional[str], start: Optional[datetime], end: Optional
         return True
     try:
         dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        # Ensure both datetimes are timezone-aware for comparison
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        # Use inclusive bounds with a small buffer for edge cases
         return start <= dt <= end
     except Exception:
         return True

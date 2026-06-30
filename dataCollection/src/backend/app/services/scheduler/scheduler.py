@@ -21,32 +21,37 @@ def create_scheduler() -> AsyncIOScheduler:
     return scheduler
 
 async def _run_monthly_job() -> None:
-    from app.database.session import SessionLocal
+    from app.database.session import SessionLocal, current_db_var
     from app.services.scheduler.team_monthly_dump_service import TeamMonthlyDumpService
     from app.services.notification_service import get_notification_service
     
-    db = SessionLocal()
-    notification_service = get_notification_service()
-    
-    try:
-        service = TeamMonthlyDumpService(db)
-        result  = await service.run()
-        logger.info(f"[Scheduler] Monthly Team-Centric job success: {result}")
+    databases = ["gitlab_kpi1", "telnetdb"]
+    for db_name in databases:
+        token = current_db_var.set(db_name)
+        db = SessionLocal()
+        notification_service = get_notification_service()
         
-        # Send monthly report notification
-        notification_service.send_monthly_extraction_report(
-            period=result.get("period", "Unknown"),
-            summary=result
-        )
-        
-    except Exception as e:
-        logger.error(f"[Scheduler] Monthly Team-Centric job failed: {e}", exc_info=True)
-        
-        # Send alert notification
-        notification_service.send_scheduler_error_alert(
-            error_message=str(e),
-            job_name="monthly_kpi_job"
-        )
-        
-    finally:
-        db.close()
+        try:
+            logger.info(f"[Scheduler] Running monthly job for database: {db_name}")
+            service = TeamMonthlyDumpService(db)
+            result  = await service.run()
+            logger.info(f"[Scheduler] Monthly Team-Centric job success for {db_name}: {result}")
+            
+            # Send monthly report notification
+            notification_service.send_monthly_extraction_report(
+                period=result.get("period", "Unknown"),
+                summary=result
+            )
+            
+        except Exception as e:
+            logger.error(f"[Scheduler] Monthly Team-Centric job failed for {db_name}: {e}", exc_info=True)
+            
+            # Send alert notification
+            notification_service.send_scheduler_error_alert(
+                error_message=str(e),
+                job_name=f"monthly_kpi_job_{db_name}"
+            )
+            
+        finally:
+            db.close()
+            current_db_var.reset(token)

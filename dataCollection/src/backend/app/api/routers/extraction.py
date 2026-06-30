@@ -28,6 +28,8 @@ from app.services.kpi.kpi_service import KpiService
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/extraction", tags=["Extraction"])
 
+print("[MODULE LOAD] extraction.py module loaded - DEBUG VERSION 2026-06-22-13:50")
+
 # Repositories module-level (stateless, safe)
 config_repo  = GitLabConfigRepository()
 project_repo = ProjectRepository()
@@ -134,6 +136,26 @@ async def _background_extraction(
                 lot.project_id = project.id
                 db.add(lot)
                 db.flush()
+
+            if not project.namespace or not project.path:
+                logger.info(f"Enriching project id={project.id} with GitLab metadata during background extraction...")
+                try:
+                    project_data = await client.get_project(project.gitlab_project_id)
+                    if project_data:
+                        from app.services.gitlab.gitlab_mapper import GitLabMapper
+                        mapped = GitLabMapper.map_project(project_data)
+                        project_repo.update(db, project.id, {
+                            "name": mapped.get("name"),
+                            "path": mapped.get("path"),
+                            "namespace": mapped.get("namespace"),
+                            "description": mapped.get("description"),
+                            "visibility": mapped.get("visibility"),
+                            "default_branch": mapped.get("default_branch"),
+                        })
+                        db.flush()
+                        db.refresh(project)
+                except Exception as e:
+                    logger.warning(f"Failed to enrich project details for gitlab_id={project.gitlab_project_id} in background: {e}")
 
             _job_progress[lot_id] = {
                 "step_index": 1, 
@@ -1256,6 +1278,14 @@ async def run_extraction_by_team(
     period_id: Optional[int] = None, all_developers: bool = False, fast_mode: bool = False,
     is_backfill: bool = False, is_smart_sync: bool = False, auto_target_by_period: bool = False
 ):
+    print(f"[RETRY DEBUG ENTRY] ===== FUNCTION ENTRY ===== is_backfill={is_backfill}, project_ids={project_ids}, period_id={period_id}, extraction_type={extraction_type}")
+    try:
+        print(f"[RETRY DEBUG PRINT] ===== EXTRACTION RUN CALLED ===== is_backfill={is_backfill}, project_ids={project_ids}, period_id={period_id}, extraction_type={extraction_type}")
+        logger.info(f"[RETRY DEBUG] ===== EXTRACTION RUN CALLED ===== is_backfill={is_backfill}, project_ids={project_ids}, period_id={period_id}, extraction_type={extraction_type}")
+    except Exception as e:
+        print(f"[RETRY DEBUG EXCEPTION] ===== EXCEPTION IN FUNCTION ===== {str(e)}")
+        logger.error(f"[RETRY DEBUG EXCEPTION] ===== EXCEPTION IN FUNCTION ===== {str(e)}")
+        raise
     from app.models.developer import Developer
     from app.models.project import Project as ProjectModel
     from app.models.developer_project import DeveloperProject
@@ -1324,13 +1354,41 @@ async def run_extraction_by_team(
     launched = []
     for project in projects:
         if is_backfill: lot_repo.delete_realtime_lots(db, period.id, project_id=project.id)
-        lot = ExtractionLot(
-            extraction_type=ext_type, status=ExtractionStatusEnum.running, period_id=period.id,
-            project_id=project.id, developer_id=None, triggered_by=current_admin.id, gitlab_config_id=gitlab_config_id
-        )
-        db.add(lot)
-        db.flush()
-        _job_progress[lot.id] = {"step_index": 0, "step_label": f"Consolidation {project.name}"}
+        
+        # ✅ FIX: Check for existing MONTHLY lot for this project/period and update it instead of creating a new one
+        existing_lot = db.query(ExtractionLot).filter(
+            ExtractionLot.project_id == project.id,
+            ExtractionLot.period_id == period.id,
+            ExtractionLot.extraction_type == ext_type
+        ).first()
+        
+        logger.info(f"[RETRY DEBUG] Project {project.id}, Period {period.id}, Type {ext_type}")
+        logger.info(f"[RETRY DEBUG] Existing lot found: {existing_lot.id if existing_lot else None}")
+        
+        if existing_lot:
+            # Update existing lot to running
+            logger.info(f"[RETRY DEBUG] Updating existing lot {existing_lot.id} to running")
+            existing_lot.status = ExtractionStatusEnum.running
+            existing_lot.created_at = datetime.now(timezone.utc)
+            existing_lot.error_message = None
+            existing_lot.completed_at = None
+            existing_lot.step_progress = 0
+            existing_lot.current_action = "Relance en cours..."
+            existing_lot.retry_count = (existing_lot.retry_count or 0) + 1
+            lot = existing_lot
+            db.add(lot)
+            db.flush()
+            _job_progress[lot.id] = {"step_index": 0, "step_label": f"Relance {project.name}"}
+        else:
+            # Create new lot
+            logger.info(f"[RETRY DEBUG] Creating new lot for project {project.id}")
+            lot = ExtractionLot(
+                extraction_type=ext_type, status=ExtractionStatusEnum.running, period_id=period.id,
+                project_id=project.id, developer_id=None, triggered_by=current_admin.id, gitlab_config_id=gitlab_config_id
+            )
+            db.add(lot)
+            db.flush()
+            _job_progress[lot.id] = {"step_index": 0, "step_label": f"Consolidation {project.name}"}
         # [STRICT MISSION ISOLATION] On filtre les développeurs éligibles spécifiquement pour CE projet
         # pour éviter d'envoyer la liste globale de l'équipe à chaque tâche projet.
         from app.utils.mission_utils import get_certified_developers_for_mission

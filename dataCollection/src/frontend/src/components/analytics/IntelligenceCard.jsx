@@ -1,6 +1,6 @@
 /**
  * IntelligenceCard.jsx - Component for displaying intelligence data in a card-based layout
- * 
+ *
  * Features:
  * - Compact card view with key metrics
  * - Expandable details via modal/drawer
@@ -9,6 +9,30 @@
  * - Professional styling with micro-interactions
  */
 import { useState } from "react";
+
+// ─── Custom Branding Constants (Enterprise-Unique) ─────────────────────────────
+const EASING = {
+  smooth: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  snappy: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  enterprise: 'cubic-bezier(0.16, 1, 0.3, 1)'
+};
+
+const BRAND_COLORS = {
+  primary: '#3b82f6',
+  primaryDark: '#2563eb',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  surface: '#1e293b',
+  surfaceLight: '#334155'
+};
+
+const TRANSITION_DURATION = {
+  fast: '150ms',
+  normal: '250ms',
+  slow: '400ms'
+};
 
 const IntelligenceCard = ({ 
   entityName, 
@@ -31,6 +55,12 @@ const IntelligenceCard = ({
   };
 
   const scoreInfo = getScoreColor(healthScore);
+
+  // Business-specific: Calculate YoY trend if we have enough data
+  const velocityValues = metrics.velocity_trend?.values || [];
+  const hasYoYData = velocityValues.length >= 2;
+  const yoyGrowth = hasYoYData ? ((velocityValues[velocityValues.length - 1] - velocityValues[0]) / velocityValues[0] * 100) : null;
+  const yoyLabel = yoyGrowth !== null ? (yoyGrowth > 0 ? `+${yoyGrowth.toFixed(0)}% YoY` : `${yoyGrowth.toFixed(0)}% YoY`) : null;
 
   // Get trend direction and color
   const getTrendInfo = (trend, metricType) => {
@@ -67,12 +97,13 @@ const IntelligenceCard = ({
       style={{
         background: "rgba(255,255,255,0.03)",
         border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 12,
+        borderLeft: `3px solid ${scoreInfo.color}`,
+        borderRadius: 16,
         padding: "16px",
-        transition: "all 0.3s ease",
+        transition: `all ${TRANSITION_DURATION.normal} ${EASING.snappy}`,
         cursor: "pointer",
-        boxShadow: isHovered ? "0 4px 20px rgba(0,0,0,0.15)" : "none",
-        transform: isHovered ? "translateY(-2px)" : "translateY(0)"
+        boxShadow: isHovered ? "0 8px 32px rgba(0,0,0,0.2)" : "none",
+        transform: isHovered ? "translateY(-3px) scale(1.01)" : "translateY(0) scale(1)"
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -128,8 +159,21 @@ const IntelligenceCard = ({
           {/* Entity Name and Periods */}
           <div>
             <div className="text-white fw-bold" style={{ fontSize: 14 }}>{entityName}</div>
-            <div className="opacity-50" style={{ fontSize: 11, color: "#94a3b8" }}>
-              {nPeriods} mois analysés
+            <div className="d-flex align-items-center gap-2">
+              <span className="opacity-50" style={{ fontSize: 11, color: "#94a3b8" }}>
+                {nPeriods} mois
+              </span>
+              {yoyLabel && (
+                <span className="badge px-2 py-0.5 rounded-pill" style={{
+                  fontSize: 8,
+                  background: yoyGrowth > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                  color: yoyGrowth > 0 ? '#10b981' : '#ef4444',
+                  fontWeight: 700,
+                  letterSpacing: '0.3px'
+                }}>
+                  {yoyLabel}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -174,7 +218,7 @@ const IntelligenceCard = ({
             width: `${healthScore}%`,
             background: scoreInfo.color,
             borderRadius: 2,
-            transition: "width 0.5s ease"
+            transition: `width ${TRANSITION_DURATION.slow} ${EASING.smooth}`
           }}
         />
       </div>
@@ -182,9 +226,9 @@ const IntelligenceCard = ({
       {/* Key Metrics - Compact View */}
       <div className="d-flex flex-column gap-2">
         {[
-          { label: "Vélocité", trend: metrics.velocity_trend, metricType: "velocity", suffix: "" },
-          { label: "Temps de revue", trend: metrics.review_trend, metricType: "review_time", suffix: "h" },
-          { label: "Qualité", trend: metrics.quality_trend, metricType: "quality", suffix: "%", multiplier: 100 }
+          { label: "Vélocité", trend: metrics.velocity_trend, metricType: "velocity", suffix: "", context: "commits/dev" },
+          { label: "Temps de revue", trend: metrics.review_trend, metricType: "review_time", suffix: "h", context: "délai moyen" },
+          { label: "Qualité", trend: metrics.quality_trend, metricType: "quality", suffix: "%", multiplier: 100, context: "taux approbation" }
         ].map((metric, idx) => {
           const trendInfo = getTrendInfo(metric.trend, metric.metricType);
           const vals = metric.trend?.values || [];
@@ -214,6 +258,9 @@ const IntelligenceCard = ({
                   }}
                 ></i>
               </div>
+              <span className="opacity-40" style={{ fontSize: 8, color: '#94a3b8', fontWeight: 500 }}>
+                {metric.context}
+              </span>
             </div>
           );
         })}
@@ -225,12 +272,13 @@ const IntelligenceCard = ({
           className="btn btn-sm w-100"
           style={{
             background: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            color: "#94a3b8",
+            border: `1px solid ${scoreInfo.color}33`,
+            color: scoreInfo.color,
             fontSize: 11,
             padding: "6px 12px",
-            borderRadius: 6,
-            transition: "all 0.2s ease"
+            borderRadius: 8,
+            transition: `all ${TRANSITION_DURATION.fast} ${EASING.smooth}`,
+            fontWeight: 600
           }}
         >
           <i className="ri-expand-down-line me-1"></i>
@@ -243,7 +291,7 @@ const IntelligenceCard = ({
         <div 
           className="mt-3 pt-3"
           style={{ 
-            borderTop: "1px solid rgba(255,255,255,0.1)" 
+            borderTop: `1px solid ${scoreInfo.color}22` 
           }}
         >
           {/* Alerts Section */}

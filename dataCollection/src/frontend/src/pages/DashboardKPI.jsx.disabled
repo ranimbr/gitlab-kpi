@@ -264,54 +264,14 @@ const ExecutiveInsight = ({ latest, projectName }) => {
 };
 
 // ── DORA Metrics Row ───────────────────────────────────────────────────────────
+// DISABLED: DORA Metrics removed from backend
 const DoraMetricsRow = ({ latest, loading }) => {
-  const getDoraLevel = (metric, type) => {
-    if (type === 'lead_time') {
-      if (metric < 24) return { label: 'ELITE', color: 'success' };
-      if (metric < 72) return { label: 'HIGH', color: 'info' };
-      if (metric < 168) return { label: 'MEDIUM', color: 'warning' };
-      return { label: 'LOW', color: 'danger' };
-    }
-    if (type === 'frequency') {
-      if (metric > 1) return { label: 'ELITE', color: 'success' };
-      if (metric > 0.2) return { label: 'HIGH', color: 'info' };
-      if (metric > 0.05) return { label: 'MEDIUM', color: 'warning' };
-      return { label: 'LOW', color: 'danger' };
-    }
-    return { label: '—', color: 'secondary' };
-  };
-
   if (!latest && !loading) {
-     return (
-        <div className="row g-3 mb-4 opacity-50">
-           {[1,2].map(i => (
-              <div key={i} className="col-12 col-md-6">
-                 <div className="card border-0 shadow-sm h-100 overflow-hidden">
-                    <div className="card-body p-4 d-flex align-items-center">
-                       <div className="avatar-lg bg-light rounded-2 me-3"></div>
-                       <div className="flex-grow-1">
-                          <div className="h-25 bg-light rounded w-50 mb-2"></div>
-                          <div className="h-50 bg-light rounded w-75"></div>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-           ))}
-        </div>
-     );
+     return null; // Return null instead of skeleton
   }
 
-  const leadTime = latest?.avg_review_time_hours || 0;
-  const frequency = (latest?.total_mrs_created || 0) / 30; // Approximation par mois
-  const ltDora = getDoraLevel(leadTime, 'lead_time');
-  const freqDora = getDoraLevel(frequency, 'frequency');
-
-  return (
-    <div className="row g-3 mb-4">
-      <div className="col-12 col-md-6">
-        <div className="card border-0 shadow-sm card-animate h-100 overflow-hidden">
-          <div className="card-body p-4">
-            <div className="d-flex align-items-center mb-3">
+  // Return null as DORA Metrics are disabled
+  return null;
               <i className="ri-rocket-2-line fs-1 text-primary me-3"></i>
               <div>
                 <h6 className="text-uppercase fw-bold text-muted mb-1 fs-11" style={{ letterSpacing: '1px' }}>DORA: Deployment Frequency</h6>

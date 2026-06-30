@@ -90,13 +90,14 @@ class AppUserRepository(BaseRepository[AppUser]):
             .all()
         )
 
-    def get_by_dashboard_access(self, db: Session, dashboard_id: int) -> List[AppUser]:
-        """Users ayant dashboard_id dans leur ARRAY dashboard_access (PostgreSQL @>)."""
-        return (
-            db.query(AppUser)
-            .filter(AppUser.dashboard_access.contains([dashboard_id]))
-            .all()
-        )
+    # DISABLED: Dashboard functionality removed
+    # def get_by_dashboard_access(self, db: Session, dashboard_id: int) -> List[AppUser]:
+    #     """Users ayant dashboard_id dans leur ARRAY dashboard_access (PostgreSQL @>)."""
+    #     return (
+    #         db.query(AppUser)
+    #         .filter(AppUser.dashboard_access.contains([dashboard_id]))
+    #         .all()
+    #     )
 
     # ── WRITE ─────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,8 @@ class AppUserRepository(BaseRepository[AppUser]):
         role:             UserRoleEnum        = UserRoleEnum.developer,  # ✅ FIX
         login:            Optional[str]       = None,
         name:             Optional[str]       = None,
-        dashboard_access: Optional[List[int]] = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_access: Optional[List[int]] = None,
         # ✅ AJOUT
         site_id:          Optional[int]       = None,
         group_id:         Optional[int]       = None,
@@ -122,7 +124,8 @@ class AppUserRepository(BaseRepository[AppUser]):
             hashed_password  = hashed_password,
             role             = role,
             is_active        = True,
-            dashboard_access = dashboard_access or [],
+            # DISABLED: Dashboard functionality removed
+            # dashboard_access = dashboard_access or [],
             site_id          = site_id,
             group_id         = group_id,
             profile_id        = profile_id,
@@ -138,7 +141,8 @@ class AppUserRepository(BaseRepository[AppUser]):
         role:                Optional[UserRoleEnum] = None,
         is_active:           Optional[bool]         = None,
         new_hashed_password: Optional[str]          = None,
-        dashboard_access:    Optional[List[int]]    = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_access:    Optional[List[int]]    = None,
         # ✅ AJOUT
         site_id:             Optional[int]          = UNSET,
         group_id:            Optional[int]          = UNSET,
@@ -153,8 +157,9 @@ class AppUserRepository(BaseRepository[AppUser]):
             user.is_active = is_active
         if new_hashed_password is not None:
             user.hashed_password = new_hashed_password
-        if dashboard_access is not None:
-            user.dashboard_access = dashboard_access
+        # DISABLED: Dashboard functionality removed
+        # if dashboard_access is not None:
+        #     user.dashboard_access = dashboard_access
         # ✅ AJOUT : UNSET distingue "non fourni" de None (SET NULL)
         if site_id is not UNSET:
             user.site_id = site_id
@@ -167,18 +172,19 @@ class AppUserRepository(BaseRepository[AppUser]):
         db.flush()
         return user
 
-    def add_dashboard_access(self, db: Session, user: AppUser, dashboard_id: int) -> AppUser:
-        current = list(user.dashboard_access or [])
-        if dashboard_id not in current:
-            current.append(dashboard_id)
-            user.dashboard_access = current
-        db.flush()
-        return user
+    # DISABLED: Dashboard functionality removed
+    # def add_dashboard_access(self, db: Session, user: AppUser, dashboard_id: int) -> AppUser:
+    #     current = list(user.dashboard_access or [])
+    #     if dashboard_id not in current:
+    #         current.append(dashboard_id)
+    #         user.dashboard_access = current
+    #     db.flush()
+    #     return user
 
-    def remove_dashboard_access(self, db: Session, user: AppUser, dashboard_id: int) -> AppUser:
-        current = list(user.dashboard_access or [])
-        if dashboard_id in current:
-            current.remove(dashboard_id)
-            user.dashboard_access = current
-        db.flush()
-        return user
+    # def remove_dashboard_access(self, db: Session, user: AppUser, dashboard_id: int) -> AppUser:
+    #     current = list(user.dashboard_access or [])
+    #     if dashboard_id in current:
+    #         current.remove(dashboard_id)
+    #         user.dashboard_access = current
+    #     db.flush()
+    #     return user

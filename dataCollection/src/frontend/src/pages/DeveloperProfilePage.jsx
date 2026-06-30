@@ -7,15 +7,15 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import developerService from "../services/developerService";
-import analyticsService    from "../services/analyticsService";
-import projectService      from "../services/projectService";
-import periodService      from "../services/periodService";
-import { exportService }   from "../services";
-import api                from "../services/api";
-import LoadingSpinner      from "../components/common/LoadingSpinner";
-import EmptyState          from "../components/common/EmptyState";
-import ScoreRadarChart     from "../components/charts/ScoreRadarChart";
-import ReactApexChart      from "react-apexcharts";  // Phase 5: Evolution chart
+import analyticsService from "../services/analyticsService";
+import projectService from "../services/projectService";
+import periodService from "../services/periodService";
+import { exportService } from "../services";
+import api from "../services/api";
+import LoadingSpinner from "../components/common/LoadingSpinner";
+import EmptyState from "../components/common/EmptyState";
+import ScoreRadarChart from "../components/charts/ScoreRadarChart";
+import ReactApexChart from "react-apexcharts";  // Phase 5: Evolution chart
 
 // ─── Review Details Modal ──────────────────────────────────────────────────────────
 function ReviewDetailModal({ reviews, loading, onClose, developerName, projectName, periodLabel }) {
@@ -136,6 +136,82 @@ function ReviewDetailModal({ reviews, loading, onClose, developerName, projectNa
   );
 }
 
+// ─── Score Formula Modal ─────────────────────────────────────────────────────────
+function ScoreFormulaModal({ onClose }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="modal fade show d-block" role="dialog" aria-modal="true" aria-label="Formule Score Global"
+      style={{ backgroundColor: "rgba(30,34,45,0.6)", backdropFilter: "blur(3px)" }} onClick={onClose}>
+      <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content border-0" style={{ borderRadius: 16, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" }}>
+          <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid #f1f3f7" }}>
+            <div className="d-flex align-items-center justify-content-between">
+              <h5 className="fw-semibold text-dark mb-0" style={{ fontSize: 16 }}>
+                <i className="ri-medal-line me-2 text-danger"></i>Formule Score Global
+              </h5>
+              <button className="btn-close flex-shrink-0" style={{ opacity: 0.5 }} onClick={onClose} aria-label="Fermer"></button>
+            </div>
+          </div>
+          <div className="px-4 py-4">
+            <p className="text-muted mb-4" style={{ fontSize: 13 }}>
+              Le score global est calculé sur une échelle de 0 à 100 pts basé sur 4 métriques pondérées :
+            </p>
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: "#f0fdf4", border: "1px solid #d1fae5" }}>
+                <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style={{ width: 40, height: 40, background: "#10b981", fontSize: 14 }}>
+                  25%
+                </div>
+                <div className="flex-grow-1">
+                  <div className="fw-semibold text-dark" style={{ fontSize: 14 }}>Taux de Commits</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>Commits par développeur (normalisé sur 10 commits/mois)</div>
+                </div>
+              </div>
+              <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style={{ width: 40, height: 40, background: "#3b82f6", fontSize: 14 }}>
+                  25%
+                </div>
+                <div className="flex-grow-1">
+                  <div className="fw-semibold text-dark" style={{ fontSize: 14 }}>Taux de MRs</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>MRs créées par développeur (normalisé sur 5 MRs/mois)</div>
+                </div>
+              </div>
+              <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: "#fef3c7", border: "1px solid #fde68a" }}>
+                <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style={{ width: 40, height: 40, background: "#f59e0b", fontSize: 14 }}>
+                  30%
+                </div>
+                <div className="flex-grow-1">
+                  <div className="fw-semibold text-dark" style={{ fontSize: 14 }}>Taux d'Approbation</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>Pourcentage de MRs approuvées</div>
+                </div>
+              </div>
+              <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: "#fce7f3", border: "1px solid #fbcfe8" }}>
+                <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style={{ width: 40, height: 40, background: "#ec4899", fontSize: 14 }}>
+                  20%
+                </div>
+                <div className="flex-grow-1">
+                  <div className="fw-semibold text-dark" style={{ fontSize: 14 }}>Temps de Revue</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>Score inverse (moins de temps = meilleur score)</div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
+          <div className="px-4 py-3 d-flex align-items-center justify-content-end" style={{ borderTop: "1px solid #f1f3f7", background: "#fafbfc", borderRadius: "0 0 16px 16px" }}>
+            <button className="btn btn-sm" onClick={onClose} style={{ fontSize: 12, padding: "5px 20px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontWeight: 500 }}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Comments Details Modal ─────────────────────────────────────────────────────────
 function CommentsDetailModal({ comments, loading, onClose, developerName, projectName, periodLabel }) {
   useEffect(() => {
@@ -163,7 +239,7 @@ function CommentsDetailModal({ comments, loading, onClose, developerName, projec
               </div>
               <div className="flex-grow-1 min-w-0">
                 <h5 className="fw-semibold text-dark mb-1" style={{ fontSize: 14, lineHeight: 1.45 }}>
-                  Mentorat (Commentaires) - {developerName}
+                  Profil Développeur - {developerName}
                 </h5>
                 <div className="d-flex flex-wrap gap-2 align-items-center">
                   <span style={{ background: "#d7edf9", color: "#1a6fa3", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
@@ -254,12 +330,12 @@ function CommentsDetailModal({ comments, loading, onClose, developerName, projec
 }
 
 // ─── Helpers (Standardized) ──────────────────────────────────────────────────
-const fmt     = (n, d = 2) => (n == null || isNaN(+n)) ? "—" : (+n).toFixed(d);
-const fmtPct  = (n) => (n == null || isNaN(+n)) ? "—" : `${(+n * 100).toFixed(0)}%`;
+const fmt = (n, d = 2) => (n == null || isNaN(+n)) ? "—" : (+n).toFixed(d);
+const fmtPct = (n) => (n == null || isNaN(+n)) ? "—" : `${(+n * 100).toFixed(0)}%`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
-const MOIS_FR = { 0:"Jan",1:"Fév",2:"Mar",3:"Avr",4:"Mai",5:"Jun",6:"Jul",7:"Aoû",8:"Sep",9:"Oct",10:"Nov",11:"Déc" };
-const COLORS  = ["primary", "success", "info", "warning", "danger", "secondary"];
+const MOIS_FR = { 0: "Jan", 1: "Fév", 2: "Mar", 3: "Avr", 4: "Mai", 5: "Jun", 6: "Jul", 7: "Aoû", 8: "Sep", 9: "Oct", 10: "Nov", 11: "Déc" };
+const COLORS = ["primary", "success", "info", "warning", "danger", "secondary"];
 
 function getInitials(name = "") { return (name || "?").split(/[\s._-]/).map(w => w[0]).join("").toUpperCase().slice(0, 2); }
 function getBadges(summary) {
@@ -267,12 +343,12 @@ function getBadges(summary) {
   const badges = [];
   if (summary.total_comments > 100) badges.push({ label: "Menteur", icon: "ri-chat-smile-2-line", color: "primary" });
   else if (summary.total_comments > 20) badges.push({ label: "Collaborateur", icon: "ri-chat-4-line", color: "info" });
-  
+
   if (summary.total_reviews > 50) badges.push({ label: "Lead Reviewer", icon: "ri-eye-line", color: "success" });
   else if (summary.total_reviews > 10) badges.push({ label: "Code Reviewer", icon: "ri-search-line", color: "info" });
-  
+
   if (summary.total_mrs_created > 50) badges.push({ label: "Producteur MR", icon: "ri-git-pull-request-line", color: "warning" });
-  
+
   if ((summary.developer_score || 0) > 0.8) badges.push({ label: "Top Performer", icon: "ri-medal-fill", color: "danger" });
   return badges;
 }
@@ -283,7 +359,7 @@ function deltaInfo(curr, prev) {
   if (Math.abs(pct) < 0.5) return { value: "±0%", color: "secondary", icon: "ri-subtract-line" };
   return pct > 0
     ? { value: `+${pct.toFixed(1)}%`, color: "success", icon: "ri-arrow-up-line" }
-    : { value: `${pct.toFixed(1)}%`,  color: "danger",  icon: "ri-arrow-down-line" };
+    : { value: `${pct.toFixed(1)}%`, color: "danger", icon: "ri-arrow-down-line" };
 }
 
 // ─── Component: Activity Heatmap (GitHub Style) ──────────────────────────────
@@ -295,7 +371,7 @@ function ActivityHeatmap({ data, startDate, endDate, maxCount, loading, accentCo
     const countMap = {};
     (data || []).forEach(d => { countMap[d.date] = d.count; });
     const start = new Date(startDate);
-    const dayOfWeek = start.getDay(); 
+    const dayOfWeek = start.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     start.setDate(start.getDate() + mondayOffset);
     const end = new Date(endDate);
@@ -350,7 +426,7 @@ function ActivityHeatmap({ data, startDate, endDate, maxCount, loading, accentCo
       </div>
       <div className="d-flex gap-1 align-items-start">
         <div className="d-flex flex-column me-2" style={{ gap: 3 }}>
-          {["Lun","","Mer","","Ven","","Dim"].map((d, i) => (
+          {["Lun", "", "Mer", "", "Ven", "", "Dim"].map((d, i) => (
             <div key={i} style={{ height: 11, fontSize: 9, color: "#adb5bd", lineHeight: "11px", width: 22, textAlign: "right" }}>{d}</div>
           ))}
         </div>
@@ -358,13 +434,13 @@ function ActivityHeatmap({ data, startDate, endDate, maxCount, loading, accentCo
           {grid.map((week, wi) => (
             <div key={wi} className="d-flex flex-column" style={{ gap: 3 }}>
               {week.map((day, di) => (
-                <div key={di} 
+                <div key={di}
                   className="heat-cell position-relative"
-                  style={{ 
-                    width: 11, 
-                    height: 11, 
-                    borderRadius: 2, 
-                    background: cellColor(day.count, day.inRange), 
+                  style={{
+                    width: 11,
+                    height: 11,
+                    borderRadius: 2,
+                    background: cellColor(day.count, day.inRange),
                     cursor: day.inRange && day.count > 0 ? "pointer" : "default",
                     animation: "fadeHeatCell 0.4s ease-out forwards",
                     animationDelay: `${(wi * 0.02) + (di * 0.01)}s`,
@@ -388,33 +464,64 @@ function ActivityHeatmap({ data, startDate, endDate, maxCount, loading, accentCo
   );
 }
 
-// ─── Component: Individual KPI Card (Dashboard Pattern) ───────────────────────
+// ─── Component: Individual KPI Card (Premium Pattern from CommitsPage) ───────────────
 function KpiCard({ title, value, unit, icon, color, delta, subtitle, onClick }) {
+  // Map Bootstrap color names to hex values
+  const colorMap = {
+    primary: "#405189",
+    success: "#0ab39c",
+    info: "#299cdb",
+    warning: "#f7b84b",
+    danger: "#f06548",
+    secondary: "#3577f1"
+  };
+  const accentColor = colorMap[color] || colorMap.primary;
+  const rgbColor = accentColor === "#405189" ? "64, 81, 137" :
+                   accentColor === "#0ab39c" ? "10, 179, 156" :
+                   accentColor === "#f06548" ? "240, 101, 72" :
+                   accentColor === "#299cdb" ? "41, 156, 219" :
+                   accentColor === "#f7b84b" ? "247, 184, 75" : "64, 81, 137";
+
   return (
     <div className="col-xl-3 col-sm-6">
-      <div className="card card-animate border-0 shadow-sm h-100" 
-           style={{ cursor: onClick ? 'pointer' : 'default' }}
-           onClick={onClick}>
-        <div className="card-body">
-          <div className="d-flex align-items-start">
-            <div className="avatar-sm flex-shrink-0">
-              <span className={`avatar-title bg-${color}-subtle text-${color} rounded-2 fs-2`}>
-                <i className={icon}></i>
-              </span>
+      <div className="kpi-card-wrapper">
+        <div className="kpi-card-premium"
+          style={{
+            cursor: onClick ? 'pointer' : 'default',
+            '--kpi-accent': accentColor,
+            '--kpi-accent-rgb': rgbColor,
+          }}
+          onClick={onClick}>
+          {/* Subtle dynamic background gradient glowing effect */}
+          <div className="kpi-card-glow-bg" style={{background: `radial-gradient(circle at top right, rgba(${rgbColor}, 0.08), transparent 70%)`}}></div>
+          
+          {/* Background blob */}
+          <div className="kpi-card-blob" style={{opacity: 0.04}}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="180" height="110">
+              <path fill={accentColor} d="m189.5-25.8c0 0 20.1 46.2-26.7 71.4 0 0-60 15.4-62.3 65.3-2.2 49.8-50.6 59.3-57.8 61.5-7.2 2.3-60.8 0-60.8 0l-11.9-199.4z"/>
+            </svg>
+          </div>
+          
+          <div className="kpi-card-inner">
+            <div className="kpi-icon-wrap" style={{background: `${accentColor}12`, color: accentColor, boxShadow: `0 4px 14px rgba(${rgbColor}, 0.15)`}}>
+              <i className={icon}></i>
             </div>
-            <div className="flex-grow-1 ms-3">
-              <p className="text-uppercase fw-medium text-muted mb-1 fs-11" style={{ letterSpacing: ".05em" }}>{title}</p>
-              <h4 className="fs-22 mb-1 fw-bold">{value ?? "—"}<span className="fs-13 text-muted fw-normal ms-1">{unit}</span></h4>
-              {subtitle && (
-                <p className="text-muted fs-11 mb-1">{subtitle}</p>
-              )}
+            <div className="kpi-text">
+              <p className="kpi-label">{title}</p>
+              <h4 className="kpi-value" style={{color: "#1e293b"}}>{value ?? "—"}<span className="kpi-unit">{unit}</span></h4>
+              {subtitle && <p className="kpi-sub"><span className="kpi-sub-badge" style={{background: `${accentColor}10`, color: accentColor}}>{subtitle}</span></p>}
               {delta && (
-                <span className={`badge bg-${delta.color}-subtle text-${delta.color} fs-11`}>
-                  <i className={`${delta.icon} me-1`}></i>{delta.value}
-                </span>
+                <p className="kpi-delta">
+                  <span className={`badge bg-${delta.color}-subtle text-${delta.color} fs-11`}>
+                    <i className={`${delta.icon} me-1`}></i>{delta.value}
+                  </span>
+                </p>
               )}
             </div>
           </div>
+          
+          {/* Beautiful indicator bar at the bottom */}
+          <div className="kpi-active-bar" style={{background: `linear-gradient(90deg, ${accentColor}, rgba(${rgbColor}, 0.4))`}}></div>
         </div>
       </div>
     </div>
@@ -429,17 +536,17 @@ export default function DeveloperProfilePage() {
   const projectId = searchParams.get("project_id");
   const lotIdParam = searchParams.get("lot_id");
 
-  const [developer,  setDeveloper]  = useState(null);
-  const [snapshot,   setSnapshot]   = useState(null);
-  const [summary,    setSummary]    = useState(null);
-  const [prevSnap,   setPrevSnap]   = useState(null);
+  const [developer, setDeveloper] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [prevSnap, setPrevSnap] = useState(null);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [heatmap,    setHeatmap]    = useState([]);
+  const [heatmap, setHeatmap] = useState([]);
   const [heatmapMeta, setHeatmapMeta] = useState(null);
-  const [timeline,   setTimeline]   = useState([]);
-  const [alerts,     setAlerts]     = useState([]);
-  const [projects,   setProjects]   = useState([]);
+  const [timeline, setTimeline] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [selectedPid, setSelectedPid] = useState(projectId || localStorage.getItem("last_project_id") || "");
   const [selectedPeriodId, setSelectedPeriodId] = useState(searchParams.get("period_id") ? Number(searchParams.get("period_id")) : null);
 
@@ -450,12 +557,12 @@ export default function DeveloperProfilePage() {
   const [selectedLotId, setSelectedLotId] = useState(lotIdParam || "");
   const [periods, setPeriods] = useState([]);
 
-  const [loading,        setLoading]        = useState(true);
-  const [error,          setError]          = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [loadingHeatmap, setLoadingHeatmap] = useState(false);
-  const [exportingPdf,   setExportingPdf]   = useState(false);
-  const [heatmapMonths,  setHeatmapMonths]  = useState(12);
-  
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [heatmapMonths, setHeatmapMonths] = useState(12);
+
   // Review details modal state
   const [showReviewsModal, setShowReviewsModal] = useState(false);
   const [reviewsData, setReviewsData] = useState([]);
@@ -463,6 +570,7 @@ export default function DeveloperProfilePage() {
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [commentsData, setCommentsData] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [showScoreFormulaModal, setShowScoreFormulaModal] = useState(false);
 
   // Function to fetch review details
   const handleOpenReviewsModal = useCallback(async () => {
@@ -471,8 +579,8 @@ export default function DeveloperProfilePage() {
     try {
       const p_id = selectedPid ? parseInt(selectedPid) : null;
       // Use the new endpoint that uses the same logic as KPI calculation
-      const response = await api.get(`/kpis/developer/${id}/reviewed-mrs`, { 
-        params: { 
+      const response = await api.get(`/kpis/developer/${id}/reviewed-mrs`, {
+        params: {
           project_id: p_id,
           period_id: selectedPeriodId,
           lot_id: selectedLotId || undefined
@@ -494,8 +602,8 @@ export default function DeveloperProfilePage() {
     try {
       const p_id = selectedPid ? parseInt(selectedPid) : null;
       // Use endpoint to fetch comments
-      const response = await api.get(`/kpis/developer/${id}/comments`, { 
-        params: { 
+      const response = await api.get(`/kpis/developer/${id}/comments`, {
+        params: {
           project_id: p_id,
           period_id: selectedPeriodId,
           lot_id: selectedLotId || undefined
@@ -578,12 +686,12 @@ export default function DeveloperProfilePage() {
         }),
         periodService.getAll().catch(() => [])
       ]);
-      
+
       setAlerts([]); // Alerts endpoint désactivé - utiliser tableau vide
       setHeatmap(heatData?.activity || []);
       setHeatmapMeta(heatData || null);
       setTimeline(timelineData || []);
-      
+
       // Load all periods globally (not project-specific)
       if (allPeriodsData && allPeriodsData.length > 0) {
         const availablePeriods = allPeriodsData.map(p => ({
@@ -591,7 +699,7 @@ export default function DeveloperProfilePage() {
           label: `${p.month}/${p.year}` // Use actual period month/year instead of created_at
         })).reverse();
         setPeriods(availablePeriods);
-        
+
         // Auto-select first period if none selected
         if (!selectedPeriodId && availablePeriods.length > 0) {
           setSelectedPeriodId(availablePeriods[0].id);
@@ -615,7 +723,7 @@ export default function DeveloperProfilePage() {
         // Mode Projet Spécifique
         const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id) }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
-        
+
         // Update periods with project-specific snapshots if available
         let targetPeriodId = selectedPeriodId;
         if (snaps && snaps.length > 0) {
@@ -624,7 +732,7 @@ export default function DeveloperProfilePage() {
             label: new Date(s.snapshot_date).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
           })).reverse();
           setPeriods(projectPeriods);
-          
+
           targetPeriodId = selectedPeriodId || (projectPeriods.length > 0 ? projectPeriods[0].id : null);
           if (targetPeriodId && !selectedPeriodId) setSelectedPeriodId(targetPeriodId);
         }
@@ -639,7 +747,7 @@ export default function DeveloperProfilePage() {
 
         const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         setSummary(summ);
-        
+
         const currentIndex = snaps.findIndex(s => s.period_id === targetPeriodId);
         setPrevSnap(currentIndex > 0 ? snaps[currentIndex - 1] : null);
       }
@@ -651,13 +759,15 @@ export default function DeveloperProfilePage() {
       // 4. Load History Trend (Independent)
       setLoadingHistory(true);
       try {
-        const histData = await analyticsService.getTrend(selectedPid, { 
-          developerId: parseInt(id), 
-          kpiField: 'developer_score', 
+        const histData = await analyticsService.getTrend(selectedPid, {
+          developerId: parseInt(id),
+          kpiField: 'developer_score',
           months: 12,
           periodId: selectedPeriodId
         });
-        setHistory(histData.datasets?.[0]?.data || []);
+        // Convert decimal scores (0-1) to percentage (0-100)
+        const historyData = histData.datasets?.[0]?.data || [];
+        setHistory(historyData.map(val => Math.round((val || 0) * 100)));
       } catch (e) {
         console.error("History Load Error:", e);
       } finally {
@@ -672,44 +782,37 @@ export default function DeveloperProfilePage() {
   if (!developer) return <EmptyState title="Profil introuvable" />;
 
   const kpis = [
-    { 
-      title: "Mentorat (Commentaires)", 
-      value: summary?.total_comments ?? 0, 
-      icon: "ri-chat-4-line",   
-      color: "primary", 
-      delta: snapshot ? { value: `${snapshot.total_comments ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null,
-      onClick: handleOpenCommentsModal
-    },
-    { 
-      title: "Revues de code",    
-      value: summary?.total_reviews ?? 0, 
-      icon: "ri-eye-line", 
-      color: "info", 
+    {
+      title: "Revues de code",
+      value: summary?.total_reviews ?? 0,
+      icon: "ri-eye-line",
+      color: "info",
       delta: snapshot ? { value: `${snapshot.total_reviews ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null,
       onClick: handleOpenReviewsModal
     },
-    { 
-      title: "MRs Créées", 
-      value: summary?.total_mrs_created ?? 0, 
-      icon: "ri-git-pull-request-line", 
-      color: "success", 
-      delta: snapshot ? { value: `${snapshot.total_mrs_created ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
+    {
+      title: "MRs Créées",
+      value: summary?.total_mrs_created ?? 0,
+      icon: "ri-git-pull-request-line",
+      color: "success",
+      delta: snapshot ? { value: `${snapshot.total_mrs_created ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null
     },
-    { 
-      title: "Total Commits", 
-      value: summary?.total_commits ?? 0, 
-      icon: "ri-code-line", 
-      color: "warning", 
-      delta: snapshot ? { value: `${snapshot.total_commits ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null 
+    {
+      title: "Total Commits",
+      value: summary?.total_commits ?? 0,
+      icon: "ri-code-line",
+      color: "warning",
+      delta: snapshot ? { value: `${snapshot.total_commits ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null
     },
-    { 
-      title: "Score Global",   
-      value: summary ? fmt((summary.developer_score || 0) * 100, 0) : "—", 
-      unit: summary ? " pts" : "", 
-      icon: "ri-medal-line", 
+    {
+      title: "Score Global",
+      value: summary ? fmt((summary.developer_score || 0) * 100, 0) : "—",
+      unit: summary ? " pts" : "",
+      icon: "ri-medal-line",
       color: "danger",
       delta: snapshot ? deltaInfo(snapshot.developer_score, prevSnap?.developer_score) : null,
-      subtitle: "Basé sur commits, MRs, approbation et revues"
+      subtitle: "Basé sur commits, MRs, approbation et revues",
+      onClick: () => setShowScoreFormulaModal(true)
     }
   ];
 
@@ -720,7 +823,7 @@ export default function DeveloperProfilePage() {
       <div className="container-fluid">
         {/* ── Bandeau de contexte Lot */}
         {selectedLotId && (
-          <div className="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-center gap-3 py-2 px-4" 
+          <div className="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-center gap-3 py-2 px-4"
             style={{ borderRadius: 12, background: "linear-gradient(90deg, #eff6ff, #f0fdf4)", borderLeft: "4px solid #3b82f6 !important" }}>
             <i className="ri-stack-line fs-20 text-primary"></i>
             <div className="flex-grow-1">
@@ -749,81 +852,120 @@ export default function DeveloperProfilePage() {
           </div>
         </div>
 
-        {/* Identity Section */}
+        {/* Identity Section - Premium Design */}
         <div className="row mb-4">
           <div className="col-12">
             <div className="card border-0 shadow-sm overflow-hidden">
-              <div className="card-body p-4">
-                <div className="row align-items-center g-4">
-                  <div className="col-auto">
-                    <div className="avatar-lg">
-                       <span className="avatar-title bg-primary-subtle text-primary rounded-3 fs-1 fw-bold">
+              <div className="card-body p-0">
+                <div className="premium-identity-card">
+                  {/* Left side: Avatar and basic info */}
+                  <div className="premium-identity-left">
+                    <div className="premium-identity-avatar-wrapper">
+                      <div className="premium-identity-avatar">
+                        <span className="premium-identity-avatar-text">
                           {getInitials(developer.name || developer.gitlab_username)}
-                       </span>
+                        </span>
+                      </div>
+                      <div className="premium-identity-avatar-glow"></div>
+                    </div>
+                    
+                    <div className="premium-identity-info">
+                      <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                        <h3 className="premium-identity-name">{developer.name || developer.gitlab_username}</h3>
+                        {developer.is_validated ? (
+                          <span className="premium-identity-badge premium-identity-badge-success">
+                            <i className="ri-check-double-line me-1"></i>VALIDÉ
+                          </span>
+                        ) : (
+                          <span className="premium-identity-badge premium-identity-badge-warning">
+                            <i className="ri-time-line me-1"></i>EN ATTENTE
+                          </span>
+                        )}
+                        {getBadges(summary).map((b, i) => (
+                          <span key={i} className={`premium-identity-badge premium-identity-badge-${b.color}`}>
+                            <i className={b.icon}></i>{b.label}
+                          </span>
+                        ))}
+                        {!developer.is_active && (
+                          <span className="premium-identity-badge premium-identity-badge-danger">
+                            <i className="ri-logout-box-line me-1"></i>DÉPART LE {fmtDate(
+                              developer.offboarding_date ||
+                              timeline.find(ev => ev.badge === 'DÉSACTIVATION' || ev.title?.includes('Désactivation') || ev.title?.includes('Archivage'))?.date
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="premium-identity-contact">
+                        <div className="premium-identity-contact-item">
+                          <i className="ri-at-line"></i>
+                          <span>@{developer.gitlab_username}</span>
+                        </div>
+                        <div className="premium-identity-contact-item">
+                          <i className="ri-mail-line"></i>
+                          <span>{developer.email || "N/A"}</span>
+                        </div>
+                        <div className="premium-identity-contact-item">
+                          <i className="ri-building-line"></i>
+                          <span>{projects.find(p => p.id === parseInt(selectedPid))?.name || "Projet"}</span>
+                        </div>
+                        {developer.sites?.length > 0 && (() => {
+                          const siteNames = developer.sites
+                            .map(s => typeof s === "string" ? s : (s.name || s.site_name || s.label || s.code || null))
+                            .filter(Boolean);
+                          return siteNames.length > 0 ? (
+                            <div className="premium-identity-contact-item">
+                              <i className="ri-map-pin-line"></i>
+                              <span>{siteNames.join(", ")}</span>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
                   </div>
-                  <div className="col">
-                    <div className="d-flex align-items-center gap-3 mb-2">
-                       <h3 className="fw-bold mb-0 text-dark">{developer.name || developer.gitlab_username}</h3>
-                       {developer.is_validated ? <span className="badge bg-success-subtle text-success fs-11">VALIDÉ</span> : <span className="badge bg-warning-subtle text-warning fs-11">EN ATTENTE</span>}
-                       {getBadges(summary).map((b, i) => (
-                         <span key={i} className={`badge bg-${b.color}-subtle text-${b.color} fs-11 shadow-sm d-flex align-items-center gap-1`}>
-                           <i className={b.icon}></i>{b.label}
-                         </span>
-                       ))}
-                       {!developer.is_active && <span className="badge bg-danger-subtle text-danger fs-11">DÉPART LE {fmtDate(developer.offboarding_date)}</span>}
+                  
+                  {/* Right side: Actions and filters */}
+                  <div className="premium-identity-right">
+                    <div className="premium-identity-actions">
+                      <Link to={`/commits?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`}
+                        className="premium-identity-action-btn premium-identity-action-primary">
+                        <i className="ri-history-line"></i>
+                        <span>Commits</span>
+                      </Link>
+                      <Link to={`/merge?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`}
+                        className="premium-identity-action-btn premium-identity-action-info">
+                        <i className="ri-git-merge-line"></i>
+                        <span>MRs</span>
+                      </Link>
+                      <button className="premium-identity-action-btn premium-identity-action-danger" onClick={() => setExportingPdf(true)}>
+                        <i className="ri-file-pdf-line"></i>
+                        <span>PDF</span>
+                      </button>
                     </div>
-                    <div className="d-flex flex-wrap gap-4 text-muted fs-13">
-                       <span><i className="ri-at-line me-1 text-primary"></i>@{developer.gitlab_username}</span>
-                       <span><i className="ri-mail-line me-1 text-primary"></i>{developer.email || "N/A"}</span>
-                       <span><i className="ri-building-line me-1 text-primary"></i>{projects.find(p=>p.id===parseInt(selectedPid))?.name || "Projet"}</span>
-                       {developer.sites?.length > 0 && (() => {
-                         const siteNames = developer.sites
-                           .map(s => typeof s === "string" ? s : (s.name || s.site_name || s.label || s.code || null))
-                           .filter(Boolean);
-                         return siteNames.length > 0 ? (
-                           <span><i className="ri-map-pin-line me-1 text-primary"></i>{siteNames.join(", ")}</span>
-                         ) : null;
-                       })()}
+                    
+                    <div className="premium-identity-filters">
+                      <div className="premium-identity-filter">
+                        <label className="premium-identity-filter-label">Période</label>
+                        <select className="premium-identity-filter-select"
+                          value={selectedPeriodId || ""} onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}>
+                          <option value="">Dernière</option>
+                          {periods.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="premium-identity-filter">
+                        <label className="premium-identity-filter-label">Projet</label>
+                        <select className="premium-identity-filter-select"
+                          value={selectedPid} onChange={e => setSelectedPid(e.target.value)}>
+                          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
-                  <div className="col-xl-auto">
-                    <div className="d-flex flex-wrap justify-content-xl-end gap-2 mb-3">
-                       <Link to={`/commits?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
-                          className="btn btn-soft-primary d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
-                          <i className="ri-history-line"></i> Commits
-                       </Link>
-                       <Link to={`/merge?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`} 
-                          className="btn btn-soft-info d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold">
-                          <i className="ri-git-merge-line"></i> MRs
-                       </Link>
-                       <button className="btn btn-primary d-flex align-items-center gap-1 shadow-sm fs-12 fw-bold" onClick={() => setExportingPdf(true)}>
-                          <i className="ri-file-pdf-line"></i> PDF
-                       </button>
-                    </div>
-                    <div className="d-flex flex-wrap flex-sm-nowrap justify-content-sm-end gap-2">
-                        <div style={{ width: 160 }}>
-                           <label className="fs-11 fw-bold text-muted text-uppercase mb-1 d-block">Période</label>
-                           <select className="form-select form-select-sm border-light"
-                             value={selectedPeriodId || ""} onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}>
-                             <option value="">Dernière</option>
-                             {periods.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                           </select>
-                        </div>
-                        <div style={{ width: 160 }}>
-                           <label className="fs-11 fw-bold text-muted text-uppercase mb-1 d-block">Projet</label>
-                           <select className="form-select form-select-sm border-light"
-                             value={selectedPid} onChange={e => setSelectedPid(e.target.value)}>
-                             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                           </select>
-                        </div>
-                    </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
         {/* KPI Cards — Toujours affichées pour la structure */}
         <div className="row g-3 mb-4">
@@ -841,158 +983,162 @@ export default function DeveloperProfilePage() {
                 <div className="badge bg-soft-primary text-primary">Vue Historique</div>
               </div>
               <div className="card-body p-0">
-                 <div style={{ height: 320, padding: '20px 20px 0 20px' }}>
-                    <ReactApexChart 
-                       options={{
-                          chart: { 
-                            type: 'area', 
-                            toolbar: { show: false }, 
-                            sparkline: { enabled: false },
+                <div style={{ height: 320, padding: '20px 20px 0 20px' }}>
+                  <ReactApexChart
+                    options={{
+                      chart: {
+                        type: 'line',
+                        toolbar: { show: false },
+                        sparkline: { enabled: false },
+                        fontFamily: "'Inter', sans-serif",
+                        background: 'transparent'
+                      },
+                      stroke: {
+                        curve: 'smooth',
+                        width: 4,
+                        lineCap: 'round',
+                        shadow: {
+                          enabled: true,
+                          color: '#4361ee',
+                          blur: 10,
+                          opacity: 0.3
+                        }
+                      },
+                      fill: {
+                        type: 'gradient',
+                        gradient: {
+                          shadeIntensity: 1,
+                          opacityFrom: 0.4,
+                          opacityTo: 0.05,
+                          stops: [0, 90, 100],
+                          colorStops: [
+                            { offset: 0, color: '#4361ee', opacity: 0.4 },
+                            { offset: 100, color: '#4361ee', opacity: 0.05 }
+                          ]
+                        }
+                      },
+                      xaxis: {
+                        categories: periods.map(p => p.label).reverse(),
+                        labels: {
+                          style: {
+                            colors: '#64748b',
+                            fontSize: '12px',
+                            fontWeight: 600,
                             fontFamily: "'Inter', sans-serif"
-                          },
-                          stroke: { 
-                            curve: 'smooth', 
-                            width: 3,
-                            lineCap: 'round'
-                          },
-                          fill: { 
-                            type: 'gradient', 
-                            gradient: { 
-                              shadeIntensity: 1, 
-                              opacityFrom: 0.7, 
-                              opacityTo: 0.1,
-                              stops: [0, 90, 100]
-                            } 
-                          },
-                          xaxis: { 
-                            categories: periods.map(p => p.label).reverse(),
-                            labels: { 
-                              style: { 
-                                colors: '#64748b', 
-                                fontSize: '12px', 
-                                fontWeight: 500,
-                                fontFamily: "'Inter', sans-serif"
-                              } 
-                            },
-                            axisBorder: { show: false }, 
-                            axisTicks: { show: false },
-                            tooltip: { enabled: false }
-                          },
-                          yaxis: { 
-                            labels: { 
-                              style: { 
-                                colors: '#64748b', 
-                                fontSize: '12px', 
-                                fontWeight: 500,
-                                fontFamily: 'Inter, sans-serif'
-                              } 
-                            },
-                            min: 0,
-                            max: 100,
-                            tickAmount: 8,
-                            floating: false
-                          },
-                          grid: { 
-                            borderColor: '#e2e8f0', 
-                            strokeDashArray: 4,
-                            row: { colors: ['#f1f5f9', 'transparent'], opacity: 1 },
-                            padding: { top: 0, right: 0, bottom: 0, left: 10 }
-                          },
-                          colors: ['#6366f1'],
-                          dataLabels: { enabled: false },
-                          tooltip: { 
-                            theme: 'light', 
-                            x: { show: true },
-                            y: { 
-                              formatter: (val) => val.toFixed(0),
-                              title: { formatter: () => 'Score' }
-                            },
-                            marker: { show: true },
-                            style: {
-                              fontSize: '12px',
-                              fontFamily: 'Inter, sans-serif'
+                          }
+                        },
+                        axisBorder: { show: false },
+                        axisTicks: { show: false },
+                        tooltip: { enabled: false }
+                      },
+                      yaxis: {
+                        labels: {
+                          style: {
+                            colors: '#64748b',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            fontFamily: 'Inter, sans-serif'
+                          }
+                        },
+                        min: 0,
+                        max: 100,
+                        tickAmount: 5,
+                        floating: false
+                      },
+                      grid: {
+                        borderColor: '#f1f5f9',
+                        strokeDashArray: 0,
+                        row: { colors: ['transparent', 'transparent'], opacity: 1 },
+                        column: { colors: ['transparent', 'transparent'], opacity: 1 },
+                        padding: { top: 0, right: 0, bottom: 0, left: 10 }
+                      },
+                      colors: ['#4361ee'],
+                      dataLabels: { enabled: false },
+                      tooltip: {
+                        theme: 'light',
+                        x: { show: true },
+                        y: {
+                          formatter: (val) => val.toFixed(0),
+                          title: { formatter: () => 'Score' }
+                        },
+                        marker: { show: true },
+                        style: {
+                          fontSize: '13px',
+                          fontFamily: 'Inter, sans-serif',
+                          fontWeight: 600
+                        },
+                        background: {
+                          foreColor: '#1e293b'
+                        }
+                      },
+                      annotations: {
+                        yaxis: [
+                          {
+                            y: 50,
+                            borderColor: '#cbd5e1',
+                            borderWidth: 2,
+                            borderDash: 5,
+                            label: {
+                              borderColor: 'transparent',
+                              style: {
+                                color: '#64748b',
+                                background: '#f8fafc',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: { left: 8, right: 8, top: 4, bottom: 4 },
+                                borderRadius: 6,
+                                cssClass: 'annotation-label'
+                              },
+                              text: 'MOYENNE',
+                              position: 'left',
+                              textAnchor: 'start',
+                              offsetX: 0
                             }
                           },
-                          annotations: {
-                            yaxis: [
-                              {
-                                y: 25,
-                                borderColor: '#94a3b8',
-                                borderWidth: 1,
-                                borderDash: 4,
-                                label: {
-                                  borderColor: '#94a3b8',
-                                  style: {
-                                    color: '#64748b',
-                                    background: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 500,
-                                    padding: { left: 4, right: 4, top: 2, bottom: 2 },
-                                    borderRadius: 4
-                                  },
-                                  text: '25',
-                                  position: 'left',
-                                  textAnchor: 'start'
-                                }
+                          {
+                            y: 75,
+                            borderColor: '#10b981',
+                            borderWidth: 2,
+                            borderDash: 5,
+                            label: {
+                              borderColor: 'transparent',
+                              style: {
+                                color: '#059669',
+                                background: '#ecfdf5',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: { left: 8, right: 8, top: 4, bottom: 4 },
+                                borderRadius: 6,
+                                cssClass: 'annotation-label-success'
                               },
-                              {
-                                y: 50,
-                                borderColor: '#94a3b8',
-                                borderWidth: 1,
-                                borderDash: 4,
-                                label: {
-                                  borderColor: '#94a3b8',
-                                  style: {
-                                    color: '#64748b',
-                                    background: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 500,
-                                    padding: { left: 4, right: 4, top: 2, bottom: 2 },
-                                    borderRadius: 4
-                                  },
-                                  text: '50',
-                                  position: 'left',
-                                  textAnchor: 'start'
-                                }
-                              },
-                              {
-                                y: 75,
-                                borderColor: '#94a3b8',
-                                borderWidth: 1,
-                                borderDash: 4,
-                                label: {
-                                  borderColor: '#94a3b8',
-                                  style: {
-                                    color: '#64748b',
-                                    background: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 500,
-                                    padding: { left: 4, right: 4, top: 2, bottom: 2 },
-                                    borderRadius: 4
-                                  },
-                                  text: '75',
-                                  position: 'left',
-                                  textAnchor: 'start'
-                                }
-                              }
-                            ]
-                          },
-                          markers: {
-                            size: 6,
-                            colors: ['#ffffff'],
-                            strokeColors: ['#6366f1'],
-                            strokeWidth: 2,
-                            hover: { size: 8 }
+                              text: 'EXCELLENT',
+                              position: 'left',
+                              textAnchor: 'start',
+                              offsetX: 0
+                            }
                           }
-                       }}
-                       series={[{
-                          name: 'Score de Performance',
-                          data: history.length > 0 ? history : [Math.round((summary?.developer_score || 0) * 100)]
-                       }]}
-                       type="area"
-                       height={300}
-                    />
-                 </div>
+                        ]
+                      },
+                      markers: {
+                        size: 8,
+                        colors: ['#4361ee'],
+                        strokeColors: '#ffffff',
+                        strokeWidth: 3,
+                        hover: {
+                          size: 10,
+                          strokeWidth: 4
+                        },
+                        discrete: []
+                      }
+                    }}
+                    series={[{
+                      name: 'Score de Performance',
+                      data: history.length > 0 ? history : [Math.round((summary?.developer_score || 0) * 100)]
+                    }]}
+                    type="area"
+                    height={300}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1000,32 +1146,67 @@ export default function DeveloperProfilePage() {
 
 
         <div className="row g-4">
-          {/* Heatmap Section */}
-          <div className="col-xl-8">
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header border-bottom d-flex align-items-center">
-                <h4 className="card-title mb-0 flex-grow-1"><i className="ri-calendar-todo-line me-2 text-success"></i>Activité Git (Derniers 12 mois)</h4>
-                <div className="dropdown">
-                   <button className="btn btn-soft-secondary btn-sm" onClick={() => loadData()}><i className="ri-refresh-line"></i></button>
+          {/* Heatmap Section - Premium Design */}
+          <div className="col-12">
+            <div className="card border-0 shadow-sm h-100 overflow-hidden">
+              <div className="card-header bg-gradient-to-r from-success-subtle to-white border-bottom py-4 d-flex align-items-center" style={{ background: "linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)" }}>
+                <div className="flex-grow-1">
+                  <h4 className="card-title mb-1 fw-bold" style={{ fontSize: 16, color: "#1e293b" }}>
+                    <i className="ri-calendar-todo-line me-2 text-success"></i>Activité Git (Derniers 12 mois)
+                  </h4>
+                  <p className="text-muted mb-0 fs-12">Visualisation de l'activité de commits par jour</p>
+                </div>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-soft-success btn-sm" onClick={() => loadData()} style={{ borderRadius: 10 }}>
+                    <i className="ri-refresh-line"></i>
+                  </button>
                 </div>
               </div>
               <div className="card-body">
-                <ActivityHeatmap data={heatmap} startDate={heatmapMeta?.start_date} endDate={heatmapMeta?.end_date} loading={loadingHeatmap} />
-                <div className="mt-4 pt-3 border-top border-light">
-                   <div className="row text-center">
-                      <div className="col-4 border-end border-light">
-                         <h5 className="fw-bold mb-1">{heatmapMeta?.total_commits || 0}</h5>
-                         <p className="text-muted fs-11 mb-0 text-uppercase">Total Commits <br/><span className="fs-9 opacity-75">(Hors merges)</span></p>
+                <div className="premium-heatmap-wrapper">
+                  <ActivityHeatmap data={heatmap} startDate={heatmapMeta?.start_date} endDate={heatmapMeta?.end_date} loading={loadingHeatmap} />
+                </div>
+                
+                {/* Premium Stats Row */}
+                <div className="premium-heatmap-stats mt-4 pt-4">
+                  <div className="row g-3">
+                    <div className="col-4">
+                      <div className="premium-heatmap-stat-card">
+                        <div className="premium-heatmap-stat-icon premium-heatmap-stat-icon-success">
+                          <i className="ri-git-commit-line"></i>
+                        </div>
+                        <div className="premium-heatmap-stat-content">
+                          <h5 className="premium-heatmap-stat-value">{heatmapMeta?.total_commits || 0}</h5>
+                          <p className="premium-heatmap-stat-label">Total Commits</p>
+                          <span className="premium-heatmap-stat-sub">Hors merges</span>
+                        </div>
                       </div>
-                      <div className="col-4 border-end border-light">
-                         <h5 className="fw-bold mb-1">{heatmapMeta?.total_days_active || 0}</h5>
-                         <p className="text-muted fs-12 mb-0 uppercase">JOURS ACTIFS</p>
+                    </div>
+                    <div className="col-4">
+                      <div className="premium-heatmap-stat-card">
+                        <div className="premium-heatmap-stat-icon premium-heatmap-stat-icon-primary">
+                          <i className="ri-calendar-check-line"></i>
+                        </div>
+                        <div className="premium-heatmap-stat-content">
+                          <h5 className="premium-heatmap-stat-value">{heatmapMeta?.total_days_active || 0}</h5>
+                          <p className="premium-heatmap-stat-label">Jours Actifs</p>
+                          <span className="premium-heatmap-stat-sub">Présence Git</span>
+                        </div>
                       </div>
-                      <div className="col-4">
-                         <h5 className="fw-bold mb-1">{fmt(heatmapMeta?.avg_per_day, 1)}</h5>
-                         <p className="text-muted fs-12 mb-0 uppercase">MOY / JOUR</p>
+                    </div>
+                    <div className="col-4">
+                      <div className="premium-heatmap-stat-card">
+                        <div className="premium-heatmap-stat-icon premium-heatmap-stat-icon-info">
+                          <i className="ri-bar-chart-line"></i>
+                        </div>
+                        <div className="premium-heatmap-stat-content">
+                          <h5 className="premium-heatmap-stat-value">{fmt(heatmapMeta?.avg_per_day, 1)}</h5>
+                          <p className="premium-heatmap-stat-label">Moy/Jour</p>
+                          <span className="premium-heatmap-stat-sub">Régularité</span>
+                        </div>
                       </div>
-                   </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1043,90 +1224,118 @@ export default function DeveloperProfilePage() {
                   <h4 className="card-title mb-0 text-danger"><i className="ri-error-warning-line me-2"></i>Alertes Actives ({alerts.length})</h4>
                 </div>
                 <div className="card-body">
-                   <div className="table-responsive">
-                      <table className="table table-nowrap align-middle mb-0">
-                         <tbody>
-                            {alerts.map((a, i) => (
-                               <tr key={i}>
-                                  <td style={{width: 40}}><i className={`ri-alert-fill fs-20 text-${a.level === 'CRITICAL' ? 'danger' : 'warning'}`}></i></td>
-                                  <td>
-                                     <h6 className="fs-13 mb-1">{a.rule_name}</h6>
-                                     <p className="text-muted mb-0 fs-12">{a.description}</p>
-                                  </td>
-                                  <td><span className={`badge bg-${a.level === 'CRITICAL' ? 'danger' : 'warning'}-subtle text-${a.level === 'CRITICAL' ? 'danger' : 'warning'}`}>{a.level}</span></td>
-                                  <td className="text-muted fs-12">{fmtDate(a.detected_at)}</td>
-                               </tr>
-                            ))}
-                         </tbody>
-                      </table>
-                   </div>
+                  <div className="table-responsive">
+                    <table className="table table-nowrap align-middle mb-0">
+                      <tbody>
+                        {alerts.map((a, i) => (
+                          <tr key={i}>
+                            <td style={{ width: 40 }}><i className={`ri-alert-fill fs-20 text-${a.level === 'CRITICAL' ? 'danger' : 'warning'}`}></i></td>
+                            <td>
+                              <h6 className="fs-13 mb-1">{a.rule_name}</h6>
+                              <p className="text-muted mb-0 fs-12">{a.description}</p>
+                            </td>
+                            <td><span className={`badge bg-${a.level === 'CRITICAL' ? 'danger' : 'warning'}-subtle text-${a.level === 'CRITICAL' ? 'danger' : 'warning'}`}>{a.level}</span></td>
+                            <td className="text-muted fs-12">{fmtDate(a.detected_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Phase 6: Lifecycle Timeline (SCD Type 2) */}
+        {/* Phase 6: Lifecycle Timeline (Premium Design) */}
         <div className="row mt-4 mb-5" id="timeline-section">
           <div className="col-12">
             <div className="card border-0 shadow-sm overflow-hidden">
-              <div className="card-header bg-light-subtle border-bottom py-3 d-flex align-items-center">
-                <h4 className="card-title mb-0 flex-grow-1"><i className="ri-history-line me-2 text-primary"></i>Timeline d'Activité & Présence Professionnelle</h4>
-                <span className="badge bg-soft-info text-info fs-11">Source : RH + GitLab</span>
+              <div className="card-header bg-gradient-to-r from-light-subtle to-white border-bottom py-4 d-flex align-items-center" style={{ background: "linear-gradient(135deg, #f8f9fc 0%, #ffffff 100%)" }}>
+                <div className="flex-grow-1">
+                  <h4 className="card-title mb-1 fw-bold" style={{ fontSize: 16, color: "#1e293b" }}>
+                    <i className="ri-history-line me-2 text-primary"></i>Timeline d'Activité & Présence Professionnelle
+                  </h4>
+                  <p className="text-muted mb-0 fs-12">Historique complet des événements RH et GitLab</p>
+                </div>
+                <div className="d-flex gap-2">
+                  <span className="badge bg-soft-info text-info fs-11" style={{ padding: "6px 12px", borderRadius: 20 }}>
+                    <i className="ri-database-2-line me-1"></i>Source : RH + GitLab
+                  </span>
+                  <span className="badge bg-soft-primary text-primary fs-11" style={{ padding: "6px 12px", borderRadius: 20 }}>
+                    <i className="ri-time-line me-1"></i>{timeline.length} événements
+                  </span>
+                </div>
               </div>
-              <div className="card-body pt-4">
-                <div className="position-relative ms-3 ps-4" style={{ borderLeft: "2px solid #eff2f7" }}>
+              <div className="card-body pt-5 pb-4">
+                <div className="premium-timeline-container">
                   {timeline.map((ev, i) => (
-                    <div key={i} className="mb-4 position-relative">
-                      <div className={`position-absolute bg-${ev.color}-subtle text-${ev.color} rounded-circle d-flex align-items-center justify-content-center shadow-sm`} 
-                           style={{ width: 32, height: 32, left: -49, top: -2, border: "3px solid #fff", zIndex: 2 }}>
-                        <i className={`${ev.icon} fs-14`}></i>
+                    <div key={i} className="premium-timeline-item" style={{ animationDelay: `${i * 0.1}s` }}>
+                      {/* Timeline dot with glow effect */}
+                      <div className={`premium-timeline-dot premium-timeline-dot-${ev.color}`}>
+                        <div className={`premium-timeline-dot-inner bg-${ev.color}-subtle text-${ev.color}`}>
+                          <i className={`${ev.icon} fs-14`}></i>
+                        </div>
+                        <div className={`premium-timeline-dot-glow bg-${ev.color}-subtle`}></div>
                       </div>
-                      <div className="d-flex justify-content-between align-items-start mb-1 ms-2">
-                        <div className="flex-grow-1">
-                           <div className="d-flex align-items-center justify-content-between mb-1">
-                             <div className="d-flex align-items-center gap-2">
-                               <h6 className="mb-0 fw-bold text-dark">{ev.title}</h6>
-                               {ev.is_mission && (
-                                 <span className="badge bg-soft-success text-success fs-10 border border-success border-opacity-25">
-                                   <i className="ri-verified-badge-line me-1"></i>AFFECTATION RH
-                                 </span>
-                               )}
-                             </div>
-                             <span className="text-muted fs-11 fw-semibold"><i className="ri-calendar-event-line me-1"></i>{fmtDate(ev.date)}</span>
-                           </div>
-                           
-                           {ev.is_mission ? (
-                             <div className="mt-2 p-3 bg-primary bg-opacity-10 rounded-3 border-start border-4 border-primary shadow-sm" style={{ borderColor: '#4361ee !important' }}>
-                                <div className="d-flex align-items-center gap-3">
-                                   <div style={{ width: 40, height: 40, background: '#fff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4361ee', boxShadow: '0 2px 6px rgba(67,97,238,0.1)' }}>
-                                      <i className="ri-rocket-2-fill fs-20"></i>
-                                   </div>
-                                   <div>
-                                      <p className="text-dark fs-13 mb-0 fw-bold">{ev.description}</p>
-                                      <p className="text-muted fs-11 mb-0">Mission certifiée par le système de pilotage</p>
-                                   </div>
+                      
+                      {/* Timeline content card */}
+                      <div className="premium-timeline-content">
+                        <div className="premium-timeline-card">
+                          {/* Card header */}
+                          <div className="premium-timeline-header">
+                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                              <h6 className="premium-timeline-title">{ev.title}</h6>
+                              {ev.badge ? (
+                                <span className={`premium-timeline-badge premium-timeline-badge-${ev.color}`}>
+                                  <i className="ri-verified-badge-line me-1"></i>{ev.badge}
+                                </span>
+                              ) : ev.is_mission ? (
+                                <span className="premium-timeline-badge premium-timeline-badge-success">
+                                  <i className="ri-verified-badge-line me-1"></i>AFFECTATION RH
+                                </span>
+                              ) : null}
+                            </div>
+                            <span className="premium-timeline-date">
+                              <i className="ri-calendar-event-line me-1"></i>{fmtDate(ev.date)}
+                            </span>
+                          </div>
+                          
+                          {/* Card body */}
+                          {ev.is_mission ? (
+                            <div className={`premium-timeline-body premium-timeline-body-${ev.color}`}>
+                              <div className="d-flex align-items-center gap-3">
+                                <div className={`premium-timeline-icon-box bg-${ev.color}-subtle text-${ev.color}`}>
+                                  <i className={`${ev.icon || 'ri-rocket-2-fill'} fs-20`}></i>
                                 </div>
-                             </div>
-                           ) : (
-                             <div className="mt-2 p-3 bg-light bg-opacity-50 rounded-3 border-start border-4 border-primary shadow-sm" style={{ borderColor: `var(--vz-${ev.color}) !important` }}>
-                                <p className="text-dark fs-13 mb-0" style={{ lineHeight: '1.5', fontWeight: 500 }}>{ev.description}</p>
-                                {ev.details && Object.keys(ev.details).length > 0 && (
-                                  <div className="mt-2 pt-2 border-top border-dashed border-muted fs-10 text-muted">
-                                     <i className="ri-terminal-box-line me-1"></i>
-                                     Données d'audit : {typeof ev.details === 'string' ? ev.details : JSON.stringify(ev.details).slice(0, 80)}...
-                                  </div>
-                                )}
-                             </div>
-                           )}
+                                <div className="flex-grow-1">
+                                  <p className="premium-timeline-description">{ev.description}</p>
+                                  <p className="premium-timeline-meta">Mission certifiée par le système de pilotage</p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="premium-timeline-body">
+                              <p className="premium-timeline-description">{ev.description}</p>
+                              {ev.details && Object.keys(ev.details).length > 0 && (
+                                <div className="premium-timeline-audit">
+                                  <i className="ri-terminal-box-line me-1"></i>
+                                  Données d'audit : {typeof ev.details === 'string' ? ev.details : JSON.stringify(ev.details).slice(0, 80)}...
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))}
                   {timeline.length === 0 && (
-                    <div className="text-center py-4">
-                      <i className="ri-calendar-line fs-40 text-light d-block mb-2"></i>
-                      <div className="text-muted fs-13">Aucun historique d'activité disponible pour ce profil.</div>
+                    <div className="text-center py-5">
+                      <div className="premium-empty-state">
+                        <i className="ri-calendar-line fs-48 text-light d-block mb-3"></i>
+                        <h6 className="text-muted fw-semibold mb-2">Aucun historique disponible</h6>
+                        <p className="text-muted fs-13">Les données d'activité n'ont pas encore été collectées pour ce profil.</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1139,18 +1348,12 @@ export default function DeveloperProfilePage() {
         <div className="row mt-4 mb-4 d-print-none">
           <div className="col-12 d-flex gap-2 justify-content-end flex-wrap">
             {/* [NEW] Bouton Analyse Performance 360° */}
+            
             <button
-              className="btn d-flex align-items-center gap-2 fw-semibold"
-              style={{background:"linear-gradient(135deg,#f7b84b,#f06548)",color:"#fff",border:"none",boxShadow:"0 4px 12px rgba(240,101,72,0.35)",transition:"all .2s"}}
-              onClick={() => navigate(`/developers/${id}/performance?project_id=${selectedPid}${selectedPeriodId ? `&period_id=${selectedPeriodId}` : ""}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`)}
-            >
-              <i className="ri-bar-chart-2-line"></i>Analyse Performance 360°
-            </button>
-            <button 
               className="btn btn-soft-danger d-flex align-items-center gap-2"
               onClick={() => {
                 const originalTitle = document.title;
-                document.title = `Bilan_${(developer.name || developer.gitlab_username).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}`;
+                document.title = `Bilan_${(developer.name || developer.gitlab_username).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`;
                 window.print();
                 document.title = originalTitle;
               }}
@@ -1188,6 +1391,13 @@ export default function DeveloperProfilePage() {
         />
       )}
 
+      {/* Score Formula Modal */}
+      {showScoreFormulaModal && (
+        <ScoreFormulaModal
+          onClose={() => setShowScoreFormulaModal(false)}
+        />
+      )}
+
       {/* Global & Print styles */}
       <style>{`
         @media print {
@@ -1215,6 +1425,699 @@ export default function DeveloperProfilePage() {
           box-shadow: 0 4px 8px rgba(0,0,0,0.15);
           z-index: 10 !important;
           border-radius: 3px;
+        }
+
+        /* Enterprise KPI Card Styles */
+        .kpi-card-wrapper { display: flex; flex-direction: column; }
+
+        .kpi-card-premium {
+          position: relative;
+          overflow: hidden;
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 20px 16px;
+          transition: all 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+        
+        .kpi-card-premium:hover {
+          border-color: #d1d5db;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+        
+        .kpi-card-glow-bg {
+          display: none;
+        }
+        
+        .kpi-card-blob {
+          display: none;
+        }
+        
+        .kpi-card-inner {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        
+        .kpi-icon-wrap {
+          width: 48px; height: 48px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 22px;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+        
+        .kpi-text { flex: 1; }
+        
+        .kpi-label {
+          font-size: 11px;
+          font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          color: #6b7280;
+          margin-bottom: 6px;
+        }
+        
+        .kpi-value {
+          font-size: 24px;
+          font-weight: 600;
+          margin-bottom: 0;
+          line-height: 1.2;
+          letter-spacing: -0.3px;
+        }
+
+        .kpi-unit {
+          font-size: 13px;
+          font-weight: 400;
+          color: #6b7280;
+          margin-left: 3px;
+        }
+        
+        .kpi-sub {
+          font-size: 11px;
+          margin-top: 6px;
+          margin-bottom: 0;
+        }
+        
+        .kpi-sub-badge {
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-weight: 500;
+          font-size: 10px;
+          display: inline-block;
+        }
+
+        .kpi-delta {
+          margin-top: 6px;
+          margin-bottom: 0;
+        }
+        
+        .kpi-active-bar {
+          display: none;
+        }
+
+        /* Enterprise Timeline Styles */
+        .premium-timeline-container {
+          position: relative;
+          padding-left: 20px;
+        }
+
+        .premium-timeline-container::before {
+          content: '';
+          position: absolute;
+          left: 5px;
+          top: 4px;
+          bottom: 4px;
+          width: 2px;
+          background: #e5e7eb;
+          border-radius: 1px;
+        }
+
+        .premium-timeline-item {
+          position: relative;
+          margin-bottom: 24px;
+          opacity: 1;
+          animation: none;
+        }
+
+        @keyframes timelineFadeIn {
+          from {
+            opacity: 0;
+            transform: translateX(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        .premium-timeline-dot {
+          position: absolute;
+          left: -20px;
+          top: 2px;
+          width: 12px;
+          height: 12px;
+          z-index: 2;
+        }
+
+        .premium-timeline-dot-inner {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid #fff;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          transition: all 0.2s ease;
+        }
+
+        .premium-timeline-dot-glow {
+          display: none;
+        }
+
+        .premium-timeline-item:hover .premium-timeline-dot-inner {
+          transform: scale(1.1);
+        }
+
+        .premium-timeline-content {
+          margin-left: 6px;
+        }
+
+        .premium-timeline-card {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 16px;
+          transition: all 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .premium-timeline-card:hover {
+          border-color: #d1d5db;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .premium-timeline-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #f3f4f6;
+        }
+
+        .premium-timeline-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #111827;
+          margin: 0;
+          letter-spacing: -0.2px;
+        }
+
+        .premium-timeline-badge {
+          font-size: 10px;
+          font-weight: 600;
+          padding: 3px 8px;
+          border-radius: 4px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+
+        .premium-timeline-badge-primary {
+          background: #dbeafe;
+          color: #1e40af;
+          border: 1px solid #bfdbfe;
+        }
+
+        .premium-timeline-badge-success {
+          background: #dcfce7;
+          color: #166534;
+          border: 1px solid #bbf7d0;
+        }
+
+        .premium-timeline-badge-info {
+          background: #e0f2fe;
+          color: #075985;
+          border: 1px solid #bae6fd;
+        }
+
+        .premium-timeline-badge-warning {
+          background: #fef3c7;
+          color: #92400e;
+          border: 1px solid #fde68a;
+        }
+
+        .premium-timeline-badge-danger {
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #fecaca;
+        }
+
+        .premium-timeline-date {
+          font-size: 11px;
+          font-weight: 500;
+          color: #6b7280;
+          background: #f9fafb;
+          padding: 3px 8px;
+          border-radius: 4px;
+        }
+
+        .premium-timeline-body {
+          padding-top: 2px;
+        }
+
+        .premium-timeline-body-primary {
+          background: #f9fafb;
+          border-radius: 6px;
+          padding: 12px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .premium-timeline-body-success {
+          background: #f9fafb;
+          border-radius: 6px;
+          padding: 12px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .premium-timeline-body-info {
+          background: #f9fafb;
+          border-radius: 6px;
+          padding: 12px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .premium-timeline-body-warning {
+          background: #f9fafb;
+          border-radius: 6px;
+          padding: 12px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .premium-timeline-body-danger {
+          background: #f9fafb;
+          border-radius: 6px;
+          padding: 12px;
+          border: 1px solid #e5e7eb;
+        }
+
+        .premium-timeline-icon-box {
+          width: 40px;
+          height: 40px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          flex-shrink: 0;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .premium-timeline-description {
+          font-size: 13px;
+          font-weight: 400;
+          color: #374151;
+          margin: 0 0 4px 0;
+          line-height: 1.5;
+        }
+
+        .premium-timeline-meta {
+          font-size: 11px;
+          color: #6b7280;
+          margin: 0;
+          font-weight: 400;
+        }
+
+        .premium-timeline-audit {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid #e5e7eb;
+          font-size: 10px;
+          color: #9ca3af;
+          font-family: 'SFMono-Regular', monospace;
+        }
+
+        .premium-empty-state {
+          padding: 32px 16px;
+        }
+
+        .premium-empty-state i {
+          opacity: 0.4;
+        }
+
+        /* Enterprise Heatmap Styles */
+        .premium-heatmap-wrapper {
+          background: #fff;
+          border-radius: 8px;
+          padding: 16px;
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          transition: all 0.2s ease;
+        }
+
+        .premium-heatmap-wrapper:hover {
+          border-color: #d1d5db;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .premium-heatmap-stats {
+          margin-top: 24px;
+          padding-top: 24px;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        .premium-heatmap-stat-card {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          transition: all 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          height: 100%;
+        }
+
+        .premium-heatmap-stat-card:hover {
+          border-color: #d1d5db;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .premium-heatmap-stat-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+
+        .premium-heatmap-stat-card:hover .premium-heatmap-stat-icon {
+          transform: scale(1.05);
+        }
+
+        .premium-heatmap-stat-icon-success {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .premium-heatmap-stat-icon-primary {
+          background: #dbeafe;
+          color: #1e40af;
+        }
+
+        .premium-heatmap-stat-icon-info {
+          background: #e0f2fe;
+          color: #075985;
+        }
+
+        .premium-heatmap-stat-content {
+          flex: 1;
+        }
+
+        .premium-heatmap-stat-value {
+          font-size: 24px;
+          font-weight: 600;
+          color: #111827;
+          margin: 0 0 4px 0;
+          line-height: 1.2;
+          letter-spacing: -0.3px;
+        }
+
+        .premium-heatmap-stat-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #374151;
+          margin: 0 0 2px 0;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+
+        .premium-heatmap-stat-sub {
+          font-size: 10px;
+          font-weight: 400;
+          color: #6b7280;
+          text-transform: none;
+          letter-spacing: normal;
+        }
+
+        /* Enterprise Identity Card Styles */
+        .premium-identity-card {
+          display: flex;
+          align-items: center;
+          gap: 32px;
+          padding: 28px;
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          min-height: 120px;
+        }
+
+        .premium-identity-left {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          flex: 1;
+        }
+
+        .premium-identity-avatar-wrapper {
+          position: relative;
+        }
+
+        .premium-identity-avatar {
+          width: 72px;
+          height: 72px;
+          border-radius: 12px;
+          background: #2563eb;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          transition: all 0.2s ease;
+        }
+
+        .premium-identity-avatar:hover {
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+
+        .premium-identity-avatar-text {
+          font-size: 28px;
+          font-weight: 600;
+          color: #fff;
+          letter-spacing: -0.5px;
+        }
+
+        .premium-identity-avatar-glow {
+          display: none;
+        }
+
+        .premium-identity-info {
+          flex: 1;
+        }
+
+        .premium-identity-name {
+          font-size: 22px;
+          font-weight: 600;
+          color: #111827;
+          margin: 0;
+          letter-spacing: -0.3px;
+        }
+
+        .premium-identity-badge {
+          font-size: 11px;
+          font-weight: 600;
+          padding: 5px 10px;
+          border-radius: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .premium-identity-badge-success {
+          background: #dcfce7;
+          color: #166534;
+          border: 1px solid #bbf7d0;
+        }
+
+        .premium-identity-badge-warning {
+          background: #fef3c7;
+          color: #92400e;
+          border: 1px solid #fde68a;
+        }
+
+        .premium-identity-badge-danger {
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #fecaca;
+        }
+
+        .premium-identity-badge-primary {
+          background: #dbeafe;
+          color: #1e40af;
+          border: 1px solid #bfdbfe;
+        }
+
+        .premium-identity-badge-info {
+          background: #e0f2fe;
+          color: #075985;
+          border: 1px solid #bae6fd;
+        }
+
+        .premium-identity-contact {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          margin-top: 10px;
+        }
+
+        .premium-identity-contact-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: #6b7280;
+          font-weight: 400;
+        }
+
+        .premium-identity-contact-item i {
+          font-size: 14px;
+          color: #2563eb;
+        }
+
+        .premium-identity-right {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          min-width: 300px;
+        }
+
+        .premium-identity-actions {
+          display: flex;
+          gap: 10px;
+        }
+
+        .premium-identity-action-btn {
+          flex: 1;
+          padding: 10px 16px;
+          border-radius: 6px;
+          border: 1px solid #d1d5db;
+          font-size: 12px;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-decoration: none;
+          background: #ffffff;
+          color: #374151;
+        }
+
+        .premium-identity-action-btn:hover {
+          background: #f9fafb;
+          border-color: #9ca3af;
+        }
+
+        .premium-identity-action-btn i {
+          font-size: 14px;
+        }
+
+        .premium-identity-action-btn span {
+          text-transform: none;
+          letter-spacing: normal;
+        }
+
+        .premium-identity-action-primary {
+          background: #2563eb;
+          color: #ffffff;
+          border-color: #2563eb;
+        }
+
+        .premium-identity-action-primary:hover {
+          background: #1d4ed8;
+          border-color: #1d4ed8;
+        }
+
+        .premium-identity-action-info {
+          background: #ffffff;
+          color: #0891b2;
+          border-color: #0891b2;
+        }
+
+        .premium-identity-action-info:hover {
+          background: #f0f9ff;
+          border-color: #0e7490;
+        }
+
+        .premium-identity-action-danger {
+          background: #ffffff;
+          color: #dc2626;
+          border-color: #dc2626;
+        }
+
+        .premium-identity-action-danger:hover {
+          background: #fef2f2;
+          border-color: #b91c1c;
+        }
+
+        .premium-identity-filters {
+          display: flex;
+          gap: 14px;
+        }
+
+        .premium-identity-filter {
+          flex: 1;
+        }
+
+        .premium-identity-filter-label {
+          font-size: 11px;
+          font-weight: 500;
+          color: #6b7280;
+          text-transform: none;
+          letter-spacing: normal;
+          margin-bottom: 5px;
+          display: block;
+        }
+
+        .premium-identity-filter-select {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 400;
+          color: #374151;
+          background: #ffffff;
+          transition: all 0.2s ease;
+        }
+
+        .premium-identity-filter-select:hover {
+          border-color: #9ca3af;
+        }
+
+        .premium-identity-filter-select:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        }
+
+        @media (max-width: 992px) {
+          .premium-identity-card {
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+          }
+
+          .premium-identity-left {
+            width: 100%;
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .premium-identity-contact {
+            justify-content: center;
+          }
+
+          .premium-identity-right {
+            width: 100%;
+            min-width: unset;
+          }
         }
       `}</style>
     </div>

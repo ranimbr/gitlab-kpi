@@ -1,0 +1,8 @@
+version: "2"
+tunnels:
+  frontend:
+    proto: http
+    addr: 127.0.0.1:5173
+  backend:
+    proto: http
+    addr: 127.0.0.1:8000

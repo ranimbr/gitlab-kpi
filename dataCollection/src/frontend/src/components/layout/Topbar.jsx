@@ -388,30 +388,30 @@ function injectTopbarCSS() {
 
 // ─── Route labels ─────────────────────────────────────────────────────────────
 const LABELS = {
-  "/":                         { label: "Dashboard",          icon: "ri-dashboard-3-line"     },
-  "/dashboard":                { label: "Dashboard",          icon: "ri-dashboard-3-line"     },
-  "/developers":               { label: "Hub Développeurs",   icon: "ri-code-s-slash-line"    },
-  "/team":                     { label: "Gestion d'Équipe",   icon: "ri-team-line"            },
-  "/merge":                    { label: "Merge Requests",     icon: "ri-git-merge-line"       },
-  "/commits":                  { label: "Commits GitLab",     icon: "ri-git-commit-line"      },
+  "/": { label: "Dashboard", icon: "ri-dashboard-3-line" },
+  "/dashboard": { label: "Dashboard", icon: "ri-dashboard-3-line" },
+  "/developers": { label: "Hub Développeurs", icon: "ri-code-s-slash-line" },
+  "/team": { label: "Gestion d'Équipe", icon: "ri-team-line" },
+  "/merge": { label: "Merge Requests", icon: "ri-git-merge-line" },
+  "/commits": { label: "Commits GitLab", icon: "ri-git-commit-line" },
   // ✅ [REMOVED] Analyses KPI - Non fonctionnelle
   // "/kpi-analysis":             { label: "Analyses KPI",       icon: "ri-line-chart-line"      },
   // ✅ [REMOVED] Alerts KPI - Non fonctionnelle
   // "/alerts":                   { label: "Alertes KPI",        icon: "ri-notification-3-line"  },
-  "/extraction-lots":          { label: "Registre des Lots",  icon: "ri-database-2-line"      },
-  "/extraction":               { label: "Moteur d'Extraction",icon: "ri-rocket-2-line"        },
-  "/periods":                  { label: "Périodes",           icon: "ri-calendar-2-line"      },
-  "/profile":                  { label: "Mon Profil",         icon: "ri-user-settings-line"   },
-  "/admin/sites":              { label: "Sites Telnet",        icon: "ri-building-2-line"      },
-  "/admin/projects":           { label: "Projets GitLab",     icon: "ri-folder-2-line"        },
-  "/admin/gitlab-configs":     { label: "Configs GitLab",     icon: "ri-settings-3-line"      },
-  "/admin/users":              { label: "Utilisateurs",       icon: "ri-group-line"           },
-  "/admin/developers":         { label: "Validation Profils", icon: "ri-user-follow-line"     },
-  "/admin/developers/import":  { label: "Import Développeurs",icon: "ri-upload-2-line"        },
-  "/admin/audit-log":          { label: "Audit Log",          icon: "ri-shield-check-line"    },
-  "/admin/kpi-definitions":    { label: "Définitions KPI",    icon: "ri-file-list-3-line"     },
-  "/admin/kpi-thresholds":     { label: "Seuils KPI",         icon: "ri-alert-line"           },
-  "/admin/dashboards":         { label: "Dashboards",         icon: "ri-layout-grid-line"     },
+  "/extraction-lots": { label: "Registre des Lots", icon: "ri-database-2-line" },
+  "/extraction": { label: "Moteur d'Extraction", icon: "ri-rocket-2-line" },
+  "/periods": { label: "Périodes", icon: "ri-calendar-2-line" },
+  "/profile": { label: "Mon Profil", icon: "ri-user-settings-line" },
+  "/admin/sites": { label: "Sites Telnet", icon: "ri-building-2-line" },
+  "/admin/projects": { label: "Projets GitLab", icon: "ri-folder-2-line" },
+  "/admin/gitlab-configs": { label: "Configs GitLab", icon: "ri-settings-3-line" },
+  "/admin/users": { label: "Utilisateurs", icon: "ri-group-line" },
+  "/admin/developers": { label: "Validation Profils", icon: "ri-user-follow-line" },
+  "/admin/developers/import": { label: "Import Développeurs", icon: "ri-upload-2-line" },
+  "/admin/audit-log": { label: "Audit Log", icon: "ri-shield-check-line" },
+  "/admin/kpi-definitions": { label: "Définitions KPI", icon: "ri-file-list-3-line" },
+  "/admin/kpi-thresholds": { label: "Seuils KPI", icon: "ri-alert-line" },
+  "/admin/dashboards": { label: "Dashboards", icon: "ri-layout-grid-line" },
 };
 
 // ─── Main Topbar ──────────────────────────────────────────────────────────────
@@ -420,10 +420,9 @@ export default function Topbar() {
   const { logout, user } = useAuth();
   const { pathname } = useLocation();
 
-  const [dark,     setDark]     = useState(() => document.documentElement.getAttribute("data-bs-theme") === "dark");
-  const [ddOpen,   setDdOpen]   = useState(false);
+  const [dark, setDark] = useState(() => document.documentElement.getAttribute("data-bs-theme") === "dark");
+  const [ddOpen, setDdOpen] = useState(false);
   const [dbDdOpen, setDbDdOpen] = useState(false);
-  const [notifCnt] = useState(2);
 
   const ddRef = useRef(null);
   const dbDdRef = useRef(null);
@@ -440,14 +439,14 @@ export default function Topbar() {
     }, 100);
   };
 
-  const userName    = user?.name  || "Utilisateur";
-  const userEmail   = user?.email || "";
-  const userRole    = (user?.role || "user").replace(/_/g, " ").toUpperCase();
-  const initials    = userName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const userName = user?.name || "Utilisateur";
+  const userEmail = user?.email || "";
+  const userRole = (user?.role || "user").replace(/_/g, " ").toUpperCase();
+  const initials = userName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   // Current page label
-  const matchKey   = Object.keys(LABELS).filter(k => pathname === k || pathname.startsWith(k + "/")).sort((a,b) => b.length - a.length)[0];
-  const page       = LABELS[matchKey] || { label: "Dashboard", icon: "ri-dashboard-3-line" };
+  const matchKey = Object.keys(LABELS).filter(k => pathname === k || pathname.startsWith(k + "/")).sort((a, b) => b.length - a.length)[0];
+  const page = LABELS[matchKey] || { label: "Dashboard", icon: "ri-dashboard-3-line" };
 
   const toggleTheme = () => {
     const next = dark ? "light" : "dark";
@@ -458,8 +457,8 @@ export default function Topbar() {
 
   // Close dropdown on outside click
   useEffect(() => {
-    const handler = e => { 
-      if (ddRef.current && !ddRef.current.contains(e.target)) setDdOpen(false); 
+    const handler = e => {
+      if (ddRef.current && !ddRef.current.contains(e.target)) setDdOpen(false);
       if (dbDdRef.current && !dbDdRef.current.contains(e.target)) setDbDdOpen(false);
     };
     document.addEventListener("mousedown", handler);
@@ -475,17 +474,6 @@ export default function Topbar() {
         <span className="tb-bread-page">{page.label}</span>
       </div>
 
-      {/* Center: search */}
-      <div className="tb-search d-none d-md-block">
-        <i className="ri-search-2-line tb-search-icon" />
-        <input
-          type="text"
-          className="tb-search-input"
-          placeholder="Rechercher un indicateur…"
-        />
-        <span className="tb-search-kbd d-none d-lg-block">⌘K</span>
-      </div>
-
       <div className="tb-spacer" />
 
       {/* Database Switcher */}
@@ -498,7 +486,7 @@ export default function Topbar() {
 
         {dbDdOpen && (
           <div className="tb-db-dropdown">
-            <button 
+            <button
               className={`tb-db-item ${database === "gitlab_kpi1" ? "is-active" : ""}`}
               onClick={() => { setDbDdOpen(false); handleDbChange("gitlab_kpi1"); }}
             >
@@ -508,7 +496,7 @@ export default function Topbar() {
               </div>
               <i className="ri-check-line tb-db-check" />
             </button>
-            <button 
+            <button
               className={`tb-db-item ${database === "telnetdb" ? "is-active" : ""}`}
               onClick={() => { setDbDdOpen(false); handleDbChange("telnetdb"); }}
             >
@@ -526,10 +514,6 @@ export default function Topbar() {
       <div className="tb-actions">
         <button className="tb-icon-btn" onClick={toggleTheme} title={dark ? "Mode clair" : "Mode sombre"}>
           <i className={dark ? "ri-sun-line" : "ri-moon-line"} />
-        </button>
-        <button className="tb-icon-btn" title="Notifications">
-          <i className="ri-notification-3-line" />
-          {notifCnt > 0 && <span className="tb-notif-badge" />}
         </button>
       </div>
 
@@ -553,11 +537,8 @@ export default function Topbar() {
               <div className="tb-dd-email">{userEmail || "Session active"}</div>
             </div>
             <div className="tb-dd-body">
-             
-              <Link to="/dashboard" className="tb-dd-item" onClick={() => setDdOpen(false)}>
-                <i className="ri-dashboard-2-line" />
-                <span>Dashboard</span>
-              </Link>
+
+
               <div className="tb-dd-sep" />
               <button className="tb-dd-item is-danger" onClick={() => { setDdOpen(false); logout(); }}>
                 <i className="ri-logout-box-r-line" />

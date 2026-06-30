@@ -499,15 +499,22 @@ export default function ExtractionLotsPage() {
           setLots(newLots);
           
           const hasRunning = newLots.some(l => l.status === "running");
-          if (hasRunning && !pollInterval) pollInterval = setInterval(() => { isQuietRef.current = true; setRefreshTick(r => r + 1); }, 3000);
-          else if (!hasRunning && pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+          if (hasRunning && !pollInterval) {
+            pollInterval = setInterval(() => { 
+              isQuietRef.current = true; 
+              setRefreshTick(r => r + 1); 
+            }, 3000);
+          } else if (!hasRunning && pollInterval) { 
+            clearInterval(pollInterval); 
+            pollInterval = null; 
+          }
         })
         .finally(() => { if (mounted) setLoading(false); isQuietRef.current = false; });
     };
 
     fetchLots();
     return () => { mounted = false; if (pollInterval) clearInterval(pollInterval); };
-  }, [projFilter, periodFilter, refreshTick]);
+  }, [projFilter, periodFilter]);
 
   const filtered = lots.filter(l => statusFilter === "all" || l.status === statusFilter);
   const totalPages = Math.ceil(filtered.length / perPage);
@@ -521,18 +528,27 @@ export default function ExtractionLotsPage() {
   ];
 
   const handleRetry = async (lot) => {
+    console.log("[FRONTEND RETRY] handleRetry called with lot:", lot);
     setRetrying(lot.id);
     try {
-      await extractionService.run({
+      const lotProj = projects.find(p => String(p.id) === String(lot.project_id));
+      const payload = {
         extraction_type: lot.extraction_type,
-        project_id: lot.project_id,
+        gitlab_config_id: lot.gitlab_config_id,
+        project_ids: lotProj?.gitlab_project_id ? String(lotProj.gitlab_project_id) : null,
         period_id: lot.period_id,
-        developer_ids: lot.developer_id ? [lot.developer_id] : null,
+        developer_ids: lot.developer_id ? String(lot.developer_id) : null,
         is_backfill: true
-      });
+      };
+      console.log("[FRONTEND RETRY] Calling extractionService.run with payload:", payload);
+      await extractionService.run(payload);
+      console.log("[FRONTEND RETRY] API call successful");
       setLotDetail(null);
       refreshData();
-    } catch (err) { alert("Erreur lors de la relance"); }
+    } catch (err) { 
+      console.error("Erreur lors de la relance:", err);
+      alert("Erreur lors de la relance"); 
+    }
     finally { setRetrying(null); }
   };
 

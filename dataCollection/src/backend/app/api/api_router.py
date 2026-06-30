@@ -10,7 +10,8 @@ from app.api.routers import (
     analytics,
     audit_logs,
     auth,
-    dashboards,
+    contact,
+    # dashboards,  # DISABLED: Dashboard functionality removed
     developers,
     extraction,
     extraction_lots,
@@ -34,6 +35,7 @@ print("[API ROUTER] Module loaded - VERSION 2026-06-09-00:13")
 api_router = APIRouter()
 
 api_router.include_router(auth.router)
+api_router.include_router(contact.router)
 api_router.include_router(admin_users.router)
 api_router.include_router(admin_scheduler.router)
 api_router.include_router(gitlab_configs.router)
@@ -49,7 +51,7 @@ api_router.include_router(kpis.router)
 api_router.include_router(kpi_thresholds.router)
 api_router.include_router(kpi_definitions.router)
 api_router.include_router(analytics.router)
-api_router.include_router(dashboards.router)
+# api_router.include_router(dashboards.router)  # DISABLED: Dashboard functionality removed
 api_router.include_router(alerts.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(export_router)

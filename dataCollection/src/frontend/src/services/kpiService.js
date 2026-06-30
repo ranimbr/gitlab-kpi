@@ -63,7 +63,22 @@ export const extractionService = {
       normalized.extraction_type = normalized.type;
       delete normalized.type;
     }
-    return (await api.post("/extraction/run", normalized)).data;
+    // Backend expects query parameters, not body JSON
+    const params = {};
+    if (normalized.gitlab_config_id) params.gitlab_config_id = normalized.gitlab_config_id;
+    if (normalized.project_ids) params.project_ids = normalized.project_ids;
+    if (normalized.developer_ids) params.developer_ids = normalized.developer_ids;
+    if (normalized.extraction_type) params.extraction_type = normalized.extraction_type;
+    if (normalized.period_id) params.period_id = normalized.period_id;
+    if (normalized.is_backfill !== undefined) params.is_backfill = normalized.is_backfill;
+    if (normalized.site_id) params.site_id = normalized.site_id;
+    if (normalized.group_id) params.group_id = normalized.group_id;
+    if (normalized.all_developers !== undefined) params.all_developers = normalized.all_developers;
+    if (normalized.fast_mode !== undefined) params.fast_mode = normalized.fast_mode;
+    if (normalized.is_smart_sync !== undefined) params.is_smart_sync = normalized.is_smart_sync;
+    if (normalized.auto_target_by_period !== undefined) params.auto_target_by_period = normalized.auto_target_by_period;
+    
+    return (await api.post("/extraction/run", null, { params })).data;
   },
 
   /**

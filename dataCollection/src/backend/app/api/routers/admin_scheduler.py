@@ -93,10 +93,18 @@ async def get_scheduler_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
         )
 
 
+from pydantic import BaseModel
+
+class SchedulerTriggerRequest(BaseModel):
+    year: Optional[int] = None
+    month: Optional[int] = None
+
+
 @router.post("/trigger")
 async def trigger_manual_extraction(
     year: Optional[int] = None,
     month: Optional[int] = None,
+    payload: Optional[SchedulerTriggerRequest] = None,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
@@ -111,19 +119,31 @@ async def trigger_manual_extraction(
     Args:
         year: Target year (default: current year)
         month: Target month (default: current month)
+        payload: Optional JSON body payload with year/month
         
     Returns:
         Extraction result summary
     """
     try:
         now = datetime.now(timezone.utc)
-        target_year = year or now.year
-        target_month = month or now.month
+        
+        # Read from query parameters first, then payload, then default to current date
+        target_year = year
+        target_month = month
+        
+        if payload:
+            if target_year is None:
+                target_year = payload.year
+            if target_month is None:
+                target_month = payload.month
+                
+        target_year = target_year or now.year
+        target_month = target_month or now.month
         
         logger.info(f"[Admin Scheduler] Manual extraction triggered for {target_year}/{target_month:02d}")
         
         service = TeamMonthlyDumpService(db)
-        result = await service.run()
+        result = await service.run(year=target_year, month=target_month)
         
         # Send notification for manual trigger
         notification_service = get_notification_service()

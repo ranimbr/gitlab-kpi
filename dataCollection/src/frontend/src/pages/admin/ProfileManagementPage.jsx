@@ -4,12 +4,26 @@
  * Interface admin pour la gestion des profils et des menus.
  * Layout : liste des profils à gauche, menus avec checkboxes à droite.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import profileService from "../../services/profileService";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EmptyState from "../../components/common/EmptyState";
 import ConfirmModal from "../../components/common/ConfirmModal";
 import AdminModal from "../../components/common/AdminModal";
+
+// ── Toast simple inline ───────────────────────────────────────────────────────
+function Toast({ toast }) {
+  if (!toast) return null;
+  return (
+    <div
+      className={`alert alert-${toast.type} d-flex align-items-center gap-2 position-fixed top-0 end-0 m-3 shadow`}
+      style={{ zIndex: 9999, minWidth: 300, borderRadius: 10 }}
+    >
+      <i className={toast.type === "success" ? "ri-checkbox-circle-line fs-16" : "ri-error-warning-line fs-16"} />
+      <span>{toast.msg}</span>
+    </div>
+  );
+}
 
 // ── ProfileModal ─────────────────────────────────────────────────────────────
 function ProfileModal({ profile, onClose, onSave }) {
@@ -112,10 +126,11 @@ function ProfileModal({ profile, onClose, onSave }) {
 }
 
 // ── MenuItemTree Component ───────────────────────────────────────────────────────
-function MenuItemTree({ menuItems, profileMenuAccess, onToggle, isSuperAdmin }) {
+function MenuItemTree({ menuItems, profileMenuAccess, onToggle, isSuperAdmin, togglingId }) {
   const renderMenuItem = (item, level = 0) => {
     const hasAccess = profileMenuAccess[item.id] || false;
     const paddingLeft = level * 24;
+    const isToggling = togglingId === item.id;
 
     return (
       <div key={item.id}>
@@ -123,17 +138,21 @@ function MenuItemTree({ menuItems, profileMenuAccess, onToggle, isSuperAdmin }) 
           className="d-flex align-items-center gap-2 py-2 px-3"
           style={{ paddingLeft: `${paddingLeft + 12}px` }}
         >
-          <input
-            type="checkbox"
-            className="form-check-input"
-            checked={hasAccess}
-            onChange={() => onToggle(item.id, !hasAccess)}
-            id={`menu-${item.id}`}
-            disabled={isSuperAdmin}
-          />
+          {isToggling ? (
+            <span className="spinner-border spinner-border-sm text-primary" style={{ width: 14, height: 14, flexShrink: 0 }} />
+          ) : (
+            <input
+              type="checkbox"
+              className="form-check-input"
+              checked={hasAccess}
+              onChange={() => onToggle(item.id, !hasAccess)}
+              id={`menu-${item.id}`}
+              disabled={isSuperAdmin || isToggling}
+            />
+          )}
           <label
             htmlFor={`menu-${item.id}`}
-            className={`fs-14 user-select-none ${isSuperAdmin ? "" : "cursor-pointer"}`}
+            className={`fs-14 user-select-none ${isSuperAdmin || isToggling ? "" : "cursor-pointer"}`}
             style={{ opacity: isSuperAdmin ? 0.7 : 1 }}
           >
             {item.label}
@@ -170,6 +189,13 @@ export default function ProfileManagementPage() {
   const [editingProfile, setEditingProfile] = useState(null);
   const [deleteProfile, setDeleteProfile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState(null); // ID du menu en cours de toggle
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
 
   // Charger les profils au montage
   useEffect(() => {
@@ -248,11 +274,25 @@ export default function ProfileManagementPage() {
   };
 
   const handleToggleMenuAccess = async (menuItemId, hasAccess) => {
+    // 1. Mise à jour optimiste de l'UI
+    setProfileMenuAccess(prev => ({ ...prev, [menuItemId]: hasAccess }));
+    setTogglingId(menuItemId);
     try {
-      profileMenuAccess[menuItemId] = hasAccess;
-      setProfileMenuAccess({ ...profileMenuAccess });
+      // 2. Persistance immédiate en base via API
+      await profileService.updateProfileMenuItems(selectedProfile.id, {
+        menu_items: [{ menu_item_id: menuItemId, has_access: hasAccess }],
+      });
+      showToast(
+        hasAccess ? "Accès accordé ✓" : "Accès retiré ✓",
+        hasAccess ? "success" : "warning"
+      );
     } catch (err) {
       console.error("Erreur toggle menu access:", err);
+      // Rollback en cas d'erreur
+      setProfileMenuAccess(prev => ({ ...prev, [menuItemId]: !hasAccess }));
+      showToast("Erreur lors de la mise à jour de l'accès", "danger");
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -266,8 +306,10 @@ export default function ProfileManagementPage() {
       await profileService.updateProfileMenuItems(selectedProfile.id, {
         menu_items: menuAccessList,
       });
+      showToast("Tous les accès sauvegardés avec succès ✓", "success");
     } catch (err) {
       console.error("Erreur sauvegarde accès:", err);
+      showToast("Erreur lors de la sauvegarde", "danger");
     } finally {
       setSaving(false);
     }
@@ -281,6 +323,8 @@ export default function ProfileManagementPage() {
 
   return (
     <div className="page-content">
+      {/* Toast notifications */}
+      <Toast toast={toast} />
       <div className="container-fluid">
         {/* Header */}
         <div className="row mt-3">
@@ -411,6 +455,7 @@ export default function ProfileManagementPage() {
                         profileMenuAccess={profileMenuAccess}
                         onToggle={handleToggleMenuAccess}
                         isSuperAdmin={selectedProfile.name === "Super Admin"}
+                        togglingId={togglingId}
                       />
                     )}
                   </div>

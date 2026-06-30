@@ -130,7 +130,7 @@ const SchedulerAdminPage = () => {
 
     setTriggering(true);
     try {
-      const res = await axios.post(`${API_BASE}/admin/scheduler/trigger`, {
+      const res = await api.post("/admin/scheduler/trigger", {
         year: selectedYear,
         month: selectedMonth
       });
@@ -139,7 +139,7 @@ const SchedulerAdminPage = () => {
       loadSchedulerData();
     } catch (error) {
       console.error("Manual trigger failed:", error);
-      showToast(error.response?.data?.detail || "Manual extraction failed", "danger");
+      showToast(error.message || "Manual extraction failed", "danger");
     } finally {
       setTriggering(false);
     }
@@ -151,7 +151,7 @@ const SchedulerAdminPage = () => {
     }
 
     try {
-      await axios.post(`${API_BASE}/admin/scheduler/period/${periodId}/close`);
+      await api.post(`/admin/scheduler/period/${periodId}/close`);
       showToast("Period closed successfully");
       loadSchedulerData();
     } catch (error) {
@@ -166,7 +166,7 @@ const SchedulerAdminPage = () => {
     }
 
     try {
-      await axios.post(`${API_BASE}/admin/scheduler/period/${periodId}/open`);
+      await api.post(`/admin/scheduler/period/${periodId}/open`);
       showToast("Period opened successfully");
       loadSchedulerData();
     } catch (error) {
@@ -176,7 +176,7 @@ const SchedulerAdminPage = () => {
   };
 
   const openCount = periods.filter(p => p.status === "open").length;
-  const closedCount = periods.filter(p => p === "closed").length;
+  const closedCount = periods.filter(p => p.status === "closed").length;
 
   // Helper function to get project name from ID using correct database context
   const getProjectName = (projectId) => {

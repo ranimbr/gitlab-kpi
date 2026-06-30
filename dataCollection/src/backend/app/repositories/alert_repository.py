@@ -59,7 +59,8 @@ class AlertRepository(BaseRepository[Alert]):
         self,
         db:           Session,
         project_id:   Optional[int]            = None,
-        dashboard_id: Optional[int]            = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_id: Optional[int]            = None,
         level:        Optional[AlertLevelEnum] = None,
         site_id:      Optional[int]            = None,
         # ✅ AJOUT : filtre par développeur
@@ -80,8 +81,9 @@ class AlertRepository(BaseRepository[Alert]):
         )
         if project_id is not None:
             q = q.filter(KpiThreshold.project_id == project_id)
-        if dashboard_id is not None:
-            q = q.filter(KpiThreshold.dashboard_id == dashboard_id)
+        # DISABLED: Dashboard functionality removed
+        # if dashboard_id is not None:
+        #     q = q.filter(KpiThreshold.dashboard_id == dashboard_id)
         if level is not None:
             q = q.filter(Alert.level == level)
         if site_id is not None:
@@ -121,7 +123,8 @@ class AlertRepository(BaseRepository[Alert]):
         self,
         db:           Session,
         project_id:   Optional[int] = None,
-        dashboard_id: Optional[int] = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_id: Optional[int] = None,
         developer_id: Optional[int] = None,
     ) -> dict:
         """Résumé topbar — { WARNING: n, CRITICAL: n }."""
@@ -132,8 +135,9 @@ class AlertRepository(BaseRepository[Alert]):
         )
         if project_id is not None:
             q = q.filter(KpiThreshold.project_id == project_id)
-        if dashboard_id is not None:
-            q = q.filter(KpiThreshold.dashboard_id == dashboard_id)
+        # DISABLED: Dashboard functionality removed
+        # if dashboard_id is not None:
+        #     q = q.filter(KpiThreshold.dashboard_id == dashboard_id)
         # ✅ AJOUT
         if developer_id is not None:
             q = q.filter(Alert.developer_id == developer_id)

@@ -137,7 +137,7 @@ class GitLabClient:
     ) -> List[Dict[str, Any]]:
         """Pagination automatique — charge toutes les pages."""
         page     = 1
-        per_page = 100
+        per_page = 200  # Optimisation: réduit de moitié le nombre de requêtes API
         results: List[Dict[str, Any]] = []
 
         while True:
@@ -281,7 +281,7 @@ class GitLabClient:
         updated_before:    Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         # ... logic ...
-        params: Dict[str, Any] = {"state": "all", "per_page": 100}
+        params: Dict[str, Any] = {"state": "all", "per_page": 200}
         if author_username:
             params["author_username"] = author_username
         if reviewer_username:
@@ -323,7 +323,7 @@ class GitLabClient:
         """Fetch the list of commits for an MR (to get accurate count)."""
         return await self._get_paginated(
             f"/projects/{project_id}/merge_requests/{mr_iid}/commits",
-            params={"per_page": 100}
+            params={"per_page": 200}
         )
 
     async def get_merge_request_approvals(
@@ -360,7 +360,7 @@ class GitLabClient:
         try:
             return await self._get_paginated(
                 f"/projects/{project_id}/merge_requests/{mr_iid}/resource_state_events",
-                params={"per_page": 100}
+                params={"per_page": 200}
             )
         except GitLabAPIError as e:
             logger.warning(f"resource_state_events unavailable MR={mr_iid}: {e}")
@@ -372,7 +372,7 @@ class GitLabClient:
         """Fetch all notes (comments) for an MR, triées par date croissante."""
         return await self._get_paginated(
             f"/projects/{project_id}/merge_requests/{mr_iid}/notes",
-            params={"sort": "asc", "per_page": 100}
+            params={"sort": "asc", "per_page": 200}
         )
 
     # ──────────────────────────────────────────────────────────────────────────

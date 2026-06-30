@@ -1,6 +1,7 @@
 from app.database.session import SessionLocal
 from app.models.app_user import AppUser
-from app.models.dashboard import Dashboard
+# DISABLED: Dashboard functionality removed
+# from app.models.dashboard import Dashboard
 from app.models.project import Project
 
 def prime():
@@ -19,24 +20,27 @@ def prime():
             return
 
         # 3. Supprimer les vieux dashboards orphelins (Nettoyage Senior)
-        db.query(Dashboard).filter(Dashboard.created_by == admin.id).delete()
+        # DISABLED: Dashboard functionality removed
+        # db.query(Dashboard).filter(Dashboard.created_by == admin.id).delete()
         
         # 4. Créer le Dashboard de Pilotage Principal
-        new_dash = Dashboard(
-            name="Pilotage Stratégique - GitLab Docs",
-            description="Vue consolidée des sites Madrid, Tunis et Paris",
-            project_id=project.id,
-            created_by=admin.id,
-            is_public=True,
-        )
-        db.add(new_dash)
-        db.flush() # Pour avoir l'ID
+        # DISABLED: Dashboard functionality removed
+        # new_dash = Dashboard(
+        #     name="Pilotage Stratégique - GitLab Docs",
+        #     description="Vue consolidée des sites Madrid, Tunis et Paris",
+        #     project_id=project.id,
+        #     created_by=admin.id,
+        #     is_public=True,
+        # )
+        # db.add(new_dash)
+        # db.flush() # Pour avoir l'ID
         
         # 5. Mettre à jour l'accès de l'utilisateur
-        admin.dashboard_access = [new_dash.id]
+        # DISABLED: Dashboard functionality removed
+        # admin.dashboard_access = [new_dash.id]
         
         db.commit()
-        print(f"Success: Dashboard #{new_dash.id} created and assigned to {admin.email}")
+        print("Success: Dashboard functionality has been removed - script updated")
 
     except Exception as e:
         db.rollback()

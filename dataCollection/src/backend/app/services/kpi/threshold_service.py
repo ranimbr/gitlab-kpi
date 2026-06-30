@@ -48,18 +48,19 @@ class ThresholdService:
         ip_address: Optional[str] = None,
     ) -> KpiThreshold:
 
-        if self.repo.exists_for_dashboard(
-            db,
-            dashboard_id      = payload.dashboard_id or 0,
-            kpi_definition_id = payload.kpi_definition_id,
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Un seuil existe déjà pour kpi_definition_id={payload.kpi_definition_id}. "
-                    "Utilisez PATCH pour le modifier."
-                ),
-            )
+        # DISABLED: Dashboard functionality removed
+        # if self.repo.exists_for_dashboard(
+        #     db,
+        #     dashboard_id      = payload.dashboard_id or 0,
+        #     kpi_definition_id = payload.kpi_definition_id,
+        # ):
+        #     raise HTTPException(
+        #         status_code=status.HTTP_409_CONFLICT,
+        #         detail=(
+        #             f"Un seuil existe déjà pour kpi_definition_id={payload.kpi_definition_id}. "
+        #             "Utilisez PATCH pour le modifier."
+        #         ),
+        #     )
 
         # ✅ FIX : threshold_type au lieu de type (renommage modèle)
         # ✅ FIX : pas de "kpi_name" dans le dict — c'est une @property
@@ -67,7 +68,8 @@ class ThresholdService:
             "warning_value":     payload.warning_value,
             "critical_value":    payload.critical_value,
             "project_id":        payload.project_id,
-            "dashboard_id":      payload.dashboard_id,
+            # DISABLED: Dashboard functionality removed
+            # "dashboard_id":      payload.dashboard_id,
             "kpi_definition_id": payload.kpi_definition_id,
             "threshold_type":    payload.threshold_type,   # ✅ renommé
             "created_by":        created_by,
@@ -184,8 +186,9 @@ class ThresholdService:
     def get_project_thresholds(self, db: Session, project_id: int) -> List[KpiThreshold]:
         return self.repo.get_by_project(db, project_id)
 
-    def get_dashboard_thresholds(self, db: Session, dashboard_id: int) -> List[KpiThreshold]:
-        return self.repo.get_by_dashboard(db, dashboard_id)
+    # DISABLED: Dashboard functionality removed
+    # def get_dashboard_thresholds(self, db: Session, dashboard_id: int) -> List[KpiThreshold]:
+    #     return self.repo.get_by_dashboard(db, dashboard_id)
 
     # =========================================================================
     # ÉVALUATION KPIs
@@ -202,10 +205,12 @@ class ThresholdService:
         Compare les valeurs KPI aux seuils configurés.
         kpi_name accessible via @property (joinedload dans les repos).
         """
-        if dashboard_id is not None:
-            thresholds = self.repo.get_by_dashboard(db, dashboard_id)
-        else:
-            thresholds = self.repo.get_by_project(db, project_id)
+        # DISABLED: Dashboard functionality removed
+        # if dashboard_id is not None:
+        #     thresholds = self.repo.get_by_dashboard(db, dashboard_id)
+        # else:
+        #     thresholds = self.repo.get_by_project(db, project_id)
+        thresholds = self.repo.get_by_project(db, project_id)
 
         threshold_map = {t.kpi_name: t for t in thresholds if t.kpi_name}
         alerts: List[KpiAlertLevel] = []
@@ -239,7 +244,8 @@ class ThresholdService:
                 critical_value    = t.critical_value,
                 level             = level,
                 color             = color,
-                dashboard_id      = t.dashboard_id,
+                # DISABLED: Dashboard functionality removed
+                # dashboard_id      = t.dashboard_id,
                 kpi_definition_id = t.kpi_definition_id,
             ))
 
@@ -282,10 +288,12 @@ class ThresholdService:
         """
         alert_levels = self.evaluate_kpis(db, project_id, kpi_values, dashboard_id)
 
-        if dashboard_id is not None:
-            thresholds = self.repo.get_by_dashboard(db, dashboard_id)
-        else:
-            thresholds = self.repo.get_by_project(db, project_id)
+        # DISABLED: Dashboard functionality removed
+        # if dashboard_id is not None:
+        #     thresholds = self.repo.get_by_dashboard(db, dashboard_id)
+        # else:
+        #     thresholds = self.repo.get_by_project(db, project_id)
+        thresholds = self.repo.get_by_project(db, project_id)
 
         threshold_map = {t.kpi_name: t for t in thresholds if t.kpi_name}
         created = 0

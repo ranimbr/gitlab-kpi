@@ -44,41 +44,43 @@ class KpiThresholdRepository(BaseRepository[KpiThreshold]):
             .all()
         )
 
-    def get_by_dashboard(
-        self,
-        db:           Session,
-        dashboard_id: int,
-    ) -> List[KpiThreshold]:
-        
-        return (
-            db.query(KpiThreshold)
-            .options(joinedload(KpiThreshold.kpi_definition))
-            .join(KpiDefinition, KpiThreshold.kpi_definition_id == KpiDefinition.id)
-            .filter(KpiThreshold.dashboard_id == dashboard_id)
-            .order_by(KpiDefinition.code)
-            .all()
-        )
+    # DISABLED: Dashboard functionality removed
+    # def get_by_dashboard(
+    #     self,
+    #     db:           Session,
+    #     dashboard_id: int,
+    # ) -> List[KpiThreshold]:
+    #     
+    #     return (
+    #         db.query(KpiThreshold)
+    #         .options(joinedload(KpiThreshold.kpi_definition))
+    #         .join(KpiDefinition, KpiThreshold.kpi_definition_id == KpiDefinition.id)
+    #         .filter(KpiThreshold.dashboard_id == dashboard_id)
+    #         .order_by(KpiDefinition.code)
+    #         .all()
+    #     )
 
-    def get_by_dashboard_and_definition(
-        self,
-        db:                Session,
-        dashboard_id:      int,
-        kpi_definition_id: int,
-        threshold_type:    Optional[str] = None,
-    ) -> Optional[KpiThreshold]:
-       
-        q = (
-            db.query(KpiThreshold)
-            .options(joinedload(KpiThreshold.kpi_definition))
-            .filter(
-                KpiThreshold.dashboard_id      == dashboard_id,
-                KpiThreshold.kpi_definition_id == kpi_definition_id,
-            )
-        )
-        if threshold_type is not None:
-            # ✅ FIX : threshold_type au lieu de type
-            q = q.filter(KpiThreshold.threshold_type == threshold_type)
-        return q.one_or_none()
+    # DISABLED: Dashboard functionality removed
+    # def get_by_dashboard_and_definition(
+    #     self,
+    #     db:                Session,
+    #     dashboard_id:      int,
+    #     kpi_definition_id: int,
+    #     threshold_type:    Optional[str] = None,
+    # ) -> Optional[KpiThreshold]:
+    #    
+    #     q = (
+    #         db.query(KpiThreshold)
+    #         .options(joinedload(KpiThreshold.kpi_definition))
+    #         .filter(
+    #             KpiThreshold.dashboard_id      == dashboard_id,
+    #             KpiThreshold.kpi_definition_id == kpi_definition_id,
+    #         )
+    #     )
+    #     if threshold_type is not None:
+    #         # ✅ FIX : threshold_type au lieu de type
+    #         q = q.filter(KpiThreshold.threshold_type == threshold_type)
+    #     return q.one_or_none()
 
     def get_by_project_and_definition(
         self,
@@ -128,18 +130,19 @@ class KpiThresholdRepository(BaseRepository[KpiThreshold]):
             .one_or_none()
         )
 
-    def exists_for_dashboard(
-        self,
-        db:                Session,
-        dashboard_id:      int,
-        kpi_definition_id: int,
-        threshold_type:    Optional[str] = None,
-    ) -> bool:
-        return (
-            self.get_by_dashboard_and_definition(
-                db, dashboard_id, kpi_definition_id, threshold_type
-            ) is not None
-        )
+    # DISABLED: Dashboard functionality removed
+    # def exists_for_dashboard(
+    #     self,
+    #     db:                Session,
+    #     dashboard_id:      int,
+    #     kpi_definition_id: int,
+    #     threshold_type:    Optional[str] = None,
+    # ) -> bool:
+    #     return (
+    #         self.get_by_dashboard_and_definition(
+    #             db, dashboard_id, kpi_definition_id, threshold_type
+    #         ) is not None
+    #     )
 
     # =========================================================================
     # WRITE
@@ -151,16 +154,18 @@ class KpiThresholdRepository(BaseRepository[KpiThreshold]):
         project_id:        int,
         kpi_definition_id: int,
         data:              dict,
-        dashboard_id:      Optional[int] = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_id:      Optional[int] = None,
         threshold_type:    Optional[str] = None,
     ) -> KpiThreshold:
        
         existing = None
 
-        if dashboard_id is not None:
-            existing = self.get_by_dashboard_and_definition(
-                db, dashboard_id, kpi_definition_id, threshold_type
-            )
+        # DISABLED: Dashboard functionality removed
+        # if dashboard_id is not None:
+        #     existing = self.get_by_dashboard_and_definition(
+        #         db, dashboard_id, kpi_definition_id, threshold_type
+        #     )
 
         if existing is None:
             existing = self.get_by_project_and_definition(
@@ -168,7 +173,7 @@ class KpiThresholdRepository(BaseRepository[KpiThreshold]):
             )
 
         if existing:
-            excluded = {"project_id", "kpi_definition_id", "dashboard_id"}
+            excluded = {"project_id", "kpi_definition_id"}  # "dashboard_id" removed
             for key, value in data.items():
                 if key not in excluded and hasattr(existing, key):
                     setattr(existing, key, value)

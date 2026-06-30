@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.database.session import get_db
 from app.models.app_user import AppUser, UserRoleEnum
-from app.repositories.dashboard_repository import DashboardRepository
+# DISABLED: Dashboard functionality removed
+# from app.repositories.dashboard_repository import DashboardRepository
 
-dashboard_repo = DashboardRepository()
+# dashboard_repo = DashboardRepository()
 
 
 # ── Admin (super_admin uniquement) ────────────────────────────────────────────
@@ -133,22 +134,13 @@ def check_dashboard_access(
     db:           Session  = Depends(get_db),
 ) -> None:
     """
-    Vérifie l'accès à un dashboard.
-    super_admin → accès total.
-    is_public=True → accès à tous.
-    sinon → vérifie dashboard_access[].
+    DISABLED: Dashboard functionality removed
     """
-    if current_user.role == UserRoleEnum.super_admin:
-        return
-    dashboard = dashboard_repo.get_by_id(db, dashboard_id)
-    if dashboard and dashboard.is_public:
-        return
-    access_list = list(current_user.dashboard_access or [])
-    if dashboard_id not in access_list:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Accès à ce dashboard refusé.",
-        )
+    # DISABLED: Dashboard functionality removed
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Dashboard functionality has been removed.",
+    )
 
 
 # ── Site Access ───────────────────────────────────────────────────────────────
@@ -187,6 +179,6 @@ __all__ = [
     "get_current_team_lead_or_above",
     "get_current_project_manager_or_above",
     "get_current_viewer_or_above",
-    "check_dashboard_access",
+    # "check_dashboard_access",  # DISABLED: Dashboard functionality removed
     "require_site_access",
 ]

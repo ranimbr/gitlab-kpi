@@ -307,7 +307,7 @@ def get_project_commits(
     lot_id:                Optional[int] = Query(None, description="Filtrer par session d'extraction — priorité maximale"),
     period_id:             Optional[int] = Query(None, description="Filtrer par période (Mois/Année)"),
     developer_id:          Optional[str] = Query(None, description="Filtrer par développeur"),
-    exclude_merge_commits: bool          = Query(False, description="Exclure les merge commits"),
+    exclude_merge_commits: bool          = Query(True, description="Exclure les merge commits"),
     db:                    Session       = Depends(get_db),
     current_user:          AppUser       = Depends(get_current_user),
 ):
@@ -328,12 +328,14 @@ def get_project_commits(
             dev_id = None
 
    
+    # ── PRIORITÉ 1 : Lot d'extraction (session)
     if lot_id is not None:
         lot = db.query(ExtractionLot).filter(ExtractionLot.id == lot_id).first()
         if not lot:
             raise HTTPException(status_code=404, detail="Lot d'extraction introuvable.")
         
-        # Isolation stricte par lot : appel à la méthode du dépôt qui filtre par lot_id
+        # Isolation stricte par lot : le lot_id est prioritaire sur period_id
+        # Le lot contient déjà les commits filtrés par sa période associée
         commits = commit_repo.get_project_commits_paginated(
             db,
             project_id=lot.project_id,

@@ -467,9 +467,9 @@ export default function AuditLogPage() {
                         </td>
                         <td>
                           <div className="d-flex align-items-center gap-3">
-                             <UserAvatar name={log.user_name} isSystem={!log.user_id} size={30} />
+                             <UserAvatar name={log.user?.name || log.user_name} isSystem={!log.user_id} size={30} />
                              <div className="d-flex flex-column">
-                                <span className="fs-13 fw-bold text-dark">{log.user_name || "Système"}</span>
+                                <span className="fs-13 fw-bold text-dark">{log.user?.name || log.user_name || "Système"}</span>
                                 <span className="fs-10 text-muted text-uppercase fw-bold ls-1">{log.user_id ? 'Utilisateur' : 'Processus Automatique'}</span>
                              </div>
                           </div>

@@ -43,11 +43,12 @@ class Site(Base):
         # Pas de cascade : une config peut survivre si le site est désactivé
     )
 
-    dashboards = relationship(
-        "Dashboard",
-        back_populates="site",
-        cascade="all, delete-orphan",
-    )
+    # DISABLED: Dashboard functionality removed
+    # dashboards = relationship(
+    #     "Dashboard",
+    #     back_populates="site",
+    #     cascade="all, delete-orphan",
+    # )
     
     # ✅ AJOUT : Relation many-to-many avec AppUser via UserSiteAccess
     user_accesses = relationship(

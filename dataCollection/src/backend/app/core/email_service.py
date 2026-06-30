@@ -74,52 +74,201 @@ L'équipe TELNET
             # Version HTML
             html_content = f"""
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Réinitialisation de mot de passe - TELNET Dashboard</title>
     <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .container {{ background: #f8f9fa; border-radius: 8px; padding: 30px; }}
-        .header {{ text-align: center; margin-bottom: 30px; }}
-        .logo {{ font-size: 24px; font-weight: bold; color: #1A56FF; }}
-        .content {{ background: white; padding: 25px; border-radius: 8px; margin-bottom: 20px; }}
-        .button {{ display: inline-block; background: linear-gradient(135deg, #1A56FF 0%, #00D4FF 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }}
-        .footer {{ text-align: center; font-size: 12px; color: #666; }}
-        .warning {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+        }}
+        .container {{
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #1A56FF 0%, #00D4FF 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }}
+        .logo {{
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }}
+        .logo-icon {{
+            font-size: 48px;
+            margin-bottom: 10px;
+        }}
+        .content {{
+            padding: 40px 30px;
+        }}
+        .greeting {{
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }}
+        .message {{
+            color: #555;
+            margin-bottom: 30px;
+            line-height: 1.8;
+        }}
+        .button-container {{
+            text-align: center;
+            margin: 30px 0;
+        }}
+        .button {{
+            display: inline-block;
+            background: linear-gradient(135deg, #1A56FF 0%, #00D4FF 100%);
+            color: white;
+            padding: 16px 40px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(26, 86, 255, 0.4);
+            transition: all 0.3s ease;
+        }}
+        .button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(26, 86, 255, 0.6);
+        }}
+        .link-section {{
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }}
+        .link-label {{
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }}
+        .link-url {{
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            word-break: break-all;
+            font-size: 12px;
+            color: #1A56FF;
+            font-family: 'Courier New', monospace;
+            border: 1px solid #e0e0e0;
+        }}
+        .warning {{
+            background: linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%);
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 8px;
+        }}
+        .warning-icon {{
+            font-size: 20px;
+            margin-right: 10px;
+        }}
+        .warning-text {{
+            color: #856404;
+            font-size: 14px;
+            line-height: 1.6;
+        }}
+        .divider {{
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e0e0e0, transparent);
+            margin: 30px 0;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 30px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }}
+        .footer-text {{
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }}
+        .footer-copyright {{
+            color: #999;
+            font-size: 12px;
+        }}
+        .security-badge {{
+            display: inline-flex;
+            align-items: center;
+            background: #e8f4fd;
+            color: #1A56FF;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 10px 0;
+        }}
+        .security-icon {{
+            margin-right: 8px;
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
+            <div class="logo-icon">🔐</div>
             <div class="logo">TELNET Dashboard</div>
         </div>
         
         <div class="content">
-            <h2 style="color: #1A56FF; margin-top: 0;">Réinitialisation de mot de passe</h2>
+            <h2 style="color: #1A56FF; margin-top: 0; font-size: 24px; margin-bottom: 20px;">Réinitialisation de mot de passe</h2>
             
-            <p>Bonjour {to_name or 'Utilisateur'},</p>
+            <p class="greeting">Bonjour {to_name or 'Utilisateur'},</p>
             
-            <p>Vous avez demandé la réinitialisation de votre mot de passe pour le TELNET Dashboard.</p>
-            
-            <p style="text-align: center;">
-                <a href="{reset_link}" class="button">Réinitialiser mon mot de passe</a>
+            <p class="message">
+                Vous avez demandé la réinitialisation de votre mot de passe pour le <strong>TELNET Dashboard</strong>.
+                Pour sécuriser votre compte, nous vous invitons à définir un nouveau mot de passe.
             </p>
             
-            <p>Ou copiez ce lien dans votre navigateur:</p>
-            <p style="background: #f0f0f0; padding: 10px; border-radius: 4px; word-break: break-all; font-size: 12px;">
-                {reset_link}
-            </p>
-            
-            <div class="warning">
-                <strong>⚠️ Important:</strong> Ce lien est valide pendant {expiry_minutes} minutes.
+            <div class="button-container">
+                <a href="{reset_link}" class="button">Réinitialiser mon mot de passe →</a>
             </div>
             
-            <p>Si vous n'avez pas demandé cette réinitialisation, ignorez cet email et votre mot de passe restera inchangé.</p>
+            <div class="link-section">
+                <p class="link-label">Ou copiez ce lien dans votre navigateur :</p>
+                <div class="link-url">{reset_link}</div>
+            </div>
+            
+            <div class="warning">
+                <span class="warning-icon">⚠️</span>
+                <span class="warning-text">
+                    <strong>Important :</strong> Ce lien est valide pendant <strong>{expiry_minutes} minutes</strong> uniquement.
+                    Pour des raisons de sécurité, il ne peut être utilisé qu'une seule fois.
+                </span>
+            </div>
+            
+            <div class="security-badge">
+                <span class="security-icon">🛡️</span>
+                Email sécurisé par TELNET
+            </div>
+            
+            <p style="color: #666; font-size: 14px; margin-top: 25px;">
+                Si vous n'avez pas demandé cette réinitialisation, ignorez cet email et votre mot de passe restera inchangé.
+            </p>
         </div>
         
+        <div class="divider"></div>
+        
         <div class="footer">
-            <p>Cordialement,<br>L'équipe TELNET</p>
-            <p>© 2026 TELNET HOLDING · Tous droits réservés</p>
+            <p class="footer-text">Cordialement,<br><strong>L'équipe TELNET</strong></p>
+            <p class="footer-copyright">© 2026 TELNET HOLDING · Tous droits réservés</p>
         </div>
     </div>
 </body>
@@ -249,6 +398,215 @@ L'équipe TELNET
 
         except Exception as e:
             logger.error(f"Failed to send password changed notification to {to_email}: {e}")
+            return False
+
+    def send_contact_email(
+        self,
+        name: str,
+        email: str,
+        subject: str,
+        message: str
+    ) -> bool:
+        """
+        Envoie un email de contact depuis le formulaire de la landing page.
+
+        Args:
+            name: Nom de l'expéditeur
+            email: Email de l'expéditeur
+            subject: Sujet du message
+            message: Contenu du message
+
+        Returns:
+            True si l'email a été envoyé avec succès, False sinon
+        """
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"Contact TELNET Dashboard: {subject}"
+            msg["From"] = formataddr((name, email))
+            msg["To"] = formataddr(("TELNET Dashboard", "stagepfegitlab1@gmail.com"))
+
+            # Version texte brut
+            text_content = f"""
+Nouveau message de contact depuis TELNET Dashboard
+
+Nom: {name}
+Email: {email}
+Sujet: {subject}
+
+Message:
+{message}
+
+---
+Envoyé depuis le formulaire de contact de la landing page TELNET Dashboard
+            """.strip()
+
+            # Version HTML
+            html_content = f"""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact TELNET Dashboard</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+        }}
+        .container {{
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #1A56FF 0%, #00D4FF 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }}
+        .logo {{
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }}
+        .logo-icon {{
+            font-size: 48px;
+            margin-bottom: 10px;
+        }}
+        .content {{
+            padding: 40px 30px;
+        }}
+        .section-title {{
+            font-size: 18px;
+            color: #1A56FF;
+            margin-bottom: 15px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        .info-row {{
+            display: flex;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+        .info-label {{
+            font-weight: 600;
+            color: #666;
+            min-width: 80px;
+            margin-right: 15px;
+        }}
+        .info-value {{
+            color: #333;
+            flex: 1;
+        }}
+        .message-box {{
+            background: #f0f7ff;
+            border-left: 4px solid #1A56FF;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 8px;
+        }}
+        .message-content {{
+            color: #333;
+            line-height: 1.8;
+            white-space: pre-wrap;
+        }}
+        .divider {{
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e0e0e0, transparent);
+            margin: 30px 0;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 30px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }}
+        .footer-text {{
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }}
+        .footer-copyright {{
+            color: #999;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo-icon">📧</div>
+            <div class="logo">TELNET Dashboard</div>
+        </div>
+        
+        <div class="content">
+            <h2 style="color: #1A56FF; margin-top: 0; font-size: 24px; margin-bottom: 25px;">Nouveau message de contact</h2>
+            
+            <div class="section-title">Informations de contact</div>
+            
+            <div class="info-row">
+                <span class="info-label">Nom:</span>
+                <span class="info-value">{name}</span>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Email:</span>
+                <span class="info-value">{email}</span>
+            </div>
+            
+            <div class="info-row">
+                <span class="info-label">Sujet:</span>
+                <span class="info-value">{subject}</span>
+            </div>
+            
+            <div class="section-title" style="margin-top: 25px;">Message</div>
+            
+            <div class="message-box">
+                <div class="message-content">{message}</div>
+            </div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="footer">
+            <p class="footer-text">Envoyé depuis le formulaire de contact de la landing page</p>
+            <p class="footer-copyright">© 2026 TELNET HOLDING · Tous droits réservés</p>
+        </div>
+    </div>
+</body>
+</html>
+            """.strip()
+
+            part1 = MIMEText(text_content, "plain")
+            part2 = MIMEText(html_content, "html")
+            msg.attach(part1)
+            msg.attach(part2)
+
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                if self.smtp_use_tls:
+                    server.starttls()
+                
+                if self.smtp_username and self.smtp_password:
+                    server.login(self.smtp_username, self.smtp_password)
+                
+                server.send_message(msg)
+            
+            logger.info(f"Contact email sent from {email} ({name})")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send contact email from {email}: {e}")
             return False
 
 

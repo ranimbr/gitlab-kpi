@@ -49,6 +49,25 @@ function s(str) {
     .replace(/[⚠⚡]/g, '!');
 }
 
+// ─── Period Label Shortener ───────────────────────────────────────────────────
+function shortPeriod(label) {
+  if (!label) return '';
+  const str = String(label);
+  return str
+    .replace(/Janvier/i, 'Janv.')
+    .replace(/Fevrier/i, 'Fevr.')
+    .replace(/Mars/i, 'Mars')
+    .replace(/Avril/i, 'Avril')
+    .replace(/Mai/i, 'Mai')
+    .replace(/Juin/i, 'Juin')
+    .replace(/Juillet/i, 'Juil.')
+    .replace(/Aout/i, 'Aout')
+    .replace(/Septembre/i, 'Sept.')
+    .replace(/Octobre/i, 'Oct.')
+    .replace(/Novembre/i, 'Nov.')
+    .replace(/Decembre/i, 'Dec.');
+}
+
 // ─── Palette ───────────────────────────────────────────────────────────────────
 const P = {
   navy:    [15,  23,  42],   // Slate-900 — titres, fonds sombres
@@ -90,6 +109,41 @@ const lw     = (d, v) => d.setLineWidth(v);
 function hRule(doc, y, col = P.border, t = 0.2) {
   stroke(doc, col); lw(doc, t);
   doc.line(L, y, W - R, y);
+}
+
+async function captureElement(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  try {
+    const canvas = await html2canvas(el, { scale: 2.0, backgroundColor: '#ffffff', logging: false, useCORS: true });
+    return canvas.toDataURL('image/png');
+  } catch (err) {
+    console.error(`Failed to capture ${id}:`, err);
+    return null;
+  }
+}
+
+function drawChartBox(doc, { title, img, x, y, w, h }) {
+  // Card background
+  fill(doc, P.white);
+  stroke(doc, P.border);
+  lw(doc, 0.2);
+  doc.roundedRect(x, y, w, h, 2, 2, 'FD');
+
+  // Title
+  text(doc, P.navy);
+  font(doc, 7.5, 'bold');
+  doc.text(s(title), x + 5, y + 5);
+
+  if (img) {
+    doc.addImage(img, 'PNG', x + 2, y + 7, w - 4, h - 9);
+  } else {
+    fill(doc, P.light);
+    doc.rect(x + 2, y + 7, w - 4, h - 9, 'F');
+    text(doc, P.gray);
+    font(doc, 7, 'italic');
+    doc.text('[Graphique non disponible]', x + w / 2, y + h / 2 + 2, { align: 'center' });
+  }
 }
 
 // ─── Universal Header / Footer ─────────────────────────────────────────────────
@@ -356,7 +410,7 @@ function buildExecutivePage(doc, { score, insights, trends, execSummary }) {
 }
 
 // ─── PAGE 3 ── Analyse Comparative ────────────────────────────────────────────
-async function buildComparativePage(doc, { chartId, trends }) {
+async function buildComparativePage(doc, { trends }) {
   const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
   fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
@@ -428,205 +482,485 @@ async function buildComparativePage(doc, { chartId, trends }) {
 
   y += 12;
 
-  // ── Chart ───────────────────────────────────────────────────────────────────
-  y = heading(doc, 'Evolution Historique des KPIs', y);
+  // ── Charts ──────────────────────────────────────────────────────────────────
+  y = heading(doc, 'Evolution Historique de la Productivite', y);
 
-  const el = document.getElementById(chartId);
-  if (el) {
-    try {
-      const canvas = await html2canvas(el, { scale: 2.5, backgroundColor: '#ffffff', logging: false, useCORS: true });
-      const raw = (CW * canvas.height) / canvas.width;
-      const imgH = Math.min(raw, 72);
-      doc.addImage(canvas.toDataURL('image/png'), 'PNG', L, y, CW, imgH);
-      y += imgH + 6;
-    } catch {
-      fill(doc, P.light); doc.roundedRect(L, y, CW, 16, 2, 2, 'F');
-      text(doc, P.gray); font(doc, 7.5, 'italic');
-      doc.text('[Graphique non disponible pour l\'export]', L + 6, y + 9.5);
-      y += 22;
-    }
-  } else {
-    fill(doc, P.light); doc.roundedRect(L, y, CW, 16, 2, 2, 'F');
-    text(doc, P.gray); font(doc, 7.5, 'italic');
-    doc.text('[Graphique non disponible — element DOM introuvable]', L + 6, y + 9.5);
-    y += 22;
-  }
+  const imgVelocity = await captureElement('pdf-chart-velocity');
+  const imgMrRate = await captureElement('pdf-chart-mr_rate');
 
-  y += 4;
+  const colW = (CW - 6) / 2;
+  const h = 50;
+
+  drawChartBox(doc, {
+    title: 'Velocite (Commits / Dev)',
+    img: imgVelocity,
+    x: L,
+    y,
+    w: colW,
+    h
+  });
+
+  drawChartBox(doc, {
+    title: 'Livraison (MRs / Dev)',
+    img: imgMrRate,
+    x: L + colW + 6,
+    y,
+    w: colW,
+    h
+  });
+
+  y += h + 12;
 
   // ── Performance note ────────────────────────────────────────────────────────
   if (y + 14 < H - 18) {
-    fill(doc, TINT.indigo); doc.roundedRect(L, y, CW, 12, 2, 2, 'F');
-    fill(doc, P.indigo); doc.rect(L, y, 3, 12, 'F');
+    fill(doc, TINT.indigo); doc.roundedRect(L, y, CW, 14, 2, 2, 'F');
+    fill(doc, P.indigo); doc.rect(L, y, 3, 14, 'F');
     text(doc, P.indigo); font(doc, 7, 'bold');
     doc.text('Note de lecture', L + 8, y + 5);
     text(doc, P.navy); font(doc, 7, 'normal');
-    doc.text('La velocite est exprimee en commits par developpeur. La qualite correspond au taux d\'approbation des Merge Requests.', L + 8, y + 9.5, { maxWidth: CW - 12 });
+    doc.text('La velocite mesure l\'activite brute de developpement en nombre de commits. La livraison comptabilise les Merge Requests (MR) fusionnees, refletant les increments de valeur reels.', L + 8, y + 9.5, { maxWidth: CW - 12 });
   }
 }
 
-// ─── PAGE 4 ── DORA Metrics & Plan d'Action ───────────────────────────────────
-function buildDoraPage(doc, { doraData }) {
+// ─── PAGE 4 ── Qualité & Processus de Revue ───────────────────────────────────
+async function buildQualityPage(doc, { trends }) {
   const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
   fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
   text(doc, P.navy); font(doc, 9, 'bold');
-  doc.text('DORA METRICS — PERFORMANCE DEVOPS', L, 9.5);
+  doc.text('QUALITE & PROCESSUS DE REVUE DES FLUX', L, 9.5);
+  text(doc, P.gray); font(doc, 7, 'normal');
+  doc.text(s(now), W - R, 9.5, { align: 'right' });
+
+  let y = 24;
+  y = heading(doc, 'Indicateurs de Qualite et Delais de Revue', y);
+
+  // Capture charts
+  const imgQuality = await captureElement('pdf-chart-quality_score');
+  const imgMerged = await captureElement('pdf-chart-merged_rate');
+  const imgReview = await captureElement('pdf-chart-review_time');
+
+  // Row 1 side-by-side
+  const colW = (CW - 6) / 2;
+  const h = 52;
+  
+  drawChartBox(doc, {
+    title: 'Taux d\'Approbation (%)',
+    img: imgQuality,
+    x: L,
+    y,
+    w: colW,
+    h
+  });
+
+  drawChartBox(doc, {
+    title: 'Taux de Fusion (%)',
+    img: imgMerged,
+    x: L + colW + 6,
+    y,
+    w: colW,
+    h
+  });
+
+  y += h + 8;
+
+  // Row 2 side-by-side: Review time and IA card
+  drawChartBox(doc, {
+    title: 'Temps de Revue Moyen (h)',
+    img: imgReview,
+    x: L,
+    y,
+    w: colW,
+    h
+  });
+
+  // IA Insight Card
+  const rx = L + colW + 6;
+  fill(doc, TINT.indigo); doc.roundedRect(rx, y, colW, h, 2, 2, 'F');
+  fill(doc, P.indigo); doc.rect(rx, y, 3.5, h, 'F');
+  
+  text(doc, P.indigo); font(doc, 8, 'bold');
+  doc.text('Analyse de Qualite & Processus', rx + 8, y + 6);
+  
+  text(doc, P.navy); font(doc, 7, 'normal');
+  doc.text(
+    'Le taux d\'approbation mesure la rigueur des revues (pourcentage de MRs approuvees avant fusion). Le taux de fusion montre l\'efficacite de l\'integration des developpements. Le temps de revue moyen indique le temps requis pour relire et valider le code avant sa livraison.',
+    rx + 8, y + 13, { maxWidth: colW - 12, lineHeightFactor: 1.45 }
+  );
+
+  y += h + 12;
+
+  // Companies targets box at the bottom of the page
+  const boxY = y;
+  fill(doc, P.light); doc.roundedRect(L, boxY, CW, 28, 2, 2, 'F');
+  fill(doc, P.blue); doc.rect(L, boxY, 3, 28, 'F');
+  
+  text(doc, P.navy); font(doc, 8, 'bold');
+  doc.text('Objectifs et Seuils de Reference Industriels', L + 8, boxY + 6);
+  
+  font(doc, 7, 'normal');
+  const guidelines = [
+    '- Taux d\'approbation cible : >= 80% pour garantir la securite intellectuelle et la relecture par les pairs.',
+    '- Taux de fusion cible : >= 85% pour eviter l\'accumulation de branches mortes ou de developpements obsoletes.',
+    '- Temps de revue cible : <= 24 heures afin de preserver la fluidite de la chaine CI/CD (limiter les blocages).'
+  ];
+  guidelines.forEach((line, idx) => {
+    doc.text(s(line), L + 8, boxY + 12 + idx * 4.5);
+  });
+}
+
+// ─── Metric Evolution Trend Mini-Table Helper ─────────────────────────────────
+function renderMetricTrendTable(doc, { title, metricId, trends, periods, x, y, w, isPercentage = false, isTime = false }) {
+  // Draw header of mini-table
+  fill(doc, P.navy); doc.rect(x, y, w, 6, 'F');
+  text(doc, P.white); font(doc, 6.5, 'bold');
+  doc.text(s(title), x + 3, y + 4.2);
+  
+  // Period columns headers
+  const colW = (w - 42) / 3;
+  periods.slice(-3).forEach((p, i) => {
+    doc.text(s(shortPeriod(p)), x + 42 + i * colW, y + 4.2, { align: 'right' });
+  });
+  doc.text('Evol.', x + w - 3, y + 4.2, { align: 'right' });
+  
+  y += 6;
+  
+  // Extract unique entities
+  const entities = [...new Set(trends.filter(t => t.entity_name !== 'Global' && t.entity_name !== 'Autres / Non-assignes').map(t => t.entity_name))];
+  
+  entities.forEach((entity, idx) => {
+    fill(doc, idx % 2 === 0 ? P.white : P.light);
+    doc.rect(x, y, w, 5.5, 'F');
+    
+    text(doc, P.navy); font(doc, 6, 'bold');
+    doc.text(s(entity), x + 3, y + 3.8);
+    
+    // Values for last 3 periods
+    const last3Periods = periods.slice(-3);
+    const pValues = [];
+    
+    last3Periods.forEach((p, i) => {
+      const item = trends.find(t => t.entity_name === entity && t.period_label === p);
+      let val = item && item.metrics ? item.metrics[metricId] : null;
+      pValues.push(val);
+      
+      let valStr = '—';
+      if (val != null) {
+        if (isPercentage) valStr = (val <= 1 ? val * 100 : val).toFixed(0) + '%';
+        else if (isTime) valStr = val.toFixed(1) + 'h';
+        else valStr = val.toFixed(1);
+      }
+      text(doc, P.navy); font(doc, 6, 'normal');
+      doc.text(valStr, x + 42 + i * colW, y + 3.8, { align: 'right' });
+    });
+    
+    // Delta calculation
+    let deltaStr = '—';
+    let deltaColor = P.gray;
+    const firstVal = pValues[0];
+    const lastVal = pValues[pValues.length - 1];
+    
+    if (firstVal != null && lastVal != null && firstVal > 0) {
+      const delta = ((lastVal - firstVal) / firstVal) * 100;
+      deltaStr = (delta >= 0 ? '+' : '') + delta.toFixed(0) + '%';
+      
+      if (metricId === 'review_time') {
+        // For review time, decrease is good
+        deltaColor = delta <= 0 ? P.green : P.red;
+      } else {
+        deltaColor = delta >= 0 ? P.green : P.red;
+      }
+    }
+    
+    text(doc, deltaColor); font(doc, 6, 'bold');
+    doc.text(deltaStr, x + w - 3, y + 3.8, { align: 'right' });
+    
+    y += 5.5;
+  });
+}
+
+// ─── PAGE 4 ── Historique Global des KPIs ──────────────────────────────────────
+function buildTrendsDashboardPage(doc, { trends }) {
+  const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('TABLEAU DE BORD D\'EVOLUTION DES KPIS', L, 9.5);
   text(doc, P.gray); font(doc, 7, 'normal');
   doc.text(s(now), W - R, 9.5, { align: 'right' });
 
   let y = 24;
 
-  // ── What is DORA ─────────────────────────────────────────────────────────────
-  fill(doc, TINT.blue); doc.roundedRect(L, y, CW, 18, 2, 2, 'F');
-  fill(doc, P.blue); doc.rect(L, y, 3, 18, 'F');
-  text(doc, P.navy); font(doc, 8, 'bold');
-  doc.text('Qu\'est-ce que DORA ?', L + 8, y + 6.5);
-  text(doc, P.gray); font(doc, 7.5, 'normal');
+  const periods = [...new Set((trends || []).map(t => t.period_label))];
+  const colW = (CW - 8) / 2;
+
+  // Row 1
+  renderMetricTrendTable(doc, {
+    title: 'Velocite (Commits / Dev)',
+    metricId: 'velocity',
+    trends,
+    periods,
+    x: L,
+    y,
+    w: colW
+  });
+
+  renderMetricTrendTable(doc, {
+    title: 'Livraison (MRs / Dev)',
+    metricId: 'mr_rate',
+    trends,
+    periods,
+    x: L + colW + 8,
+    y,
+    w: colW
+  });
+
+  y += 38; // space out rows
+
+  // Row 2
+  renderMetricTrendTable(doc, {
+    title: 'Taux d\'Approbation (%)',
+    metricId: 'quality_score',
+    trends,
+    periods,
+    x: L,
+    y,
+    w: colW,
+    isPercentage: true
+  });
+
+  renderMetricTrendTable(doc, {
+    title: 'Taux de Fusion (%)',
+    metricId: 'merged_rate',
+    trends,
+    periods,
+    x: L + colW + 8,
+    y,
+    w: colW,
+    isPercentage: true
+  });
+
+  y += 38;
+
+  // Row 3
+  renderMetricTrendTable(doc, {
+    title: 'Temps de Revue Moyen (h)',
+    metricId: 'review_time',
+    trends,
+    periods,
+    x: L,
+    y,
+    w: colW,
+    isTime: true
+  });
+
+  // IA Insight Card next to it
+  const rx = L + colW + 8;
+  fill(doc, TINT.indigo); doc.roundedRect(rx, y, colW, 23, 2, 2, 'F');
+  fill(doc, P.indigo); doc.rect(rx, y, 3, 23, 'F');
+  text(doc, P.indigo); font(doc, 7.5, 'bold');
+  doc.text('Note d\'Analyse Executive', rx + 7, y + 6);
+  text(doc, P.navy); font(doc, 6.5, 'normal');
   doc.text(
-    'Les metriques DORA (DevOps Research & Assessment) sont les 4 indicateurs valides par Google pour mesurer la performance DevOps. ' +
-    'Elles constituent le standard mondial pour les equipes d\'ingenierie logicielle.',
-    L + 8, y + 12, { maxWidth: CW - 14, lineHeightFactor: 1.4 }
+    'Ce tableau de bord d\'evolution montre la dynamique historique de livraison, de qualite et de relecture sur les 3 dernieres periodes. Utile pour suivre la stabilite operationnelle.',
+    rx + 7, y + 11.5, { maxWidth: colW - 12, lineHeightFactor: 1.35 }
   );
-  y += 25;
+}
 
-  // Level legend — clear chips
-  y = heading(doc, 'Echelle de Maturite DORA', y);
+// ─── PAGE 5 ── Intelligence & Recommandations ─────────────────────────────────
+function buildIntelligencePage(doc, { intelligenceData, teamIntelligenceData }) {
+  const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  const levels = [
-    { label: 'ELITE',   color: P.green,  tint: TINT.green,  desc: 'Meilleures pratiques mondiales' },
-    { label: 'HIGH',    color: P.indigo, tint: TINT.indigo, desc: 'Niveau avance'                   },
-    { label: 'MEDIUM',  color: P.amber,  tint: TINT.amber,  desc: 'En cours de progression'         },
-    { label: 'LOW',     color: P.red,    tint: TINT.red,    desc: 'Necessite une intervention'       },
+  fill(doc, P.light); doc.rect(0, 0, W, 14, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('INTELLIGENCE DECISIONNELLE & RECOMMANDATIONS IA', L, 9.5);
+  text(doc, P.gray); font(doc, 7, 'normal');
+  doc.text(s(now), W - R, 9.5, { align: 'right' });
+
+  let y = 24;
+
+  // ── 1. KPI HUD SUMMARY ───────────────────────────────────────────────────────
+  const siteAnomalies = (intelligenceData?.anomalies?.length ?? 0) + (intelligenceData?.trend_analysis?.alerts?.filter(a => a.severity !== 'info')?.length ?? 0);
+  const teamAnomalies = (teamIntelligenceData?.anomalies?.length ?? 0) + (teamIntelligenceData?.trend_analysis?.alerts?.filter(a => a.severity !== 'info')?.length ?? 0);
+  const totalAnomalies = siteAnomalies + teamAnomalies;
+
+  const siteRecs = intelligenceData?.recommendations?.length ?? 0;
+  const teamRecs = teamIntelligenceData?.recommendations?.length ?? 0;
+  const totalRecs = siteRecs + teamRecs;
+
+  const summaryStats = [
+    { label: 'Anomalies Detectees', value: String(totalAnomalies), color: totalAnomalies > 0 ? P.red : P.green, tint: totalAnomalies > 0 ? TINT.red : TINT.green },
+    { label: 'Recommandations Gen.', value: String(totalRecs), color: P.blue, tint: TINT.blue }
   ];
 
-  const chipW = (CW - 9) / 4;
-  levels.forEach((lv, i) => {
-    const cx = L + i * (chipW + 3);
-    fill(doc, lv.tint); doc.roundedRect(cx, y, chipW, 16, 2, 2, 'F');
-    fill(doc, lv.color); doc.rect(cx, y, chipW, 5, 'F');
-    fill(doc, lv.tint); doc.rect(cx, y + 3, chipW, 2, 'F'); // soften bottom of header
-    text(doc, P.white); font(doc, 7, 'bold');
-    doc.text(lv.label, cx + chipW / 2, y + 3.8, { align: 'center' });
-    text(doc, lv.color); font(doc, 6.5, 'normal');
-    doc.text(s(lv.desc), cx + chipW / 2, y + 12, { align: 'center', maxWidth: chipW - 4 });
+  const cardW = (CW - 3) / 2;
+  summaryStats.forEach((stat, i) => {
+    const cx = L + i * (cardW + 3);
+    fill(doc, stat.tint); doc.roundedRect(cx, y, cardW, 16, 2, 2, 'F');
+    fill(doc, stat.color); doc.rect(cx, y, 3.5, 16, 'F');
+
+    text(doc, stat.color); font(doc, 11, 'bold');
+    doc.text(stat.value, cx + 8, y + 6.5);
+    text(doc, P.navy); font(doc, 6.5, 'bold');
+    doc.text(s(stat.label), cx + 8, y + 12);
   });
-  y += 22;
 
-  // ── DORA Table ─────────────────────────────────────────────────────────────
-  y = heading(doc, 'Resultats par Site / Entite', y);
+  y += 24;
 
-  if (!doraData || doraData.length === 0) {
-    fill(doc, P.light); doc.roundedRect(L, y, CW, 14, 2, 2, 'F');
-    text(doc, P.gray); font(doc, 7.5, 'italic');
-    doc.text('Donnees DORA non disponibles pour la periode selectionnee.', L + 6, y + 9);
-    y += 20;
+  // ── 2. TWO-COLUMN LAYOUT (50% / 50% split) ──────────────────────────────────
+  const midW = (CW - 8) / 2;
+  const leftX = L;
+  const rightX = L + midW + 8;
+  const startY = y;
+
+  // ── LEFT COLUMN: ALERTS & KEY ANOMALIES ────────────────────────────────────
+  let ly = startY;
+  
+  // Header left
+  fill(doc, P.blue); doc.rect(leftX, ly + 0.5, 2.5, 5, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('Alerte & Derive Opérationnelle', leftX + 5, ly + 4.5);
+  ly += 9;
+
+  // Gather alerts
+  const alertsList = [];
+  if (intelligenceData?.trend_analysis?.alerts) {
+    intelligenceData.trend_analysis.alerts.forEach(a => alertsList.push({ text: a.detail || a.message, severity: a.severity || 'medium', scope: 'Site' }));
+  }
+  if (teamIntelligenceData?.trend_analysis?.alerts) {
+    teamIntelligenceData.trend_analysis.alerts.forEach(a => alertsList.push({ text: a.detail || a.message, severity: a.severity || 'medium', scope: 'Equipe' }));
+  }
+
+  if (alertsList.length === 0) {
+    fill(doc, TINT.green); doc.roundedRect(leftX, ly, midW, 20, 2, 2, 'F');
+    fill(doc, P.green); doc.rect(leftX, ly, 3, 20, 'F');
+    text(doc, P.green); font(doc, 7.5, 'bold');
+    doc.text('NOMINAL — Aucun Signal Critique', leftX + 6, ly + 6);
+    text(doc, P.navy); font(doc, 6.5, 'normal');
+    doc.text('Les flux de livraison et de relecture sont stables', leftX + 6, ly + 11.5);
+    doc.text('sur l\'ensemble du périmètre évalué.', leftX + 6, ly + 15.5);
+    ly += 25;
   } else {
-    fill(doc, P.navy); doc.rect(L, y, CW, 9, 'F');
-    text(doc, P.white); font(doc, 7, 'bold');
-    const dCols = [
-      { t: 'Site / Entite',        x: L + 4   },
-      { t: 'Deploiements / Mois', x: L + 60  },
-      { t: 'Niveau DF',           x: L + 105 },
-      { t: 'Lead Time (h)',       x: L + 138 },
-      { t: 'Niveau LT',          x: L + 168 },
-    ];
-    dCols.forEach(c => doc.text(c.t, c.x, y + 6));
-    y += 9;
+    // Show top 3 alerts
+    alertsList.slice(0, 3).forEach(alert => {
+      const isCrit = alert.severity === 'high' || alert.severity === 'danger';
+      const aColor = isCrit ? P.red : P.amber;
+      const aTint = isCrit ? TINT.red : TINT.amber;
 
-    const lvlColor = { Elite: P.green, High: P.indigo, Medium: P.amber, Low: P.red, 'N/A': P.gray };
-    const lvlTint  = { Elite: TINT.green, High: TINT.indigo, Medium: TINT.amber, Low: TINT.red, 'N/A': TINT.gray };
+      fill(doc, aTint); doc.roundedRect(leftX, ly, midW, 22, 2, 2, 'F');
+      fill(doc, aColor); doc.rect(leftX, ly, 3, 22, 'F');
 
-    const clean = doraData.filter(d => d.site_name && d.site_name !== 'Autres / Non-assignes' && d.site_name !== 'Global');
-    clean.forEach((site, i) => {
-      const rH = 12;
-      fill(doc, i % 2 === 0 ? P.white : P.light);
-      doc.rect(L, y, CW, rH, 'F');
+      text(doc, aColor); font(doc, 7, 'bold');
+      doc.text(s(`[ANOMALIE ${alert.scope.toUpperCase()}]`), leftX + 6, ly + 5.5);
 
-      text(doc, P.navy); font(doc, 8, 'bold');
-      doc.text(s(site.site_name), L + 4, y + 8);
-      font(doc, 8, 'normal');
-      doc.text(String(site.deployment_count ?? '—'), L + 60, y + 8);
-
-      // DF badge
-      const dfL = site.dora_df_level || 'N/A';
-      fill(doc, lvlTint[dfL] || TINT.gray);
-      doc.roundedRect(L + 103, y + 1.5, 26, 8, 1.5, 1.5, 'F');
-      text(doc, lvlColor[dfL] || P.gray); font(doc, 6.5, 'bold');
-      doc.text(dfL, L + 116, y + 7.3, { align: 'center' });
-
-      text(doc, P.navy); font(doc, 8, 'normal');
-      doc.text(site.lead_time_hours > 0 ? site.lead_time_hours.toFixed(1) : '—', L + 138, y + 8);
-
-      // LT badge
-      const ltL = site.dora_lt_level || 'N/A';
-      fill(doc, lvlTint[ltL] || TINT.gray);
-      doc.roundedRect(L + 166, y + 1.5, 26, 8, 1.5, 1.5, 'F');
-      text(doc, lvlColor[ltL] || P.gray); font(doc, 6.5, 'bold');
-      doc.text(ltL, L + 179, y + 7.3, { align: 'center' });
-
-      y += rH;
+      text(doc, P.navy); font(doc, 6.8, 'normal');
+      doc.text(s(alert.text), leftX + 6, ly + 11.5, { maxWidth: midW - 12, lineHeightFactor: 1.35 });
+      ly += 26;
     });
   }
 
-  y += 12;
+  // Best practice sharing / Site comparisons
+  if (ly + 28 < H - 24) {
+    fill(doc, P.blue); doc.rect(leftX, ly + 0.5, 2.5, 5, 'F');
+    text(doc, P.navy); font(doc, 9, 'bold');
+    doc.text('Diagnostic de Performance', leftX + 5, ly + 4.5);
+    ly += 9;
 
-  // ── Action Plan ─────────────────────────────────────────────────────────────
-  y = heading(doc, 'Plan d\'Action — Feuille de Route', y);
+    let diagText = "L'analyse statistique montre des flux stables. ";
+    if (intelligenceData?.summary) {
+      diagText = s(intelligenceData.summary);
+    } else if (teamIntelligenceData?.summary) {
+      diagText = s(teamIntelligenceData.summary);
+    }
 
-  const actions = [
-    {
-      horizon: 'Court terme  |  J+30',
-      color:   P.indigo,
-      tint:    TINT.indigo,
-      title:   'Automatisation CI/CD',
-      detail:  'Activer les pipelines CI/CD automatises et configurer les webhooks GitLab sur chaque site pour declencher tests et analyses de qualite a chaque push.',
-    },
-    {
-      horizon: 'Moyen terme  |  J+60',
-      color:   P.amber,
-      tint:    TINT.amber,
-      title:   'Reduction du Lead Time',
-      detail:  'Instaurer des regles de revue avec validation obligatoire sous 24h et des criteres de qualite definis. Objectif : lead time < 1 jour (standard High).',
-    },
-    {
-      horizon: 'Long terme   |  J+90',
-      color:   P.green,
-      tint:    TINT.green,
-      title:   'Viser le Niveau DORA Elite',
-      detail:  'Augmenter la frequence de deploiement a > 1 par jour via feature flags et deploiement progressif. Objectif : classement DORA Elite sur tous les sites.',
-    },
-  ];
-
-  actions.forEach(a => {
-    if (y + 24 > H - 18) return;
-    fill(doc, a.tint); doc.roundedRect(L, y, CW, 22, 2, 2, 'F');
-    fill(doc, a.color); doc.rect(L, y, 3, 22, 'F');
-
-    text(doc, a.color); font(doc, 6.5, 'bold');
-    doc.text(s(a.horizon), L + 8, y + 6.5);
-    text(doc, P.navy); font(doc, 8.5, 'bold');
-    doc.text(s(a.title), L + 8, y + 12.5);
-    text(doc, P.navy); font(doc, 7, 'normal');
-    doc.text(s(a.detail), L + 8, y + 18, { maxWidth: CW - 14, lineHeightFactor: 1.35 });
-    y += 26;
-  });
-
-  // ── Certification seal ──────────────────────────────────────────────────────
-  if (y + 28 < H - 18) {
-    y += 4;
-    hRule(doc, y, P.border); y += 6;
-    fill(doc, P.light); doc.roundedRect(L, y, CW, 20, 2, 2, 'F');
-    fill(doc, P.blue); doc.rect(L, y, 3, 20, 'F');
-    text(doc, P.blue); font(doc, 7.5, 'bold');
-    doc.text('TELNET BI ENGINE v3.0 — Rapport Automatique Certifie Conforme', L + 8, y + 7.5);
-    text(doc, P.gray); font(doc, 6.5, 'normal');
-    doc.text(
-      'Les donnees presentees sont issues d\'une analyse automatisee certifiee des flux GitLab. Ce rapport est genere le ' +
-      new Date().toLocaleDateString('fr-FR') + '. Classification : Usage Interne — Direction Executive.',
-      L + 8, y + 13.5, { maxWidth: CW - 14 }
-    );
+    fill(doc, P.light); doc.roundedRect(leftX, ly, midW, 30, 2, 2, 'F');
+    fill(doc, P.navy); doc.rect(leftX, ly, 3, 30, 'F');
+    text(doc, P.navy); font(doc, 6.8, 'normal');
+    doc.text(diagText, leftX + 7, ly + 6.5, { maxWidth: midW - 14, lineHeightFactor: 1.45 });
   }
+
+  // ── RIGHT COLUMN: STRATEGIC RECOMMENDATIONS ────────────────────────────────
+  let ry = startY;
+
+  // Header right
+  fill(doc, P.blue); doc.rect(rightX, ry + 0.5, 2.5, 5, 'F');
+  text(doc, P.navy); font(doc, 9, 'bold');
+  doc.text('Recommandations & Actions RH', rightX + 5, ry + 4.5);
+  ry += 9;
+
+  // Gather Recommendations (RH and AI)
+  const recommendationsList = [];
+  
+  if (intelligenceData?.trend_analysis?.rh_recommendations) {
+    intelligenceData.trend_analysis.rh_recommendations.forEach(r => {
+      recommendationsList.push({
+        category: r.category || 'RH',
+        priority: r.priority || 'moyenne',
+        message: r.message,
+        color: r.color === '#ef4444' ? P.red : r.color === '#f59e0b' ? P.amber : P.green
+      });
+    });
+  }
+  if (teamIntelligenceData?.trend_analysis?.rh_recommendations) {
+    teamIntelligenceData.trend_analysis.rh_recommendations.forEach(r => {
+      recommendationsList.push({
+        category: r.category || 'RH',
+        priority: r.priority || 'moyenne',
+        message: r.message,
+        color: r.color === '#ef4444' ? P.red : r.color === '#f59e0b' ? P.amber : P.green
+      });
+    });
+  }
+
+  // Add AI recommendations strings
+  if (intelligenceData?.recommendations) {
+    intelligenceData.recommendations.filter(r => !r.startsWith('[')).forEach(r => {
+      recommendationsList.push({
+        category: 'Synthese IA',
+        priority: 'basse',
+        message: r,
+        color: P.indigo
+      });
+    });
+  }
+
+  if (recommendationsList.length === 0) {
+    fill(doc, P.light); doc.roundedRect(rightX, ry, midW, 20, 2, 2, 'F');
+    text(doc, P.gray); font(doc, 7, 'italic');
+    doc.text('Aucune action requise identifiee.', rightX + 6, ry + 11);
+    ry += 25;
+  } else {
+    // Show top 4 recommendations
+    recommendationsList.slice(0, 4).forEach(rec => {
+      const isHigh = rec.priority === 'haute';
+      const tint = isHigh ? TINT.red : rec.priority === 'moyenne' ? TINT.amber : TINT.indigo;
+      const color = isHigh ? P.red : rec.priority === 'moyenne' ? P.amber : P.indigo;
+
+      fill(doc, P.white); doc.roundedRect(rightX, ry, midW, 22, 2, 2, 'F');
+      stroke(doc, P.border); lw(doc, 0.25); doc.roundedRect(rightX, ry, midW, 22, 2, 2, 'S');
+      fill(doc, color); doc.rect(rightX, ry, 3.5, 22, 'F');
+
+      text(doc, color); font(doc, 6.8, 'bold');
+      doc.text(s(`[${rec.category.toUpperCase()}]`), rightX + 7, ry + 5.5);
+
+      text(doc, P.navy); font(doc, 6.5, 'normal');
+      doc.text(s(rec.message), rightX + 7, ry + 11.5, { maxWidth: midW - 14, lineHeightFactor: 1.4 });
+      ry += 26;
+    });
+  }
+
+  // ── 3. BOTTOM CERTIFICATION SEAL ───────────────────────────────────────────
+  y = H - 36;
+  hRule(doc, y, P.border); y += 6;
+  fill(doc, P.light); doc.roundedRect(L, y, CW, 14, 2, 2, 'F');
+  fill(doc, P.blue); doc.rect(L, y, 3, 14, 'F');
+  text(doc, P.blue); font(doc, 7.5, 'bold');
+  doc.text('MOTEUR D\'INTELLIGENCE DECISIONNELLE TELNET v3.0', L + 8, y + 5.5);
+  text(doc, P.gray); font(doc, 6.5, 'normal');
+  doc.text(
+    'Rapport certifie conforme genere de maniere autonome par l\'IA de pilotage. Classification : Usage Interne — Management Strategique.',
+    L + 8, y + 10.5, { maxWidth: CW - 14 }
+  );
 }
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
@@ -636,10 +970,10 @@ export async function exportDashboardPDF({
   healthScore,
   insights,
   trends,
-  doraData,
   chartElementId = 'kpi-evolution-chart',
   executiveSummary,
   intelligenceData,
+  teamIntelligenceData,
 }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const logo    = await loadLogoBase64();
@@ -647,7 +981,7 @@ export async function exportDashboardPDF({
   const date     = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   });
-  const TOTAL = 4;
+  const TOTAL = 6;
 
   // Page 1 — Cover
   buildCover(doc, { project: projectName, period, date, logo, score: healthScore, entities });
@@ -658,18 +992,29 @@ export async function exportDashboardPDF({
   buildExecutivePage(doc, { score: healthScore, insights, trends, execSummary: executiveSummary });
   pageChrome(doc, 2, TOTAL, projectName);
 
-  // Page 3 — Comparative Analysis
+  // Page 3 — Comparative Analysis (Velocity & Delivery)
   doc.addPage();
-  await buildComparativePage(doc, { chartId: chartElementId, trends });
+  await buildComparativePage(doc, { trends });
   pageChrome(doc, 3, TOTAL, projectName);
 
-  // Page 4 — DORA + Action Plan
+  // Page 4 — Quality & Review Process
   doc.addPage();
-  buildDoraPage(doc, { doraData });
+  await buildQualityPage(doc, { trends });
   pageChrome(doc, 4, TOTAL, projectName);
+
+  // Page 5 — Trends Dashboard (Mini-tables)
+  doc.addPage();
+  buildTrendsDashboardPage(doc, { trends });
+  pageChrome(doc, 5, TOTAL, projectName);
+
+  // Page 6 — Intelligence & Recommendations
+  doc.addPage();
+  buildIntelligencePage(doc, { intelligenceData, teamIntelligenceData });
+  pageChrome(doc, 6, TOTAL, projectName);
 
   // Download
   const safe = s(projectName).replace(/[^a-zA-Z0-9]/g, '_');
   const d    = new Date().toISOString().slice(0, 10);
   doc.save(`TELNET_KPI_Report_${safe}_${d}.pdf`);
 }
+

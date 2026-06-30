@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, DateTime, ForeignKeyConstraint
+from sqlalchemy.orm import declared_attr
 from sqlalchemy.orm import relationship
 
 from app.models.base import Base
@@ -10,6 +11,15 @@ class CommitMergeRequest(Base):
     """
 
     __tablename__ = "commit_merge_request"
+
+    # Override Base timestamps - junction tables don't need audit columns
+    @declared_attr.directive
+    def created_at(cls):
+        return None
+
+    @declared_attr.directive
+    def updated_at(cls):
+        return None
 
     commit_id = Column(
         Integer,

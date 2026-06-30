@@ -216,4 +216,8 @@ class MergeRequest(Base):
         CheckConstraint("additions     IS NULL OR additions     >= 0", name="chk_mr_additions"),
         CheckConstraint("deletions     IS NULL OR deletions     >= 0", name="chk_mr_deletions"),
         CheckConstraint("total_changes IS NULL OR total_changes >= 0", name="chk_mr_total"),
+        # commits_count >= 0 si renseigné
+        CheckConstraint("commits_count IS NULL OR commits_count >= 0", name="chk_mr_commits_count_positive"),
+        # Pour les MRs non-draft, commits_count doit être renseigné (KPI #8: avg_commits_per_mr)
+        CheckConstraint("(is_draft = TRUE) OR (commits_count IS NOT NULL)", name="chk_mr_commits_count_required"),
     )

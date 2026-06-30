@@ -72,81 +72,79 @@ class AnalyticsService:
             start_date=start_date, end_date=end_date,
         )
 
-    def get_dashboard_summary(
-        self,
-        project_id:   Optional[int] = None,
-        site_id:      Optional[int] = None,
-        group_id:     Optional[int] = None,
-        developer_id: Optional[int] = None,
-        lot_id:       Optional[int] = None,
-        period_id:    Optional[int] = None,
-    ) -> Dict:
-        """
-        Génère le résumé complet pour le dashboard :
-        - KPIs les plus récents (ou d'une période précise)
-        - Historique pour les graphiques
-        """
-        if lot_id:
-            # Mode Senior : Isolation par lot d'extraction (Session-First)
-            latest = self._calculate_virtual_snapshot_for_lot(
-                project_id, lot_id, site_id, group_id, developer_id
-            )
-            history = []
-            period_label = f"Session #{lot_id}"
-        elif project_id is None:
-            # ✅ NOUVEAU : Mode Senior Global (Tous les projets)
-            # On aggrège les KPIs par période
-            logger.info(f"Dashboard Summary: Aggregating global data (period_id={period_id}, site_id={site_id}, developer_id={developer_id})")
-            latest = self._get_aggregated_global_snapshot(period_id, site_id, developer_id=developer_id)
-            history = self._get_global_history(site_id, developer_id=developer_id)
-            logger.info(f"Dashboard Summary: Aggregated global data success. History count: {len(history)}")
-            period_label = "Tous les projets"
-            if period_id and latest:
-                period_label += f" — {latest.period_label if hasattr(latest, 'period_label') else ''}"
-        else:
-            # Mode Classique (Projet spécifique)
-            if period_id:
-                latest = self.snapshot_repo.get_by_project_period_site(
-                    self.db, project_id, period_id, site_id, group_id, developer_id
-                )
-            else:
-                latest = self.get_latest_kpis(project_id, site_id, group_id, developer_id)
-            
-            history = self.get_kpi_history(project_id, site_id, group_id, developer_id)
-            
-            # ✅ [SENIOR] Dynamic Headcount & Velocity Recalculation
-            # Permet de refléter les changements d'organisation (site/groupe) sans ré-extraction.
-            if latest and not developer_id:
-                pid = latest.period_id if hasattr(latest, 'period_id') else period_id
-                if pid:
-                    nb_devs = self.dev_repo.count_active_for_period(
-                        self.db, project_id, pid, site_id, group_id
-                    )
-                    latest.nb_developers = nb_devs
-                    
-                    # Recalcul des ratios de vitesse (Commits/Dev, MRs/Dev)
-                    if nb_devs > 0:
-                        latest.commit_rate_per_site = round(float(latest.total_commits or 0) / nb_devs, 2)
-                        latest.mr_rate_per_site = round(float(latest.total_mrs_created or 0) / nb_devs, 2)
-                    else:
-                        latest.commit_rate_per_site = 0.0
-                        latest.mr_rate_per_site = 0.0
+    # DISABLED: Dashboard functionality removed
+    # def get_dashboard_summary(
+    #     self,
+    #     project_id:   Optional[int] = None,
+    #     site_id:      Optional[int] = None,
+    #     group_id:     Optional[int] = None,
+    #     developer_id: Optional[int] = None,
+    #     lot_id:       Optional[int] = None,
+    #     period_id:    Optional[int] = None,
+    # ) -> Dict:
+    #     """
+    #     Génère le résumé complet pour le dashboard :
+    #     - KPIs les plus récents (ou d'une période précise)
+    #     - Historique pour les graphiques
+    #     """
+    #     if lot_id:
+    #         # Mode Senior : Isolation par lot d'extraction (Session-First)
+    #         latest = self._calculate_virtual_snapshot_for_lot(
+    #             project_id, lot_id, site_id, group_id, developer_id
+    #         )
+    #         history = []
+    #         period_label = f"Session #{lot_id}"
+    #     elif project_id is None:
+    #         # ✅ NOUVEAU : Mode Senior Global (Tous les projets)
+    #         # On aggrège les KPIs par période
+    #         logger.info(f"Dashboard Summary: Aggregating global data (period_id={period_id}, site_id={site_id}, developer_id={developer_id})")
+    #         latest = self._get_aggregated_global_snapshot(period_id, site_id, developer_id=developer_id)
+    #         history = self._get_global_history(site_id, developer_id=developer_id)
+    #         logger.info(f"Dashboard Summary: Aggregated global data success. History count: {len(history)}")
+    #         period_label = "Tous les projets"
+    #         if period_id and latest:
+    #             period_label += f" — {latest.period_label if hasattr(latest, 'period_label') else ''}"
+    #     else:
+    #         # Mode Classique (Projet spécifique)
+    #         if period_id:
+    #             latest = self.snapshot_repo.get_by_project_period_site(
+    #                 self.db, project_id, period_id, site_id, group_id, developer_id
+    #             )
+    #         else:
+    #             latest = self.get_latest_kpis(project_id, site_id, group_id, developer_id)
+    #         # ✅ [SENIOR] Dynamic Headcount & Velocity Recalculation
+    #         # Permet de refléter les changements d'organisation (site/groupe) sans ré-extraction.
+    #         if latest and not developer_id:
+    #             pid = latest.period_id if hasattr(latest, 'period_id') else period_id
+    #             if pid:
+    #                 nb_devs = self.dev_repo.count_active_for_period(
+    #                     self.db, project_id, pid, site_id, group_id
+    #                 )
+    #                 latest.nb_developers = nb_devs
+    #                 
+    #                 # Recalcul des ratios de vitesse (Commits/Dev, MRs/Dev)
+    #                 if nb_devs > 0:
+    #                     latest.commit_rate_per_site = round(float(latest.total_commits or 0) / nb_devs, 2)
+    #                     latest.mr_rate_per_site = round(float(latest.total_mrs_created or 0) / nb_devs, 2)
+    #                 else:
+    #                     latest.commit_rate_per_site = 0.0
+    #                     latest.mr_rate_per_site = 0.0
 
-            period_label = None
-            if latest and latest.snapshot_date:
-                mois         = _MOIS_FR.get(latest.snapshot_date.month, "")
-                period_label  = f"{mois} {latest.snapshot_date.year}"
+    #     period_label = None
+    #     if latest and latest.snapshot_date:
+    #         mois         = _MOIS_FR.get(latest.snapshot_date.month, "")
+    #         period_label  = f"{mois} {latest.snapshot_date.year}"
 
-        return {
-            "latest_metrics":  latest,
-            "history":         history,
-            "total_snapshots": len(history),
-            "project_id":      project_id,
-            "site_id":         site_id,
-            "group_id":        group_id,
-            "developer_id":    developer_id,
-            "period_label":    period_label,
-        }
+    #     return {
+    #         "latest_metrics":  latest,
+    #         "history":         history,
+    #         "total_snapshots": len(history),
+    #         "project_id":      project_id,
+    #         "site_id":         site_id,
+    #         "group_id":        group_id,
+    #         "developer_id":    developer_id,
+    #         "period_label":    period_label,
+    #     }
 
     def _get_aggregated_global_snapshot(self, period_id: Optional[int] = None, site_id: Optional[int] = None, developer_id: Optional[int] = None) -> Optional[KpiSnapshot]:
         """Aggrège les snapshots de tous les projets pour une période donnée."""
@@ -1066,6 +1064,7 @@ class AnalyticsService:
                     "quality_score": s.approved_mr_rate,
                     "merged_rate":   s.merged_mr_rate,
                     "review_time":   s.avg_review_time_hours,
+                    # "avg_commits":   s.avg_commits_per_mr,  # DISABLED: KPI #8 removed
                     "total_commits": s.total_commits,
                     "total_mrs":     s.total_mrs_created,
                     "nb_developers": nb_devs,

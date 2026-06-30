@@ -59,33 +59,74 @@ def get_active_menu_items(
 ):
     """
     Récupère les menus actifs accessibles à l'utilisateur selon son profil.
+
+    Priorité :
+      1. super_admin → tous les menus
+      2. profile_id explicite → menus du profil
+      3. profile_id=NULL → cherche le profil par défaut selon le nom du rôle
+      4. Sinon → liste vide (aucune restriction implicite)
     
     Accès : Tous les rôles (pour affichage sidebar)
     """
-    # Les super_admin ont accès à tous les menus sans vérification de profil
+    from app.repositories.profile_menu_item_repository import ProfileMenuItemRepository
+    from app.repositories.menu_item_repository import MenuItemRepository
+    from app.models.profile import Profile
+
+    menu_item_repo = MenuItemRepository()
+    profile_menu_repo = ProfileMenuItemRepository()
+
+    # 1. super_admin → accès total
     if current_user.role == UserRoleEnum.super_admin:
         return menu_item_service.get_active_only(db)
-    
-    # Si l'utilisateur a un profil, filtrer les menus selon ses droits d'accès
+
+    # Déterminer le profile_id effectif dans la base du tenant
+    effective_profile_id = None
+    profile_name = None
+
+    # 2. Résoudre le nom du profil dans la base globale d'authentification (auth_db)
     if current_user.profile_id:
-        from app.repositories.profile_menu_item_repository import ProfileMenuItemRepository
-        from app.repositories.menu_item_repository import MenuItemRepository
-        
-        profile_menu_repo = ProfileMenuItemRepository()
-        menu_item_repo = MenuItemRepository()
-        
-        # Récupérer les menus accessibles pour le profil de l'utilisateur
-        accessible_menu_ids = profile_menu_repo.get_accessible_menu_ids(db, current_user.profile_id)
-        
-        # Récupérer tous les menus actifs
+        from app.database.session import get_auth_session
+        from app.models.profile import Profile as AuthProfile
+        auth_db = get_auth_session()
+        try:
+            auth_prof = auth_db.query(AuthProfile).filter(AuthProfile.id == current_user.profile_id).first()
+            if auth_prof:
+                profile_name = auth_prof.name
+        finally:
+            auth_db.close()
+
+    # 3. Chercher le profil du même nom dans la base de données courante (db)
+    if profile_name:
+        tenant_profile = db.query(Profile).filter(Profile.name == profile_name).first()
+        if tenant_profile:
+            effective_profile_id = tenant_profile.id
+
+    # 4. Fallback par défaut selon le rôle de l'utilisateur
+    if not effective_profile_id:
+        # Mapping rôle technique → nom du profil par défaut
+        ROLE_TO_PROFILE_NAME = {
+            UserRoleEnum.site_manager:    "Site Manager",
+            UserRoleEnum.team_lead:       "Team Lead",
+            UserRoleEnum.project_manager: "Project Manager",
+            UserRoleEnum.developer:       "Developer",
+            UserRoleEnum.viewer:          "Viewer",
+        }
+        default_profile_name = ROLE_TO_PROFILE_NAME.get(current_user.role)
+        if default_profile_name:
+            default_profile = db.query(Profile).filter(
+                Profile.name == default_profile_name
+            ).first()
+            if default_profile:
+                effective_profile_id = default_profile.id
+
+    # 5. Filtrer par profil effectif
+    if effective_profile_id:
+        accessible_menu_ids = profile_menu_repo.get_accessible_menu_ids(db, effective_profile_id)
         all_active_menus = menu_item_repo.get_active_only(db)
-        
-        # Filtrer pour ne retourner que les menus accessibles
-        accessible_menus = [menu for menu in all_active_menus if menu.id in accessible_menu_ids]
-        return accessible_menus
-    
-    # Sinon, retourner tous les menus actifs (comportement par défaut)
-    return menu_item_service.get_active_only(db)
+        return [menu for menu in all_active_menus if menu.id in accessible_menu_ids]
+
+    # 6. Aucun profil trouvé → retourner liste vide (sécurité par défaut)
+    return []
 
 
 @router.get("/{menu_item_id}", response_model=MenuItemResponse)

@@ -122,11 +122,12 @@ class AppUser(Base):
         foreign_keys="DeveloperGroup.manager_id",
     )
     # Relation developers_created supprimée - created_by n'a plus de foreign key
-    dashboards_created = relationship(
-        "Dashboard",
-        back_populates="creator",
-        foreign_keys="Dashboard.created_by",
-    )
+    # DISABLED: Dashboard functionality removed
+    # dashboards_created = relationship(
+    #     "Dashboard",
+    #     back_populates="creator",
+    #     foreign_keys="Dashboard.created_by",
+    # )
     acknowledged_alerts = relationship(
         "Alert",
         back_populates="acknowledger",
@@ -291,61 +292,68 @@ class AppUser(Base):
         if self.role == UserRoleEnum.super_admin:
             return True
         
-        # Récupérer le dashboard depuis la base
-        from app.models.dashboard import Dashboard
-        dashboard = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
-        if not dashboard:
-            return False
+        # DISABLED: Dashboard functionality removed
+        # # Récupérer le dashboard depuis la base
+        # from app.models.dashboard import Dashboard
+        # dashboard = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+        # if not dashboard:
+        #     return False
+        # 
+        # # Dashboards publics
+        # if dashboard.is_public:
+        #     return True
+        # 
+        # # Accès explicite (dashboard_access) - priorité sur les règles automatiques
+        # if self.dashboard_access and dashboard_id in self.dashboard_access:
+        #     return True
         
-        # Dashboards publics
-        if dashboard.is_public:
-            return True
-        
-        # Accès explicite (dashboard_access) - priorité sur les règles automatiques
-        if self.dashboard_access and dashboard_id in self.dashboard_access:
-            return True
+        # DISABLED: Dashboard functionality removed
+        return False
         
         # site_manager: dashboards de ses sites accessibles (multi-sites)
-        if (self.role_obj and self.role_obj.code == "site_manager") or self.role == UserRoleEnum.site_manager:
-            # Vérifier les sites accessibles via site_accesses (nouveau système multi-sites)
-            accessible_site_ids = self.accessible_site_ids
-            # Fallback vers l'ancien système single site
-            if self.site_id:
-                accessible_site_ids.append(self.site_id)
-            if dashboard.site_id in accessible_site_ids:
-                return True
-        
+        # DISABLED: Dashboard functionality removed
+        # if (self.role_obj and self.role_obj.code == "site_manager") or self.role == UserRoleEnum.site_manager:
+        #     # Vérifier les sites accessibles via site_accesses (nouveau système multi-sites)
+        #     accessible_site_ids = self.accessible_site_ids
+        #     # Fallback vers l'ancien système single site
+        #     if self.site_id:
+        #         accessible_site_ids.append(self.site_id)
+        #     if dashboard.site_id in accessible_site_ids:
+        #         return True
+        # 
         # team_lead: dashboards des projets de ses équipes accessibles (multi-équipes)
-        if (self.role_obj and self.role_obj.code == "team_lead") or self.role == UserRoleEnum.team_lead:
-            from app.models.developer_group import DeveloperGroupLink
-            from app.models.developer_project import DeveloperProject
-            
-            # Récupérer tous les groupes accessibles
-            accessible_group_ids = self.accessible_group_ids
-            # Fallback vers l'ancien système single group
-            if self.group_id:
-                accessible_group_ids.append(self.group_id)
-            
-            if accessible_group_ids:
-                # Récupérer tous les développeurs actifs de ces groupes
-                dev_ids = [d.developer_id for d in db.query(DeveloperGroupLink)
-                          .filter(DeveloperGroupLink.group_id.in_(accessible_group_ids),
-                                 DeveloperGroupLink.is_active == True)
-                          .all()]
+        # if (self.role_obj and self.role_obj.code == "team_lead") or self.role == UserRoleEnum.team_lead:
+        #     from app.models.developer_group import DeveloperGroupLink
+        #     from app.models.developer_project import DeveloperProject
+        #     
+        #     # Récupérer tous les groupes accessibles
+        #     accessible_group_ids = self.accessible_group_ids
+        #     # Fallback vers l'ancien système single group
+        #     if self.group_id:
+        #         accessible_group_ids.append(self.group_id)
+        #     
+        #     if accessible_group_ids:
+        #         # Récupérer tous les développeurs actifs de ces groupes
+        #         dev_ids = [d.developer_id for d in db.query(DeveloperGroupLink)
+        #                   .filter(DeveloperGroupLink.group_id.in_(accessible_group_ids),
+        #                                  DeveloperGroupLink.is_active == True)
+        #                   .all()]
                 
                 # Récupérer tous les projets de ces développeurs
-                if dev_ids:
-                    project_ids = [p.project_id for p in db.query(DeveloperProject)
-                                  .filter(DeveloperProject.developer_id.in_(dev_ids))
-                                  .all()]
-                    if dashboard.project_id in project_ids:
-                        return True
+                #                 if dev_ids:
+                #                     project_ids = [p.project_id for p in db.query(DeveloperProject)
+                #                                   .filter(DeveloperProject.developer_id.in_(dev_ids))
+                #                                   .all()]
+                    # DISABLED: Dashboard functionality removed
+                    # if dashboard.project_id in project_ids:
+                    #     return True
         
         # project_manager: dashboards de ses projets assignés
-        if (self.role_obj and self.role_obj.code == "project_manager") or self.role == UserRoleEnum.project_manager:
-            if self.project_ids and dashboard.project_id in self.project_ids:
-                return True
-        
+        # DISABLED: Dashboard functionality removed
+        # if (self.role_obj and self.role_obj.code == "project_manager") or self.role == UserRoleEnum.project_manager:
+        #     if self.project_ids and dashboard.project_id in self.project_ids:
+        #         return True
+        # 
         return False
 
     def can_manage_site(self, site_id: int) -> bool:

@@ -123,7 +123,7 @@ from app.schemas.kpi import (
     DeveloperLeaderboardEntry,
     DeveloperLeaderboardResponse,
     KpiHistoryResponse,
-    DashboardSummaryResponse,
+    # DashboardSummaryResponse,  # DISABLED: Dashboard functionality removed
     SnapshotGeneratedResponse,
     SimpleMessageResponse,
 )
@@ -142,9 +142,10 @@ from app.schemas.alert import (
 )
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
-from app.schemas.dashboard import (
-    DashboardCreate, DashboardUpdate, DashboardResponse,
-)
+# DISABLED: Dashboard functionality removed
+# from app.schemas.dashboard import (
+#     DashboardCreate, DashboardUpdate, DashboardResponse,
+# )
 
 # ── Audit Log ─────────────────────────────────────────────────────────────────
 from app.schemas.audit_log import (

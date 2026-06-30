@@ -237,6 +237,19 @@ class DeveloperService:
         if not developer:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Développeur introuvable.")
 
+        # Capture developer state before update
+        old_properties = {
+            "name": developer.name,
+            "email": developer.email,
+            "gitlab_username": developer.gitlab_username,
+            "is_active": developer.is_active,
+            "is_validated": developer.is_validated,
+            "is_bot": developer.is_bot,
+            "is_external": developer.is_external,
+            "onboarding_date": developer.onboarding_date,
+            "offboarding_date": developer.offboarding_date,
+        }
+
         # Résolution de la période cible pour la Smart-Sync (Priorité à la sélection UI)
         target_period_id = getattr(payload, "period_id", None)
         mutation_date = getattr(payload, "mutation_date", None)
@@ -592,16 +605,36 @@ class DeveloperService:
 
         recalculation_needed = len(changed_fields) > 0
 
+        # Construct detailed associations before and after for timeline detection
+        old_assoc = {
+            "sites": [{"site_id": s} for s in sites_before],
+            "group_ids": list(groups_before),
+            "projects": [{"project_id": p} for p in projects_before]
+        }
+        new_assoc = {
+            "sites": [{"site_id": s} for s in sites_after],
+            "group_ids": list(groups_after),
+            "projects": [{"project_id": p} for p in projects_after]
+        }
+
+        old_detail = {**self._json_serializable(old_properties), **old_assoc}
+        
         # Log d'audit enrichi avec les champs modifiés
-        audit_detail = {**self._json_serializable(update_data)}
+        new_detail = {**self._json_serializable(update_data), **new_assoc}
         if changed_fields:
-            audit_detail["_changed_associations"] = changed_fields
+            new_detail["_changed_associations"] = changed_fields
+        
+        # ✅ [FIX] Inclure mutation_date dans le log d'audit pour la timeline
+        if mutation_date:
+            new_detail["mutation_date"] = mutation_date.isoformat() if hasattr(mutation_date, 'isoformat') else str(mutation_date)
 
         self.audit_repo.log(
             db=db, user_id=updated_by, action="UPDATE_DEVELOPER",
             entity_type="Developer", entity_id=developer_id,
             entity_name=developer.name,
-            new_value=audit_detail, ip_address=ip_address,
+            old_value=old_detail,
+            new_value=new_detail,
+            ip_address=ip_address,
         )
 
         # ✅ LOGIQUE AUTO-DISCOVERY : Maj des liens Projet-Site

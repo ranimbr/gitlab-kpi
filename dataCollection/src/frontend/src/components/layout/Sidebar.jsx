@@ -13,7 +13,7 @@
  *   · Séparateur fin entre sections
  *   · Footer système : dot vert pulsant + "Système opérationnel"
  */
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth, ROLES } from "../../context/AuthContext";
 import profileService from "../../services/profileService";
@@ -496,13 +496,17 @@ export default function Sidebar() {
     });
   };
 
+  const location = useLocation();
+
   useEffect(() => {
     if (user) {
       loadAccessibleMenus();
     }
-  }, [user]);
+  // Recharger les menus à chaque changement de route ET de user
+  // (permet la mise à jour sans reconnexion après modification des droits)
+  }, [user, location.pathname]);
 
-  const loadAccessibleMenus = async () => {
+  const loadAccessibleMenus = useCallback(async () => {
     try {
       setLoadingMenus(true);
       // Récupérer les menus accessibles selon le profil de l'utilisateur
@@ -515,7 +519,7 @@ export default function Sidebar() {
     } finally {
       setLoadingMenus(false);
     }
-  };
+  }, [user]);
 
   const isMenuAccessible = (route) => {
     if (!route) return false;
@@ -548,7 +552,7 @@ export default function Sidebar() {
           <Section title="Pilotage" isCollapsed={isCollapsed}>
             {/* ✅ [REMOVED] Dashboard Global - Page principale supprimée */}
             {/* <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" accessible={isMenuAccessible("/dashboard")} isCollapsed={isCollapsed} /> */}
-            <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={true} isCollapsed={isCollapsed} />
+            <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/analytics/comparison")} isCollapsed={isCollapsed} />
             {/* ✅ [REMOVED] Diagnostic Avancé - Non fonctionnelle */}
             {/* <NavItem icon="ri-stethoscope-line" label="Diagnostic Avancé" to={`/analytics/diagnostic${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/analytics/diagnostic")} isCollapsed={isCollapsed} /> */}
             <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" accessible={isMenuAccessible("/developers")} isCollapsed={isCollapsed} />
@@ -594,11 +598,7 @@ export default function Sidebar() {
       </div>
 
       {/* Footer System Status */}
-      <div className="sb-footer">
-        <div className="sb-footer-dot" />
-        <span className="sb-footer-txt">Système opérationnel</span>
-        <span className="sb-footer-ver">v3.0</span>
-      </div>
+      
     </aside>
   );
 }

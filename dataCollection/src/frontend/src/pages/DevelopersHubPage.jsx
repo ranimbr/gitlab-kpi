@@ -51,22 +51,55 @@ const COLORS = ["primary", "success", "info", "warning", "danger", "secondary"];
 
 // ─── Component: Counter Stats (Dashboard Pattern) ─────────────────────────────
 function StatsCard({ label, value, sub, icon, color }) {
+  // Map Bootstrap color names to hex colors
+  const colorMap = {
+    primary: "#405189",
+    success: "#0ab39c",
+    info: "#299cdb",
+    warning: "#f7b84b",
+    danger: "#f06548"
+  };
+  const hexColor = colorMap[color] || color;
+  
+  // Déterminer la couleur d'ombre et d'accentuation en fonction de la couleur active
+  const rgbColor = hexColor === "#405189" ? "64, 81, 137" :
+                   hexColor === "#0ab39c" ? "10, 179, 156" :
+                   hexColor === "#f06548" ? "240, 101, 72" :
+                   hexColor === "#299cdb" ? "41, 156, 219" :
+                   hexColor === "#f7b84b" ? "247, 184, 75" : "64, 81, 137";
+
   return (
     <div className="col-xl-3 col-sm-6">
-      <div className="card card-animate border-0 shadow-sm">
-        <div className="card-body">
-          <div className="d-flex align-items-center">
-            <div className="avatar-sm flex-shrink-0">
-              <span className={`avatar-title bg-${color}-subtle text-${color} rounded-2 fs-2`}>
-                <i className={icon}></i>
-              </span>
+      <div className="kpi-card-wrapper">
+        <div className="kpi-card-premium"
+          style={{
+            cursor: "default",
+            '--kpi-accent': hexColor,
+            '--kpi-accent-rgb': rgbColor,
+          }}>
+          {/* Subtle dynamic background gradient glowing effect */}
+          <div className="kpi-card-glow-bg" style={{background: `radial-gradient(circle at top right, rgba(${rgbColor}, 0.08), transparent 70%)`}}></div>
+          
+          {/* Background blob */}
+          <div className="kpi-card-blob" style={{opacity: 0.04}}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="180" height="110">
+              <path fill={hexColor} d="m189.5-25.8c0 0 20.1 46.2-26.7 71.4 0 0-60 15.4-62.3 65.3-2.2 49.8-50.6 59.3-57.8 61.5-7.2 2.3-60.8 0-60.8 0l-11.9-199.4z"/>
+            </svg>
+          </div>
+          
+          <div className="kpi-card-inner">
+            <div className="kpi-icon-wrap" style={{background: `${hexColor}12`, color: hexColor, boxShadow: `0 4px 14px rgba(${rgbColor}, 0.15)`}}>
+              <i className={icon}></i>
             </div>
-            <div className="flex-grow-1 overflow-hidden ms-3">
-              <p className="text-uppercase fw-medium text-muted text-truncate mb-2 fs-12" style={{ letterSpacing: ".05em" }}>{label}</p>
-              <h4 className="fs-4 mb-1 fw-bold">{value}</h4>
-              <p className="text-muted text-truncate mb-0 fs-12">{sub}</p>
+            <div className="kpi-text">
+              <p className="kpi-label">{label}</p>
+              <h4 className="kpi-value" style={{color: "#1e293b"}}>{value}</h4>
+              {sub && <p className="kpi-sub"><span className="kpi-sub-badge" style={{background: `${hexColor}10`, color: hexColor}}>{sub}</span></p>}
             </div>
           </div>
+          
+          {/* Beautiful indicator bar at the bottom */}
+          <div className="kpi-active-bar" style={{background: `linear-gradient(90deg, ${hexColor}, rgba(${rgbColor}, 0.4))`}}></div>
         </div>
       </div>
     </div>
@@ -715,24 +748,47 @@ export default function DevelopersHubPage() {
         {/* Global Toolbar Card */}
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-body p-3">
-            <div className="row g-2 align-items-center">
-              <div className="col-md-3">
-                <div className="search-box">
-                  <input type="text" className="form-control" placeholder="Rechercher (nom, @)..." value={search} onChange={e => setSearch(e.target.value)} />
-                  <i className="ri-search-line search-icon text-muted"></i>
-                </div>
+            <div className="commits-filter-body">
+              {/* Search */}
+              <div className="commits-filter-group commits-search-wrap">
+                <label className="commits-filter-label">
+                  <i className="ri-search-line"></i> Recherche
+                </label>
+                <input
+                  type="text"
+                  className="commits-filter-input commits-search-input"
+                  placeholder="Nom, @gitlab..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                <i className="ri-search-line commits-search-icon"></i>
               </div>
-              <div className="col-md-auto ms-auto d-flex gap-2">
-                <select className="form-select form-select-sm" value={projectFilter} onChange={e => setProjectFilter(e.target.value)} style={{ width: 160 }}>
+
+              {/* Project */}
+              <div className="commits-filter-group">
+                <label className="commits-filter-label">
+                  <i className="ri-git-repository-line"></i> Projet
+                </label>
+                <select
+                  className="commits-filter-select"
+                  value={projectFilter}
+                  onChange={e => setProjectFilter(e.target.value)}
+                >
                   <option value="all">Tous les projets</option>
                   {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
                 </select>
+              </div>
 
-                {/* Période Selector */}
-                <select className="form-select form-select-sm" 
-                  value={selectedPeriodId || ""} 
-                  onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)} 
-                  style={{ width: 140 }}>
+              {/* Période */}
+              <div className="commits-filter-group">
+                <label className="commits-filter-label">
+                  <i className="ri-calendar-line"></i> Période
+                </label>
+                <select
+                  className="commits-filter-select"
+                  value={selectedPeriodId || ""}
+                  onChange={e => setSelectedPeriodId(e.target.value ? Number(e.target.value) : null)}
+                >
                   <option value="">Toutes périodes</option>
                   {periods.map(p => (
                     <option key={p.id} value={p.id}>
@@ -740,47 +796,96 @@ export default function DevelopersHubPage() {
                     </option>
                   ))}
                 </select>
+              </div>
 
-
-
-                <select className="form-select form-select-sm" value={siteFilter} onChange={e => setSiteFilter(e.target.value)} style={{ width: 140 }}>
+              {/* Site */}
+              <div className="commits-filter-group">
+                <label className="commits-filter-label">
+                  <i className="ri-earth-line"></i> Site
+                </label>
+                <select
+                  className="commits-filter-select"
+                  value={siteFilter}
+                  onChange={e => setSiteFilter(e.target.value)}
+                >
                   <option value="all">Tous les sites</option>
                   {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+              </div>
 
-                <select className="form-select form-select-sm" value={groupFilter} onChange={e => setGroupFilter(e.target.value)} style={{ width: 140 }}>
+              {/* Équipe */}
+              <div className="commits-filter-group">
+                <label className="commits-filter-label">
+                  <i className="ri-team-line"></i> Équipe
+                </label>
+                <select
+                  className="commits-filter-select"
+                  value={groupFilter}
+                  onChange={e => setGroupFilter(e.target.value)}
+                >
                   <option value="all">Toutes les équipes</option>
                   {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
+              </div>
 
-                <select className="form-select form-select-sm" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ width: 160 }}>
+              {/* Tri */}
+              <div className="commits-filter-group">
+                <label className="commits-filter-label">
+                  <i className="ri-sort-desc"></i> Tri par
+                </label>
+                <select
+                  className="commits-filter-select"
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value)}
+                >
                   <option value="score">KPI Score ↓</option>
                   <option value="commits">Commits ↓</option>
                   <option value="mrs">Merge Requests ↓</option>
                   <option value="name">Nom A→Z</option>
                   <option value="recent">Inscriptions récentes</option>
                 </select>
+              </div>
 
-                <div className="form-check form-switch ms-2 d-flex align-items-center gap-2">
-                  <input className="form-check-input" type="checkbox" id="inactiveSwitch" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-                  <label className="form-check-label fs-11 fw-bold text-muted mb-0" htmlFor="inactiveSwitch">VOIR INACTIFS</label>
+              {/* Inactifs Toggle */}
+              <div className="commits-filter-group">
+                <label className="commits-filter-label">
+                  <i className="ri-user-unfollow-line"></i> Statut
+                </label>
+                <div className="commits-toggle-wrap">
+                  <div
+                    className={`commits-toggle ${showInactive ? "commits-toggle-active" : ""}`}
+                    onClick={() => setShowInactive(!showInactive)}
+                    title="Afficher les développeurs inactifs/sortis"
+                  >
+                    <div className="commits-toggle-thumb"></div>
+                  </div>
+                  <span className="commits-toggle-label">
+                    {showInactive ? "Tous" : "Actifs"}
+                  </span>
+                  <input
+                    type="checkbox"
+                    id="inactiveSwitch"
+                    checked={showInactive}
+                    onChange={e => setShowInactive(e.target.checked)}
+                    style={{ display: "none" }}
+                  />
                 </div>
+              </div>
 
-                <button className="btn btn-soft-danger btn-sm ms-auto" onClick={() => { setSearch(""); setSiteFilter("all"); setGroupFilter("all"); setProjectFilter(""); setSelectedPeriodId(null); setValidatedOnly(false); setShowInactive(false); }} title="Réinitialiser">
-                  <i className="ri-refresh-line"></i>
-                </button>
-                
-                {isTeamLead && isTeamLead() && (
-                  <>
-                    {/* ✅ [REMOVED] Comparer - Non fonctionnelle */}
-                    {/* <Link to="/developers/compare" className="btn btn-soft-info btn-sm d-flex align-items-center gap-1" style={{ fontWeight: 600 }}>
-                      <i className="ri-scales-3-line"></i> Comparer
-                    </Link> */}
-                    <button className="btn btn-primary btn-sm ms-1 d-flex align-items-center gap-1 shadow-sm" onClick={() => setShowImportModal(true)} style={{ fontWeight: 600 }}>
+              {/* Actions */}
+              <div className="commits-filter-group" style={{ flex: '0 0 auto', minWidth: 'auto' }}>
+                <label className="commits-filter-label">Actions</label>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-soft-danger btn-sm" onClick={() => { setSearch(""); setSiteFilter("all"); setGroupFilter("all"); setProjectFilter(""); setSelectedPeriodId(null); setValidatedOnly(false); setShowInactive(false); }} title="Réinitialiser">
+                    <i className="ri-refresh-line"></i>
+                  </button>
+                  
+                  {isTeamLead && isTeamLead() && (
+                    <button className="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm" onClick={() => setShowImportModal(true)} style={{ fontWeight: 600 }}>
                       <i className="ri-upload-cloud-2-line"></i> Importer
                     </button>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -874,10 +979,163 @@ export default function DevelopersHubPage() {
       )}
 
       <style>{`
-        .search-box { position: relative; }
-        .search-box .search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 14px; }
-        .search-box .form-control { padding-left: 36px; padding-right: 12px; }
-        .font-secondary { font-family: 'Poppins', sans-serif; }
+        .commits-filter-body {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          padding: 20px 24px;
+          align-items: flex-end;
+        }
+        .commits-filter-group {
+          display: flex; flex-direction: column; gap: 6px;
+          flex: 1; min-width: 160px;
+        }
+        .commits-filter-label {
+          font-size: 10px; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.8px;
+          color: #8896ab;
+          display: flex; align-items: center; gap: 5px; margin: 0;
+        }
+        .commits-filter-label i { font-size: 11px; }
+        .commits-filter-select, .commits-filter-input {
+          height: 38px;
+          border: 1.5px solid #e8edf5;
+          border-radius: 10px;
+          padding: 0 12px;
+          font-size: 13px;
+          color: #1a1f36;
+          background: #f8faff;
+          transition: border-color .2s, box-shadow .2s;
+          outline: none;
+          width: 100%;
+          appearance: none; -webkit-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238896ab' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 12px center;
+          padding-right: 32px;
+        }
+        .commits-filter-select:focus, .commits-filter-input:focus {
+          border-color: #405189;
+          box-shadow: 0 0 0 3px rgba(64,81,137,0.12);
+          background-color: #fff;
+        }
+        .commits-search-wrap { position: relative; }
+        .commits-search-icon {
+          position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+          color: #8896ab; font-size: 14px; pointer-events: none;
+        }
+        .commits-search-input {
+          padding-left: 36px !important;
+          background-image: none !important;
+        }
+
+        /* Toggle switch */
+        .commits-toggle-wrap { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+        .commits-toggle {
+          width: 42px; height: 24px; border-radius: 12px;
+          background: #e2e8f0;
+          position: relative; cursor: pointer;
+          transition: background .25s;
+          flex-shrink: 0;
+        }
+        .commits-toggle.commits-toggle-active { background: linear-gradient(135deg, #0ab39c, #06d6a0); }
+        .commits-toggle-thumb {
+          width: 18px; height: 18px; border-radius: 50%;
+          background: #fff;
+          position: absolute; top: 3px; left: 3px;
+          transition: left .25s;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.18);
+        }
+        .commits-toggle.commits-toggle-active .commits-toggle-thumb { left: 21px; }
+        .commits-toggle-label { font-size: 12px; font-weight: 600; color: #495057; white-space: nowrap; }
+
+        /* KPI Card Premium Styling */
+        .kpi-card-wrapper {
+          height: 100%;
+        }
+        .kpi-card-premium {
+          position: relative;
+          border-radius: 16px;
+          padding: 20px;
+          background: #fff;
+          border: 1px solid #e8edf5;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+          transition: all 0.3s ease;
+          overflow: hidden;
+          height: 100%;
+        }
+        .kpi-card-premium:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+          border-color: var(--kpi-accent);
+        }
+        .kpi-card-glow-bg {
+          position: absolute;
+          top: 0;
+          right: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
+        .kpi-card-blob {
+          position: absolute;
+          bottom: -20px;
+          right: -20px;
+          pointer-events: none;
+        }
+        .kpi-card-inner {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .kpi-icon-wrap {
+          width: 52px;
+          height: 52px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          flex-shrink: 0;
+        }
+        .kpi-text {
+          flex: 1;
+          min-width: 0;
+        }
+        .kpi-label {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          color: #8896ab;
+          margin: 0 0 4px 0;
+        }
+        .kpi-value {
+          font-size: 28px;
+          font-weight: 700;
+          margin: 0 0 4px 0;
+          line-height: 1.2;
+        }
+        .kpi-sub {
+          font-size: 12px;
+          margin: 0;
+          color: #6c757d;
+        }
+        .kpi-sub-badge {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .kpi-active-bar {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+        }
       `}</style>
     </div>
   );

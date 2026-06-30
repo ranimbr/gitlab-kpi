@@ -77,11 +77,12 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    dashboards = relationship(
-        "Dashboard",
-        back_populates="project",
-        cascade="all, delete-orphan",
-    )
+    # DISABLED: Dashboard functionality removed
+    # dashboards = relationship(
+    #     "Dashboard",
+    #     back_populates="project",
+    #     cascade="all, delete-orphan",
+    # )
     kpi_thresholds = relationship(
         "KpiThreshold",
         back_populates="project",

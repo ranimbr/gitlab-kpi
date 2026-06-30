@@ -350,9 +350,9 @@ const analyticsService = {
    * ]
    */
   getDoraMetrics: async (projectId, periodId = null) => {
-    const params = buildParams({ project_id: projectId, period_id: periodId });
-    const { data } = await api.get("/kpis/dora", { params });
-    return data;
+    // DISABLED: DORA Metrics removed from backend
+    console.warn("getDoraMetrics is disabled - DORA Metrics removed from backend");
+    return [];
   },
 
   /**

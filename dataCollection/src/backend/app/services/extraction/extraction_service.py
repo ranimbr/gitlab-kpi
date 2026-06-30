@@ -110,8 +110,8 @@ class ExtractionService:
             )
 
         project = self.project_repo.get_by_gitlab_id(db, gitlab_project_id)
+        client = GitLabClient(gitlab_config)
         if not project:
-            client       = GitLabClient(gitlab_config)
             project_data = await client.get_project(gitlab_project_id)
             if not project_data:
                 raise HTTPException(
@@ -122,6 +122,23 @@ class ExtractionService:
             mapped["gitlab_config_id"] = gitlab_config.id
             project                    = self.project_repo.create(db, mapped)
             db.flush()
+        elif not project.namespace or not project.path:
+            logger.info(f"Enriching project id={project.id} with GitLab metadata...")
+            try:
+                project_data = await client.get_project(gitlab_project_id)
+                if project_data:
+                    mapped = GitLabMapper.map_project(project_data)
+                    self.project_repo.update(db, project.id, {
+                        "name": mapped.get("name"),
+                        "path": mapped.get("path"),
+                        "namespace": mapped.get("namespace"),
+                        "description": mapped.get("description"),
+                        "visibility": mapped.get("visibility"),
+                        "default_branch": mapped.get("default_branch"),
+                    })
+                    db.flush()
+            except Exception as e:
+                logger.warning(f"Failed to enrich project details for gitlab_id={gitlab_project_id}: {e}")
 
         lot = ExtractionLot(
             extraction_type=ExtractionTypeEnum.REALTIME,
@@ -307,6 +324,24 @@ class ExtractionService:
         try:
             client = GitLabClient(gitlab_config)
             self._update_lot_progress(db, lot, 10, "Initialisation mensuelle...")
+
+            if not project.namespace or not project.path:
+                logger.info(f"Enriching project id={project.id} with GitLab metadata during monthly extraction...")
+                try:
+                    project_data = await client.get_project(project.gitlab_project_id)
+                    if project_data:
+                        mapped = GitLabMapper.map_project(project_data)
+                        self.project_repo.update(db, project.id, {
+                            "name": mapped.get("name"),
+                            "path": mapped.get("path"),
+                            "namespace": mapped.get("namespace"),
+                            "description": mapped.get("description"),
+                            "visibility": mapped.get("visibility"),
+                            "default_branch": mapped.get("default_branch"),
+                        })
+                        db.flush()
+                except Exception as e:
+                    logger.warning(f"Failed to enrich project details for gitlab_id={project.gitlab_project_id}: {e}")
             
             # 🧠 [SENIOR ENGINE] - Sélection Intelligente basée sur le Cycle de Vie
             # On ne veut extraire que les devs qui étaient présents dans l'entreprise durant cette période.
@@ -602,6 +637,8 @@ class ExtractionService:
         
         logger.info(f"[CHIRURGICAL] Isolation temporelle active: {lot_start.isoformat()} -> {lot_end.isoformat()}")
 
+        # [FIX] Utiliser all=True pour capturer tous les commits (incluant ceux mergés)
+        # Le filtrage par auteur se fait localement via _matches_target_devs
         unique_commits = await fetch_unique_commits(
             client=client,
             gitlab_project_id=project.gitlab_project_id,
@@ -685,9 +722,10 @@ class ExtractionService:
                 logger.error(f"Error during Surgical Mission check: {e}")
                 
             # [SENIOR HOTFIX] Fetch stats only for this specific matched commit
-            detailed_commit = await client.get_commit_detail(project.gitlab_project_id, commit_data["id"])
-            if detailed_commit:
-                commit_data = detailed_commit
+            # [OPTIMISATION DISABLED] Stats now included from get_project_commits(with_stats=True)
+            # detailed_commit = await client.get_commit_detail(project.gitlab_project_id, commit_data["id"])
+            # if detailed_commit:
+            #     commit_data = detailed_commit
                 
             mapped = GitLabMapper.map_commit(
                 data=commit_data,
@@ -933,15 +971,17 @@ class ExtractionService:
 
         created = updated = skipped = 0
 
-        for mr_data in mrs:
+        # [OPTIMISATION] Process MRs in parallel with semaphore to limit concurrency
+        async def process_single_mr(mr_data):
+            local_created, local_updated, local_skipped = 0, 0, 0
             existing_mr = self.mr_repo.get_by_gitlab_mr_id(db, mr_data["iid"], project.id)
             
             author = mr_data.get("author") or {}
             mr_iid = mr_data.get("iid")
             
             if not mr_matches_target_devs(mr_data, target_devs_map):
-                skipped += 1
-                continue
+                local_skipped += 1
+                return local_created, local_updated, local_skipped
             
             # [SENIOR] SURGICAL MISSION CHECK (Daily Precision for MRs)
             mr_created_str = mr_data.get("created_at")
@@ -964,8 +1004,8 @@ class ExtractionService:
                                 f"[SECURITY] Surgical: MR !{mr_iid} rejected for {target_dev.name} "
                                 f"on project {project.name} (Date {mr_date} outside mission)"
                             )
-                            skipped += 1
-                            continue
+                            local_skipped += 1
+                            return local_created, local_updated, local_skipped
                 except Exception as e:
                     logger.error(f"Error during Surgical MR check: {e}")
 
@@ -1009,8 +1049,8 @@ class ExtractionService:
 
             # [SENIOR LOGIC] On ne skip QUE si aucun acteur n'est local
             if not dev_author and not dev_reviewer and not dev_assignee:
-                skipped += 1
-                continue
+                local_skipped += 1
+                return local_created, local_updated, local_skipped
 
             # [SENIOR LOGIC] — DEEP EXTRACTION
             # Le listing MR ne renvoie pas commits_count. On fetch le détail complet + les commits.
@@ -1018,12 +1058,17 @@ class ExtractionService:
             approvals_data = {}
             try:
                 # [SENIOR FIX 1.1] Appels parallèles pour diviser le temps par 3 !
+                # [OPTIMISATION SKIP NOTES] Notes non nécessaires pour KPIs spécifiés
                 full_mr_data, mr_commits, mr_notes_data, approvals_data = await asyncio.gather(
                     client.get_merge_request_detail(project.gitlab_project_id, mr_data["iid"]),
                     client.get_merge_request_commits(project.gitlab_project_id, mr_data["iid"]),
-                    client.get_merge_request_notes(project.gitlab_project_id, mr_data["iid"]),
+                    # client.get_merge_request_notes(project.gitlab_project_id, mr_data["iid"]),  # [SKIP NOTES]
                     client.get_merge_request_approvals(project.gitlab_project_id, mr_data["iid"])
                 )
+                mr_notes_data = []  # [SKIP NOTES] Empty instead of fetching
+                
+                # [SKIP NOTES] Force user_notes_count à 0 AVANT l'update pour éviter d'être écrasé
+                mr_data["user_notes_count"] = 0
                 
                 if full_mr_data:
                     mr_data.update(full_mr_data)
@@ -1039,13 +1084,17 @@ class ExtractionService:
                     scoped=bool(developer_ids),
                 )
 
+                # commits_count should represent TOTAL commits in MR (complexity metric)
+                # Use GitLab API value if available, otherwise count all commits
+                mr_data["commits_count"] = full_mr_data.get("commits_count", len(mr_commits)) if full_mr_data else len(mr_commits)
+                
+                # Keep filtered commits for KPI calculation (author + period filtering)
                 filtered_commits = [
                     c for c in mr_commits
                     if (not (c.get("title", "").lower().startswith("merge branch"))) and
                     is_target_author_commit(c, target_names, target_emails) and
                     is_in_period(c.get("authored_date", ""), lot_start, lot_end)
                 ]
-                mr_data["commits_count"] = len(filtered_commits)
 
                 # Compute additions, deletions, total_changes from MR commits in database
                 try:
@@ -1078,14 +1127,16 @@ class ExtractionService:
                         logger.warning(f"Failed to calculate cycle time for MR !{mr_data['iid']}: {e}")
 
                 # 2. Comments (Notes) : Only those by TARGET developers AND within this period
+                # [SKIP NOTES] Notes non nécessaires pour KPIs spécifiés
+                # user_notes_count déjà forcé à 0 AVANT l'update (ligne 1034)
                 mr_notes = mr_notes_data
-                filtered_notes = [
-                    n for n in mr_notes
-                    if not n.get("system", False) and
-                    is_target_author_note(n, target_ids, target_unames) and
-                    is_in_period(n.get("created_at", ""), lot_start, lot_end)
-                ]
-                mr_data["user_notes_count"] = len(filtered_notes)
+                # filtered_notes = [
+                #     n for n in mr_notes
+                #     if not n.get("system", False) and
+                #     is_target_author_note(n, target_ids, target_unames) and
+                #     is_in_period(n.get("created_at", ""), lot_start, lot_end)
+                # ]
+                # mr_data["user_notes_count"] = len(filtered_notes)
 
                 # [SENIOR FIX] Fetch resource_state_events for precise approved_at timestamp
                 # This provides accurate review time calculation (creation -> approval)
@@ -1129,10 +1180,10 @@ class ExtractionService:
                 if not belongs_to_lot:
                     mapped.pop("extraction_lot_id", None)
                 current_mr = self.mr_repo.update(db, existing_mr, mapped)
-                updated += 1
+                local_updated += 1
             else:
                 current_mr = self.mr_repo.create(db, mapped)
-                created += 1
+                local_created += 1
 
             # Link commits to MR in commit_merge_request table
             try:
@@ -1164,27 +1215,44 @@ class ExtractionService:
 
             # [FIX-DOUBLE-CALL] Réutilise mr_notes déjà chargé — aucun appel API supplémentaire
             # [FIX-SILENT] Exception loggée (warning) au lieu d'être silencieusement ignorée
-            try:
-                for note in mr_notes:
-                    if note.get("system"): continue
-                    n_author = note.get("author") or {}
-                    commenter = self._resolve_developer(
-                        db=db, project_id=project.id,
-                        period_id=lot.period_id,
-                        email=n_author.get("email"), name=n_author.get("name"),
-                        gitlab_id=n_author.get("id"), username=n_author.get("username"),
-                        # ✅ [STRICT MISSION] Interdiction de création
-                        forbid_creation=True
-                    )
-                    if commenter:
-                        self.comment_repo.create_if_not_exists(db, {
-                            "gitlab_id": note.get("id"), "body": note.get("body"),
-                            "created_at": note.get("created_at"), "developer_id": commenter.id,
-                            "merge_request_id": current_mr.id
-                        })
-            except Exception as e:
-                logger.warning(f"Could not persist notes for MR !{mr_data.get('iid', '?')}: {e}")
+            # [SKIP NOTES] Persistance des notes désactivée
+            # try:
+            #     for note in mr_notes:
+            #         if note.get("system"): continue
+            #         n_author = note.get("author") or {}
+            #         commenter = self._resolve_developer(
+            #             db=db, project_id=project.id,
+            #             period_id=lot.period_id,
+            #             email=n_author.get("email"), name=n_author.get("name"),
+            #             gitlab_id=n_author.get("id"), username=n_author.get("username"),
+            #             # ✅ [STRICT MISSION] Interdiction de création
+            #             forbid_creation=True
+            #         )
+            #         if commenter:
+            #             self.comment_repo.create_if_not_exists(db, {
+            #                 "gitlab_id": note.get("id"), "body": note.get("body"),
+            #                 "created_at": note.get("created_at"), "developer_id": commenter.id,
+            #                 "merge_request_id": current_mr.id
+            #             })
+            # except Exception as e:
+            #     logger.warning(f"Could not persist notes for MR !{mr_data.get('iid', '?')}: {e}")
             db.commit()
+            
+            return local_created, local_updated, local_skipped
+
+        # [OPTIMISATION] Process MRs in parallel with semaphore to limit concurrency
+        semaphore = asyncio.Semaphore(5)  # Process 5 MRs concurrently
+        
+        async def process_with_semaphore(mr_data):
+            async with semaphore:
+                return await process_single_mr(mr_data)
+        
+        # Process all MRs in parallel and sum results
+        results = await asyncio.gather(*[process_with_semaphore(mr_data) for mr_data in mrs])
+        for c, u, s in results:
+            created += c
+            updated += u
+            skipped += s
 
         # [SENIOR CERTIFICATION] Final step: ensure the lot "claims" its relevant data
         self._certify_lot_mrs(db, lot, project, effective_ids, lot_start, lot_end)

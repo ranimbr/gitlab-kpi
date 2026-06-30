@@ -45,16 +45,16 @@ class PeriodFilter(Base):
     date_to    = Column(DateTime(timezone=True), nullable=True)
     is_dynamic = Column(Boolean, default=True, nullable=False)
 
-    dashboard_id = Column(
-        Integer,
-        ForeignKey("dashboard.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    dashboard = relationship("Dashboard", back_populates="period_filters")
+    # DISABLED: Dashboard functionality removed
+    # dashboard_id = Column(
+    #     Integer,
+    #     ForeignKey("dashboard.id", ondelete="CASCADE"),
+    #     nullable=False,
+    # )
+    #
+    # dashboard = relationship("Dashboard", back_populates="period_filters")
 
     __table_args__ = (
-        Index("idx_period_filter_dashboard", "dashboard_id"),
         Index("idx_period_filter_type",      "type"),
         # ✅ AJOUT : contrainte DB — custom sans dates est incohérent
         # Note : PostgreSQL supporte les expressions dans CHECK

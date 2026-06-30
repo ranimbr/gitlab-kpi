@@ -45,11 +45,12 @@ class KpiThreshold(Base):
         ForeignKey("site.id", ondelete="CASCADE"),
         nullable=True,
     )
-    dashboard_id = Column(
-        Integer,
-        ForeignKey("dashboard.id", ondelete="CASCADE"),
-        nullable=True,
-    )
+    # DISABLED: Dashboard functionality removed
+    # dashboard_id = Column(
+    #     Integer,
+    #     ForeignKey("dashboard.id", ondelete="CASCADE"),
+    #     nullable=True,
+    # )
     kpi_definition_id = Column(
         Integer,
         ForeignKey("kpi_definition.id", ondelete="RESTRICT"),
@@ -65,7 +66,8 @@ class KpiThreshold(Base):
     project        = relationship("Project",       back_populates="kpi_thresholds")
     # ✅ AJOUT
     site           = relationship("Site",          back_populates="kpi_thresholds")
-    dashboard      = relationship("Dashboard",     back_populates="kpi_thresholds")
+    # DISABLED: Dashboard functionality removed
+    # dashboard      = relationship("Dashboard",     back_populates="kpi_thresholds")
     kpi_definition = relationship("KpiDefinition", back_populates="kpi_thresholds")
     creator        = relationship("AppUser",       back_populates="kpi_thresholds",
                                    foreign_keys=[created_by])
@@ -85,7 +87,8 @@ class KpiThreshold(Base):
     __table_args__ = (
         Index("idx_kpi_threshold_project",    "project_id"),
         Index("idx_kpi_threshold_site",       "site_id"),
-        Index("idx_kpi_threshold_dashboard",  "dashboard_id"),
+        # DISABLED: Dashboard functionality removed
+        # Index("idx_kpi_threshold_dashboard",  "dashboard_id"),
         Index("idx_kpi_threshold_definition", "kpi_definition_id"),
         Index("idx_kpi_threshold_creator",    "created_by"),
         Index("idx_kpi_threshold_type",       "threshold_type"),
@@ -99,7 +102,6 @@ class KpiThreshold(Base):
 _unique_threshold_index = DDL("""
     CREATE UNIQUE INDEX IF NOT EXISTS idx_kpi_threshold_unique
     ON kpi_threshold (
-        COALESCE(dashboard_id, -1),
         COALESCE(site_id, -1),
         kpi_definition_id,
         threshold_type,

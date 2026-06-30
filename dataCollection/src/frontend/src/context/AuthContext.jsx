@@ -94,7 +94,7 @@ export function AuthProvider({ children }) {
           login:            me.login            ?? null,
         }));
         
-        // ✅ Récupérer les assignations multi-tenant pour le filtrage automatique
+        //  Récupérer les assignations multi-tenant pour le filtrage automatique
         if (me.role === 'site_manager' || me.role === 'team_lead' || me.role === 'project_manager' || me.role === 'viewer') {
           try {
             const assignments = await authService.getUserAssignments();

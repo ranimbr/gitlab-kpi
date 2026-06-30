@@ -28,7 +28,8 @@ class AlertService:
         self,
         db:           Session,
         project_id:   Optional[int]            = None,
-        dashboard_id: Optional[int]            = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_id: Optional[int]            = None,
         level:        Optional[AlertLevelEnum] = None,
         site_id:      Optional[int]            = None,
         developer_id: Optional[int]            = None,
@@ -36,7 +37,7 @@ class AlertService:
         offset:       int                      = 0,
     ) -> List[Alert]:
         return self.alert_repo.get_active_alerts(
-            db, project_id=project_id, dashboard_id=dashboard_id,
+            db, project_id=project_id, # dashboard_id=dashboard_id,
             level=level, site_id=site_id, developer_id=developer_id,
             limit=limit, offset=offset,
         )
@@ -45,9 +46,10 @@ class AlertService:
         self,
         db:           Session,
         project_id:   Optional[int] = None,
-        dashboard_id: Optional[int] = None,
+        # DISABLED: Dashboard functionality removed
+        # dashboard_id: Optional[int] = None,
     ) -> AlertSummaryResponse:
-        counts       = self.alert_repo.count_active_by_level(db, project_id, dashboard_id)
+        counts       = self.alert_repo.count_active_by_level(db, project_id) # dashboard_id=dashboard_id)
         total_active = sum(counts.values())
 
         total_resolved = (

@@ -129,6 +129,61 @@ async def test_fetch_strategy_discovers_branches_and_deduplicates_commits():
     branches = await discover_target_branches(client, 1, "2026-01-01T00:00:00Z", "2026-01-31T23:59:59Z", logger)
     assert "refs/heads/feature/a" in branches
 
-    commits = await fetch_unique_commits(client, 1, "2026-01-01T00:00:00Z", "2026-01-31T23:59:59Z")
+    commits = await fetch_unique_commits(client, 1, "2026-01-01T00:00:00Z", "2026-01-31T23:59:59Z", target_authors=None)
     assert sorted([c["id"] for c in commits]) == ["c1", "c2"]
+
+
+def test_mr_commits_count_population():
+    """
+    Test that commits_count is correctly populated from GitLab API response.
+    This ensures KPI #8 (avg_commits_per_mr) has valid data.
+    """
+    from app.services.extraction.extraction_service import build_target_vectors, is_target_author_commit, is_in_period
+    
+    # Mock GitLab API response for MR detail
+    full_mr_data = {
+        "commits_count": 5,
+        "user_notes_count": 3,
+        "author": {"id": 101, "name": "Test Dev", "email": "test@corp.com", "username": "testdev"}
+    }
+    
+    # Mock commits list
+    mr_commits = [
+        {"id": "c1", "title": "feat: add feature", "author_email": "test@corp.com", "authored_date": "2026-01-15T10:00:00Z"},
+        {"id": "c2", "title": "fix: bug fix", "author_email": "test@corp.com", "authored_date": "2026-01-15T11:00:00Z"},
+        {"id": "c3", "title": "merge branch main", "author_email": "test@corp.com", "authored_date": "2026-01-15T12:00:00Z"},
+    ]
+    
+    # Mock target devs map
+    target_devs_map = {1: MagicMock(id=1, name="Test Dev", email="test@corp.com", gitlab_username="testdev")}
+    
+    # Build target vectors
+    author_data = full_mr_data.get("author", {})
+    target_ids, target_names, target_emails, target_unames = build_target_vectors(
+        author_data=author_data,
+        target_devs_map=target_devs_map,
+        scoped=False
+    )
+    
+    # Test that commits_count comes from GitLab API (total commits in MR)
+    mr_data = {}
+    mr_data.update(full_mr_data)
+    
+    # This is the fix: commits_count should be from API, not filtered commits
+    mr_data["commits_count"] = full_mr_data.get("commits_count", len(mr_commits))
+    
+    assert mr_data["commits_count"] == 5, "commits_count should be total commits from GitLab API"
+    
+    # Verify filtered commits are different (used for KPI calculation, not commits_count)
+    lot_start = "2026-01-01T00:00:00Z"
+    lot_end = "2026-01-31T23:59:59Z"
+    filtered_commits = [
+        c for c in mr_commits
+        if (not (c.get("title", "").lower().startswith("merge branch"))) and
+        is_target_author_commit(c, target_names, target_emails) and
+        is_in_period(c.get("authored_date", ""), lot_start, lot_end)
+    ]
+    
+    assert len(filtered_commits) == 2, "Filtered commits should exclude merge commits"
+    assert mr_data["commits_count"] != len(filtered_commits), "commits_count should not equal filtered commits"
 

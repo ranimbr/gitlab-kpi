@@ -79,7 +79,8 @@ from app.models.kpi_threshold   import KpiThreshold
 from app.models.alert           import Alert
 
 # ── Dashboard ──────────────────────────────────────────────────────────────
-from app.models.dashboard       import Dashboard
+# DISABLED: Dashboard functionality removed
+# from app.models.dashboard       import Dashboard
 
 # ── Profile & Menu Management ───────────────────────────────────────────────
 from app.models.profile          import Profile
@@ -108,8 +109,8 @@ __all__ = [
     "Commit", "MergeRequest", "CommitMergeRequest", "Comment",
     # KPIs
     "KpiDefinition", "KpiSnapshot", "KpiThreshold", "Alert",
-    # Dashboard
-    "Dashboard",
+    # DISABLED: Dashboard functionality removed
+    # "Dashboard",
     # Profile & Menu Management
     "Profile", "MenuItem", "ProfileMenuItem",
     # Dynamic Role & Permission Management

@@ -714,7 +714,7 @@ const INITIAL_FILTERS = {
 };
 
 export default function CommitsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [projects,           setProjects]         = useState([]);
   const [periods,            setPeriods]          = useState([]);
@@ -807,7 +807,21 @@ export default function CommitsPage() {
   }, [searchParams, projects, periods, currentPeriod]);
 
   const handleFilterChange = (key, val) => {
-    setFilters(prev => ({ ...prev, [key]: val }));
+    setFilters(prev => {
+      const next = { ...prev, [key]: val };
+      
+      // Update URL to reflect filter changes
+      const newParams = new URLSearchParams();
+      if (next.project !== "all") newParams.set("project_id", next.project);
+      if (next.period !== "all") newParams.set("period_id", next.period);
+      if (next.lot !== "all") newParams.set("lot_id", next.lot);
+      if (next.developerId !== "all") newParams.set("developer_id", next.developerId);
+      if (next.siteId !== "all") newParams.set("site_id", next.siteId);
+      if (next.groupId !== "all") newParams.set("group_id", next.groupId);
+      setSearchParams(newParams);
+      
+      return next;
+    });
   };
 
   const loadCommits = useCallback(async () => {

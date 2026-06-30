@@ -376,7 +376,7 @@ export default function ExtractionByTeamTab({
 
           <div className="mt-4 pt-3 border-top d-flex align-items-center justify-content-between">
              <div className="d-flex gap-2">
-               <button className="btn btn-primary px-4" onClick={() => window.location.href = "/"}>
+               <button className="btn btn-primary px-4" onClick={() => window.location.href = "/analytics/comparison"}>
                  <i className="ri-dashboard-fill me-2"></i>Accéder au Pilotage
                </button>
                <button className="btn btn-outline-secondary px-4" onClick={() => setJobs({})}>
@@ -832,7 +832,7 @@ export default function ExtractionByTeamTab({
              {totalJobs === 0 ? (
                <div className="text-center py-5 text-muted">
                  <i className="ri-team-line fs-1 d-block mb-2 opacity-50"></i>
-                 Configurez et lancez l'extraction pour voir la progression de chaque développeur.
+                 Configurez et lancez l'extraction pour voir la progression.
                </div>
              ) : (
                 <div className="table-responsive">

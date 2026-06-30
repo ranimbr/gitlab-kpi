@@ -541,7 +541,10 @@ function UserModal({ mode, user, onClose, onSave }) {
                       onChange={(e) => handleProfileChange(e.target.value)}
                     >
                       <option value="">-- Sélectionner un profil --</option>
-                      {profiles.map(profile => (
+                      {profiles.filter(p => {
+                        const name = p.name.toLowerCase();
+                        return name !== "developer" && name !== "développeur" && name !== "developpeur";
+                      }).map(profile => (
                         <option key={profile.id} value={profile.id}>
                           {profile.name} 
                           {profile.description && ` — ${profile.description}`}
@@ -564,7 +567,6 @@ function UserModal({ mode, user, onClose, onSave }) {
                     <option value={ROLES.PROJECT_MANAGER}>Project Manager — ses projets</option>
                     <option value={ROLES.TEAM_LEAD}>Team Lead — son groupe uniquement</option>
                     <option value={ROLES.VIEWER}>Viewer — flexible (sites/équipes/projets)</option>
-                    <option value={ROLES.DEVELOPER}>Développeur — lecture seule</option>
                   </select>
                   <div className="form-text fs-11 text-muted">
                     Auto-sélectionné selon le profil choisi
@@ -853,12 +855,14 @@ export default function UsersPage() {
   };
 
   // Statistiques
-  const totalUsers    = users.length;
-  const superAdmins   = users.filter(u => u.role === ROLES.SUPER_ADMIN).length;
-  const siteManagers  = users.filter(u => u.role === ROLES.SITE_MANAGER).length;
-  const teamLeads     = users.filter(u => u.role === ROLES.TEAM_LEAD).length;
-  const activeUsers   = users.filter(u => u.is_active).length;
-  const hasFilters    = search || roleFilter !== "all" || statusFilter !== "all";
+  const totalUsers      = users.length;
+  const superAdmins     = users.filter(u => u.role === ROLES.SUPER_ADMIN).length;
+  const siteManagers    = users.filter(u => u.role === ROLES.SITE_MANAGER).length;
+  const projectManagers = users.filter(u => u.role === ROLES.PROJECT_MANAGER).length;
+  const teamLeads       = users.filter(u => u.role === ROLES.TEAM_LEAD).length;
+  const viewers         = users.filter(u => u.role === ROLES.VIEWER).length;
+  const activeUsers     = users.filter(u => u.is_active).length;
+  const hasFilters      = search || roleFilter !== "all" || statusFilter !== "all";
 
   return (
     <div className="page-content">
@@ -880,28 +884,30 @@ export default function UsersPage() {
           </div>
         </div>
 
-        {/* Stats cards — ✅ 4 rôles */}
-        <div className="row">
+        {/* Stats cards — ✅ Tous les rôles */}
+        <div className="row g-2">
           {[
-            { label: "Total",       value: totalUsers,   color: "primary",   icon: "ri-team-line",         fn: () => { setRoleFilter("all"); setStatusFilter("all"); } },
-            { label: "Super Admin", value: superAdmins,  color: "danger",    icon: "ri-shield-star-line",  fn: () => { setRoleFilter(ROLES.SUPER_ADMIN); } },
-            { label: "Site Manager",value: siteManagers, color: "warning",   icon: "ri-map-pin-user-line", fn: () => { setRoleFilter(ROLES.SITE_MANAGER); } },
-            { label: "Team Lead",   value: teamLeads,    color: "info",      icon: "ri-team-line",         fn: () => { setRoleFilter(ROLES.TEAM_LEAD); } },
-            { label: "Actifs",      value: activeUsers,  color: "success",   icon: "ri-user-follow-line",  fn: () => { setRoleFilter("all"); setStatusFilter("active"); } },
+            { label: "Total",          value: totalUsers,      color: "primary",   icon: "ri-team-line",         fn: () => { setRoleFilter("all"); setStatusFilter("all"); } },
+            { label: "Super Admin",    value: superAdmins,     color: "danger",    icon: "ri-shield-star-line",  fn: () => { setRoleFilter(ROLES.SUPER_ADMIN); } },
+            { label: "Site Manager",   value: siteManagers,    color: "warning",   icon: "ri-map-pin-user-line", fn: () => { setRoleFilter(ROLES.SITE_MANAGER); } },
+            { label: "Project Manager",value: projectManagers, color: "primary",   icon: "ri-folder-3-line",     fn: () => { setRoleFilter(ROLES.PROJECT_MANAGER); } },
+            { label: "Team Lead",      value: teamLeads,       color: "info",      icon: "ri-team-line",         fn: () => { setRoleFilter(ROLES.TEAM_LEAD); } },
+            { label: "Viewer",         value: viewers,         color: "secondary", icon: "ri-eye-line",          fn: () => { setRoleFilter(ROLES.VIEWER); } },
+            { label: "Actifs",         value: activeUsers,     color: "success",   icon: "ri-user-follow-line",  fn: () => { setRoleFilter("all"); setStatusFilter("active"); } },
           ].map((s, i) => (
-            <div key={i} className="col-xl col-sm-6">
-              <div className="card card-animate" style={{ cursor: "pointer" }}
+            <div key={i} className="col-xl col-md-4 col-sm-6">
+              <div className="card card-animate mb-3" style={{ cursor: "pointer" }}
                 onClick={() => { s.fn(); setPage(1); }}>
-                <div className="card-body">
+                <div className="card-body p-3">
                   <div className="d-flex align-items-center">
-                    <div className="avatar-sm flex-shrink-0">
-                      <span className={`avatar-title bg-${s.color}-subtle text-${s.color} rounded-2 fs-2`}>
+                    <div className="avatar-sm flex-shrink-0" style={{ width: "36px", height: "36px" }}>
+                      <span className={`avatar-title bg-${s.color}-subtle text-${s.color} rounded-2 fs-4`} style={{ width: "36px", height: "36px", lineHeight: "36px" }}>
                         <i className={s.icon}></i>
                       </span>
                     </div>
                     <div className="flex-grow-1 ms-3">
-                      <p className="text-uppercase fw-medium text-muted mb-1 fs-11">{s.label}</p>
-                      <h4 className={`mb-0 text-${s.color}`}>{s.value}</h4>
+                      <p className="text-uppercase fw-medium text-muted mb-1" style={{ fontSize: "10px" }}>{s.label}</p>
+                      <h4 className={`mb-0 text-${s.color} fs-16`}>{s.value}</h4>
                     </div>
                   </div>
                 </div>
@@ -928,8 +934,9 @@ export default function UsersPage() {
                   <option value="all">Tous les rôles</option>
                   <option value={ROLES.SUPER_ADMIN}>Super Admin</option>
                   <option value={ROLES.SITE_MANAGER}>Site Manager</option>
+                  <option value={ROLES.PROJECT_MANAGER}>Project Manager</option>
                   <option value={ROLES.TEAM_LEAD}>Team Lead</option>
-                  <option value={ROLES.DEVELOPER}>Développeur</option>
+                  <option value={ROLES.VIEWER}>Viewer</option>
                 </select>
               </div>
               <div className="col-sm-2">

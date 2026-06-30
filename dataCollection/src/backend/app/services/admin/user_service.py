@@ -66,6 +66,16 @@ class UserService:
         
         hashed = hash_password(payload.password)
         
+        # Resolve the profile ID in auth_db using the profile name from tenant db
+        auth_profile_id = None
+        if payload.profile_id:
+            from app.models.profile import Profile
+            tenant_profile = db.query(Profile).filter(Profile.id == payload.profile_id).first()
+            if tenant_profile:
+                auth_profile = auth_db.query(Profile).filter(Profile.name == tenant_profile.name).first()
+                if auth_profile:
+                    auth_profile_id = auth_profile.id
+
         # 2. Créer l'identifiant dans auth_db (sans site_id/group_id/project_ids)
         auth_user = self.user_repo.create_user(
             db=auth_db,
@@ -74,10 +84,11 @@ class UserService:
             role=payload.role,
             login=payload.login,
             name=payload.name,
-            dashboard_access=payload.dashboard_access,
+            # DISABLED: Dashboard functionality removed
+            # dashboard_access=payload.dashboard_access,
             site_id=None,  # Pas de site_id dans auth_db
             group_id=None,  # Pas de group_id dans auth_db
-            profile_id=payload.profile_id,
+            profile_id=auth_profile_id,
         )
         auth_db.commit()
         auth_db.refresh(auth_user)
@@ -93,7 +104,8 @@ class UserService:
             role=payload.role,
             login=payload.login,
             name=payload.name,
-            dashboard_access=payload.dashboard_access,
+            # DISABLED: Dashboard functionality removed
+            # dashboard_access=payload.dashboard_access,
             site_id=payload.site_id,  # site_id pour compatibilité
             group_id=payload.group_id,  # group_id pour compatibilité
             profile_id=payload.profile_id,
@@ -284,19 +296,39 @@ class UserService:
         
         old_value = {
             "role": auth_user.role.value, "is_active": auth_user.is_active,
-            "dashboard_access": list(auth_user.dashboard_access or []),
+            # DISABLED: Dashboard functionality removed
+            # "dashboard_access": list(auth_user.dashboard_access or []),
         }
         
         new_hashed = hash_password(payload.new_password) if payload.new_password else None
         
+        # Resolve the profile ID in auth_db using the profile name from tenant db
+        from app.repositories.base import UNSET
+        auth_profile_id = UNSET
+        if payload.profile_id is not UNSET:
+            if payload.profile_id is not None:
+                from app.models.profile import Profile
+                tenant_profile = db.query(Profile).filter(Profile.id == payload.profile_id).first()
+                if tenant_profile:
+                    auth_profile = auth_db.query(Profile).filter(Profile.name == tenant_profile.name).first()
+                    if auth_profile:
+                        auth_profile_id = auth_profile.id
+                    else:
+                        auth_profile_id = None
+                else:
+                    auth_profile_id = None
+            else:
+                auth_profile_id = None
+
         self.user_repo.update_user(
             db=auth_db, user=auth_user,
             role=payload.role, is_active=payload.is_active,
             new_hashed_password=new_hashed,
-            dashboard_access=payload.dashboard_access,
+            # DISABLED: Dashboard functionality removed
+            # dashboard_access=payload.dashboard_access,
             site_id=None,  # Pas de site_id dans auth_db
             group_id=None,  # Pas de group_id dans auth_db
-            profile_id=payload.profile_id,
+            profile_id=auth_profile_id,
             project_ids=None,  # Pas de project_ids dans auth_db
         )
         auth_db.commit()
@@ -316,7 +348,8 @@ class UserService:
                 role=auth_user.role,
                 login=auth_user.login,
                 name=auth_user.name,
-                dashboard_access=auth_user.dashboard_access,
+                # DISABLED: Dashboard functionality removed
+                # dashboard_access=auth_user.dashboard_access,
                 site_id=payload.site_id,
                 group_id=payload.group_id,
                 profile_id=auth_user.profile_id,
@@ -327,7 +360,8 @@ class UserService:
                 db=tenant_db, user=tenant_user,
                 role=payload.role, is_active=payload.is_active,
                 new_hashed_password=new_hashed,
-                dashboard_access=payload.dashboard_access,
+                # DISABLED: Dashboard functionality removed
+                # dashboard_access=payload.dashboard_access,
                 site_id=payload.site_id,
                 group_id=payload.group_id,
                 profile_id=payload.profile_id,
@@ -339,7 +373,8 @@ class UserService:
             db=tenant_db, user=tenant_user,
             role=payload.role, is_active=payload.is_active,
             new_hashed_password=new_hashed,
-            dashboard_access=payload.dashboard_access,
+            # DISABLED: Dashboard functionality removed
+            # dashboard_access=payload.dashboard_access,
             site_id=payload.site_id,  # site_id pour compatibilité
             group_id=payload.group_id,  # group_id pour compatibilité
             profile_id=payload.profile_id,
@@ -436,49 +471,48 @@ class UserService:
             auth_db_session.delete(auth_user)
             auth_db_session.commit()
 
-    def grant_dashboard_access(
-        self,
-        db:           Session,
-        user_id:      int,
-        dashboard_id: int,
-        granted_by:   Optional[int] = None,
-        ip_address:   Optional[str] = None,
-    ) -> AppUser:
-        user = self.get_user(db, user_id)
-        old_access = list(user.dashboard_access or [])
-        self.user_repo.add_dashboard_access(db, user, dashboard_id)
-        self.audit_repo.log(
-            db=db, user_id=granted_by, action="UPDATE_USER_ACCESS",
-            entity_type="AppUser", entity_id=user_id,
-            old_value={"dashboard_access": old_access},
-            new_value={"dashboard_access": list(user.dashboard_access or [])},
-            ip_address=ip_address,
-        )
-        db.commit()
-        db.refresh(user)
-        return user
+    # DISABLED: Dashboard functionality removed
+    # def grant_dashboard_access(
+    #     self,
+    #     db:           Session,
+    #     user_id:      int,
+    #     dashboard_id: int,
+    #     granted_by:   Optional[int] = None,
+    #     ip_address:   Optional[str] = None,
+    # ) -> AppUser:
+    #     user = self.get_user(db, user_id)
+    #     old_access = list(user.dashboard_access or [])
+    #     self.user_repo.add_dashboard_access(db, user, dashboard_id)
+    #     self.audit_repo.log(
+    #         db=db, user_id=granted_by, action="UPDATE_USER_ACCESS",
+    #         entity_type="AppUser", entity_id=user_id,
+    #         old_value={"dashboard_access": old_access},
+    #         new_value={"dashboard_access": list(user.dashboard_access or [])},
+    #         ip_address=ip_address,
+    #     )
+    #     db.commit()
+    #     db.refresh(user)
+    #     return user
 
-    def revoke_dashboard_access(
-        self,
-        db:           Session,
-        user_id:      int,
-        dashboard_id: int,
-        revoked_by:   Optional[int] = None,
-        ip_address:   Optional[str] = None,
-    ) -> AppUser:
-        user = self.get_user(db, user_id)
-        old_access = list(user.dashboard_access or [])
-        self.user_repo.remove_dashboard_access(db, user, dashboard_id)
-        self.audit_repo.log(
-            db=db, user_id=revoked_by, action="UPDATE_USER_ACCESS",
-            entity_type="AppUser", entity_id=user_id,
-            old_value={"dashboard_access": old_access},
-            new_value={"dashboard_access": list(user.dashboard_access or [])},
-            ip_address=ip_address,
-        )
-        db.commit()
-        db.refresh(user)
-        return user
+    # def revoke_dashboard_access(
+    #     self,
+    #     db:           Session,
+    #     user_id:      int,
+    #     dashboard_id: int,
+    #     revoked_by:   Optional[int] = None,
+    #     ip_address:   Optional[str] = None,
+    # ) -> AppUser:
+    #     user = self.get_user(db, user_id)
+    #     old_access = list(user.dashboard_access or [])
+    #     self.user_repo.remove_dashboard_access(db, user, dashboard_id)
+    #     self.audit_repo.log(
+    #         db=db, user_id=revoked_by, action="UPDATE_USER_ACCESS",
+    #         entity_type="AppUser", entity_id=user_id,
+    #         old_value={"dashboard_access": old_access},
+    #         new_value={"dashboard_access": list(user.dashboard_access or [])},
+    #         ip_address=ip_address,
+    #     )
+    #     db.commit()
 
     def change_password(
         self, db: Session, user_id: int,

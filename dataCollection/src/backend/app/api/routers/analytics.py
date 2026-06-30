@@ -12,7 +12,7 @@ from app.database.session import get_db
 from app.models.app_user import AppUser
 from app.repositories.commit_repository import CommitRepository
 from app.schemas.kpi import (
-    DashboardSummaryResponse,
+    # DashboardSummaryResponse,  # DISABLED: Dashboard functionality removed
     KpiHistoryResponse,
     KpiSnapshotResponse,
     SnapshotGeneratedResponse,
@@ -172,62 +172,6 @@ def get_kpi_history(
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
-
-@router.get("/{project_id}/dashboard", response_model=DashboardSummaryResponse)
-def get_dashboard(
-    project_id:   int,
-    site_id:      Optional[int] = Query(default=None),
-    group_id:     Optional[int] = Query(default=None),
-    developer_id: Optional[int] = Query(default=None),
-    db:           Session       = Depends(get_db),
-    current_user: AppUser       = Depends(get_current_user),
-):
-    # ✅ ARCHITECTURE MULTI-TENANT: Filtrer site_id pour site_manager
-    if current_user.is_site_manager and site_id:
-        from app.repositories.user_site_access_repository import UserSiteAccessRepository
-        site_access_repo = UserSiteAccessRepository()
-        
-        # Charger les assignations de sites depuis tenant
-        accessible_site_ids = [access.site_id for access in site_access_repo.get_by_user_id(db, _get_tenant_user_id(db, current_user))]
-        
-        # Fallback vers l'ancien système single site
-        if current_user.site_id:
-            accessible_site_ids.append(current_user.site_id)
-        
-        # Si le site demandé n'est pas dans les sites accessibles, refuser
-        if site_id not in accessible_site_ids:
-            raise _http_error(
-                403,
-                "FORBIDDEN",
-                f"Accès au site {site_id} refusé. Vous gérez uniquement les sites {accessible_site_ids}."
-            )
-    
-    # ✅ ARCHITECTURE MULTI-TENANT: Filtrer group_id pour team_lead
-    if current_user.is_team_lead and group_id:
-        from app.repositories.user_group_access_repository import UserGroupAccessRepository
-        group_access_repo = UserGroupAccessRepository()
-        
-        # Charger les assignations d'équipes depuis tenant
-        accessible_group_ids = [access.group_id for access in group_access_repo.get_by_user_id(db, _get_tenant_user_id(db, current_user))]
-        
-        # Fallback vers l'ancien système single group
-        if current_user.group_id:
-            accessible_group_ids.append(current_user.group_id)
-        
-        # Si le groupe demandé n'est pas dans les groupes accessibles, refuser
-        if group_id not in accessible_group_ids:
-            raise _http_error(
-                403,
-                "FORBIDDEN",
-                f"Accès au groupe {group_id} refusé. Vous gérez uniquement les groupes {accessible_group_ids}."
-            )
-    
-    summary = AnalyticsService(db).get_dashboard_summary(
-        project_id, site_id, group_id, developer_id
-    )
-    summary["project_id"] = project_id
-    summary["site_id"]    = site_id
-    return summary
 
 
 # ── Generate Snapshot (Admin) ─────────────────────────────────────────────────

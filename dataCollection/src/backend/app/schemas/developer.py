@@ -276,6 +276,7 @@ class TimelineEvent(BaseModel):
     color: str
     is_mission: Optional[bool] = False
     details: Optional[dict] = None
+    badge: Optional[str] = None
 
 class PaginatedDeveloperSummary(BaseModel):
     items: List[DeveloperSummary]

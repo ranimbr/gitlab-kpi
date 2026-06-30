@@ -127,10 +127,6 @@ class KpiCalculator:
         sprint_velocity    = self._calculate_sprint_velocity(project_id, start_date, end_date, developer_id)
         code_churn_rate    = self._calculate_code_churn(project_id, start_date, end_date, developer_id)
 
-        # DORA METRICS (Standard Google Research)
-        deployment_count   = self._count_deployments(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
-        lead_time_hours    = self._avg_lead_time(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids)
-
         denom = max(nb_devs, 1)
 
         mr_rate_per_site      = round(nb_mrs / denom, 4)
@@ -160,9 +156,6 @@ class KpiCalculator:
             "bus_factor":              bus_factor,
             "sprint_velocity":         sprint_velocity,
             "code_churn_rate":         code_churn_rate,
-            # ─── DORA Metrics ────────────────────────────────────────────────────
-            "deployment_count":        deployment_count,
-            "lead_time_hours":         lead_time_hours,
             "site_id":                 site_id,
             "group_id":                group_id,
             "developer_id":            developer_id,
@@ -365,10 +358,9 @@ class KpiCalculator:
             func.lower(Commit.title).notlike("merge %"),
         )
 
+        q = q.filter(Commit.authored_date >= start_date, Commit.authored_date < end_date)
         if lot_ids:
             q = q.filter(Commit.extraction_lot_id.in_(lot_ids))
-        else:
-            q = q.filter(Commit.authored_date >= start_date, Commit.authored_date < end_date)
 
         if site_id:
             q = q.join(
@@ -398,12 +390,8 @@ class KpiCalculator:
         eligible_ids: Optional[list] = None,
     ) -> int:
         """
-        ✅ [SENIOR++++] MR counting bound to Extraction Lots AND Mission Active.
-        
-        ⚠️ [RG-02 BUG] Cette fonction N'APPLIQUE PAS la règle RG-02 aux MR individuels.
-        Pour corriger ce bug, utiliser la fonction utilitaire is_mr_certified_for_period()
-        pour filtrer chaque MR selon la règle des 15 jours.
-        Voir BUG_REPORT_RG02_INHOMOGENEITE.md pour plus de détails.
+        ✅ [RG-02 FIX POST-REQUÊTE] Version avec filtre RG-02 appliqué après récupération.
+        Récupère toutes les colonnes nécessaires pour éviter AttributeError.
         """
         valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
         
@@ -412,9 +400,8 @@ class KpiCalculator:
             ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
         ).all()] if period else []
 
-        # ✅ [FIX SCD2] DISTINCT sur MergeRequest.id pour éviter le doublon quand
-        # un dev a plusieurs segments developer_site (suspension + réactivation).
-        q = self.db.query(func.count(func.distinct(MergeRequest.id))).join(
+        # Récupérer tous les MR avec toutes les colonnes nécessaires
+        q = self.db.query(MergeRequest).join(
             DeveloperProject,
             (DeveloperProject.developer_id == MergeRequest.developer_id) &
             (DeveloperProject.project_id   == MergeRequest.project_id)
@@ -450,21 +437,56 @@ class KpiCalculator:
                 (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
             )
 
-        return q.scalar() or 0
+        # ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours
+        all_mrs = q.all()
+        
+        certified_mr_ids = []
+        for mr in all_mrs:
+            if is_mr_certified_for_period(
+                mr.created_at_gitlab.date(),
+                mr.developer_id,
+                self.db,
+                period_id=period.id if period else None,
+                start_date=start_date.date(),
+                end_date=end_date.date()
+            ):
+                certified_mr_ids.append(mr.id)
+        
+        # Compter uniquement les MR certifiés
+        return len(certified_mr_ids)
 
     def _count_draft_mrs(
         self, project_id: int, start_date: datetime, end_date: datetime,
         site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
         eligible_ids: Optional[list] = None,
     ) -> int:
+        """
+        ✅ [RG-02 FIX POST-REQUÊTE] Version avec filtre RG-02 appliqué après récupération.
+        Récupère toutes les colonnes nécessaires pour éviter AttributeError.
+        """
         valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
-        # ✅ [FIX SCD2] DISTINCT pour éviter doublon si plusieurs segments developer_site
-        q = self.db.query(func.count(func.distinct(MergeRequest.id))).filter(
-            MergeRequest.project_id        == project_id,
-            MergeRequest.created_at_gitlab >= start_date,
-            MergeRequest.created_at_gitlab <  end_date,
+        
+        period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+        lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+            ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
+        ).all()] if period else []
+
+        # Récupérer tous les MR avec toutes les colonnes nécessaires
+        q = self.db.query(MergeRequest).join(
+            DeveloperProject,
+            (DeveloperProject.developer_id == MergeRequest.developer_id) &
+            (DeveloperProject.project_id   == MergeRequest.project_id)
+        ).filter(
+            MergeRequest.project_id == project_id,
             MergeRequest.is_draft.is_(True),
-            MergeRequest.developer_id.in_(select(valid_ids.c.id)),
+        )
+
+        q = q.filter(MergeRequest.created_at_gitlab >= start_date, MergeRequest.created_at_gitlab < end_date)
+        if lot_ids:
+            q = q.filter(MergeRequest.extraction_lot_id.in_(lot_ids))
+
+        q = q.filter(
+            MergeRequest.developer_id.in_(select(valid_ids.c.id))
         )
 
         if site_id:
@@ -486,7 +508,23 @@ class KpiCalculator:
                 (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
             )
 
-        return q.scalar() or 0
+        # ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours
+        all_mrs = q.all()
+        
+        certified_mr_ids = []
+        for mr in all_mrs:
+            if is_mr_certified_for_period(
+                mr.created_at_gitlab.date(),
+                mr.developer_id,
+                self.db,
+                period_id=period.id if period else None,
+                start_date=start_date.date(),
+                end_date=end_date.date()
+            ):
+                certified_mr_ids.append(mr.id)
+        
+        # Compter uniquement les MR certifiés
+        return len(certified_mr_ids)
 
 
     def _count_approved_mrs(
@@ -705,6 +743,86 @@ class KpiCalculator:
         
         return certified_review_time
 
+    # DISABLED: KPI #8 (avg_commits_per_mr) removed from system
+    # def _sum_commits_in_mrs(
+    #     self, project_id: int, start_date: datetime, end_date: datetime,
+    #     site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
+    #     eligible_ids: Optional[list] = None,
+    # ) -> int:
+    #     """
+    #     ✅ [SENIOR++++] Somme des commits dans les MRs (KPI #8: avg_commits_per_mr).
+    #     
+    #     Formule: avg_commits_per_mr = sum(commits_count) / nb_mrs
+    #     Apport: Identifie les MRs avec beaucoup de commits → potentiellement complexes ou divisées en sous-tâches
+    #     
+    #     ✅ [FIX SCD2] DISTINCT sur MergeRequest.id pour éviter le doublon quand
+    #     un dev a plusieurs segments developer_site (suspension + réactivation).
+    #     ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours après récupération.
+    #     """
+    #     valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
+    #     
+    #     period = self.db.query(Period).filter(Period.year == start_date.year, Period.month == start_date.month).first()
+    #     lot_ids = [r[0] for r in self.db.query(ExtractionLot.id).filter(
+    #         ExtractionLot.period_id == period.id, ExtractionLot.project_id == project_id
+    #     ).all()] if period else []
+    #
+    #     # ✅ [RG-02 FIX POST-REQUÊTE] Récupérer toutes les MRs avec toutes les colonnes nécessaires
+    #     q = self.db.query(MergeRequest).join(
+    #         DeveloperProject,
+    #         (DeveloperProject.developer_id == MergeRequest.developer_id) &
+    #         (DeveloperProject.project_id   == MergeRequest.project_id)
+    #     ).filter(
+    #         MergeRequest.project_id        == project_id,
+    #         MergeRequest.is_draft.is_(False),
+    #         MergeRequest.created_at_gitlab >= start_date,
+    #         MergeRequest.created_at_gitlab <  end_date,
+    #         MergeRequest.developer_id.in_(select(valid_ids.c.id)),
+    #     )
+    #
+    #     if lot_ids:
+    #         q = q.filter(MergeRequest.extraction_lot_id.in_(lot_ids))
+    #
+    #     if site_id:
+    #         q = q.join(
+    #             DeveloperSite,
+    #             (DeveloperSite.developer_id == MergeRequest.developer_id) &
+    #             (DeveloperSite.site_id == site_id) &
+    #             (DeveloperSite.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+    #             (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.created_at_gitlab)))
+    #         )
+    #
+    #     if group_id:
+    #         q = q.join(
+    #             DeveloperGroupLink,
+    #             (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
+    #             (DeveloperGroupLink.group_id == group_id) &
+    #             (DeveloperGroupLink.start_date <= func.date(MergeRequest.created_at_gitlab)) &
+    #             (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.created_at_gitlab)))
+    #         )
+    #
+    #     # ✅ [RG-02 FIX POST-REQUÊTE] Filtrage des MR selon la règle des 15 jours
+    #     all_mrs = q.all()
+    #     
+    #     # ✅ [FIX SCD2] Utiliser un set pour éviter les doublons de MR.id
+    #     certified_mr_ids = set()
+    #     certified_commits_sum = 0
+    #     for mr in all_mrs:
+    #         if mr.id in certified_mr_ids:
+    #             continue  # Déjà compté (doublon SCD2)
+    #         
+    #         if is_mr_certified_for_period(
+    #             mr.created_at_gitlab.date(),
+    #             mr.developer_id,
+    #             self.db,
+    #             period_id=period.id if period else None,
+    #             start_date=start_date.date(),
+    #             end_date=end_date.date()
+    #         ):
+    #             certified_mr_ids.add(mr.id)
+    #             certified_commits_sum += mr.commits_count or 0
+    #     
+    #     return certified_commits_sum
+
     def _count_comments(self, project_id: int, start_date: datetime, end_date: datetime, developer_id: Optional[int]) -> int:
         q = (
             self.db.query(func.count(Comment.id))
@@ -857,110 +975,3 @@ class KpiCalculator:
         return round((total_del / total) * 100, 1)
 
     # =========================================================================
-    # DORA METRICS — Standard Google / DORA Research Program
-    # =========================================================================
-
-    def _count_deployments(
-        self, project_id: int, start_date: datetime, end_date: datetime,
-        site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
-        eligible_ids: Optional[list] = None,
-    ) -> int:
-        """
-        DORA Metric 1 — Deployment Frequency.
-
-        Définition : nombre de MRs non-draft mergées sur la branche de production
-        du projet (default_branch = "main", "master", "develop", "prod").
-        """
-        from app.models.project import Project
-
-        project_branch = self.db.query(Project.default_branch).filter(Project.id == project_id).scalar()
-        target_branches = [project_branch] if project_branch else ["main", "master", "develop", "prod"]
-
-        q = self.db.query(func.count(MergeRequest.id)).filter(
-            MergeRequest.project_id        == project_id,
-            MergeRequest.merged_at         >= start_date,
-            MergeRequest.merged_at         <  end_date,
-            MergeRequest.is_draft.is_(False),
-            MergeRequest.merged_at.isnot(None),
-            MergeRequest.target_branch.in_(target_branches),
-        )
-
-        # Attribution filtrée si demandée (Site, Groupe ou Dev)
-        if site_id or group_id or developer_id:
-            valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
-            q = q.filter(
-                MergeRequest.developer_id.in_(select(valid_ids.c.id))
-            )
-
-        if site_id:
-            q = q.join(
-                DeveloperSite,
-                (DeveloperSite.developer_id == MergeRequest.developer_id) &
-                (DeveloperSite.site_id == site_id) &
-                (DeveloperSite.start_date <= func.date(MergeRequest.merged_at)) &
-                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.merged_at)))
-            )
-
-        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
-        if group_id:
-            q = q.join(
-                DeveloperGroupLink,
-                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
-                (DeveloperGroupLink.group_id == group_id) &
-                (DeveloperGroupLink.start_date <= func.date(MergeRequest.merged_at)) &
-                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.merged_at)))
-            )
-
-        return q.scalar() or 0
-
-    def _avg_lead_time(
-        self, project_id: int, start_date: datetime, end_date: datetime,
-        site_id: Optional[int], group_id: Optional[int], developer_id: Optional[int],
-        eligible_ids: Optional[list] = None,
-    ) -> float:
-        """
-        DORA Metric 2 — Lead Time for Changes.
-        """
-        from app.models.project import Project
-
-        project_branch = self.db.query(Project.default_branch).filter(Project.id == project_id).scalar()
-        target_branches = [project_branch] if project_branch else ["main", "master", "develop", "prod"]
-
-        q = self.db.query(func.avg(MergeRequest.cycle_time_hours)).filter(
-            MergeRequest.project_id        == project_id,
-            MergeRequest.merged_at         >= start_date,
-            MergeRequest.merged_at         <  end_date,
-            MergeRequest.is_draft.is_(False),
-            MergeRequest.merged_at.isnot(None),
-            MergeRequest.target_branch.in_(target_branches),
-            MergeRequest.cycle_time_hours.isnot(None),
-        )
-
-        # Attribution filtrée si demandée
-        if site_id or group_id or developer_id:
-            valid_ids = self._active_dev_ids_query(project_id, start_date, end_date, site_id, group_id, developer_id, eligible_ids).subquery()
-            q = q.filter(
-                MergeRequest.developer_id.in_(select(valid_ids.c.id))
-            )
-
-        if site_id:
-            q = q.join(
-                DeveloperSite,
-                (DeveloperSite.developer_id == MergeRequest.developer_id) &
-                (DeveloperSite.site_id == site_id) &
-                (DeveloperSite.start_date <= func.date(MergeRequest.merged_at)) &
-                (or_(DeveloperSite.end_date.is_(None), DeveloperSite.end_date >= func.date(MergeRequest.merged_at)))
-            )
-
-        # ✅ [GROUP SCD2] Rapprochement chirurgical par groupe — même précision que site_id
-        if group_id:
-            q = q.join(
-                DeveloperGroupLink,
-                (DeveloperGroupLink.developer_id == MergeRequest.developer_id) &
-                (DeveloperGroupLink.group_id == group_id) &
-                (DeveloperGroupLink.start_date <= func.date(MergeRequest.merged_at)) &
-                (or_(DeveloperGroupLink.end_date.is_(None), DeveloperGroupLink.end_date >= func.date(MergeRequest.merged_at)))
-            )
-
-        result = q.scalar()
-        return round(float(result or 0.0), 1)
