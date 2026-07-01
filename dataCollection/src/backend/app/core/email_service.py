@@ -6,6 +6,7 @@ Utilise SMTP avec Gmail App Password.
 """
 import logging
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
@@ -91,12 +92,18 @@ class EmailService:
         """
 
         try:
-            message = MIMEText()
+            message = MIMEMultipart('alternative')
             message["From"] = self.smtp_from
             message["To"] = to_email
             message["Subject"] = "Réinitialisation de votre mot de passe - TELNET Dashboard"
-            message.attach(MIMEText(text_content, "plain"))
-            message.attach(MIMEText(html_content, "html"))
+            
+            # Plain text part
+            part1 = MIMEText(text_content, 'plain')
+            message.attach(part1)
+            
+            # HTML part
+            part2 = MIMEText(html_content, 'html')
+            message.attach(part2)
 
             logger.debug(f"[SMTP MESSAGE] Message created, from={self.smtp_from}, to={to_email}")
 
