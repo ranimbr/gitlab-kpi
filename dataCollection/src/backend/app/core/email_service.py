@@ -25,6 +25,7 @@ class EmailService:
         # Resend configuration
         self.resend_api_key = os.getenv('RESEND_API_KEY')
         self.resend_from = os.getenv('RESEND_FROM') or 'noreply@telnet.com'
+        self.contact_admin_email = os.getenv('CONTACT_ADMIN_EMAIL') or self.resend_from
         
         # SMTP configuration (fallback)
         self.smtp_host = settings.SMTP_HOST
@@ -36,7 +37,7 @@ class EmailService:
         
         # Log configuration
         if self.resend_api_key:
-            logger.info(f"[EMAIL SERVICE] Resend configured: from={self.resend_from}")
+            logger.info(f"[EMAIL SERVICE] Resend configured: from={self.resend_from}, admin_to={self.contact_admin_email}")
         else:
             logger.info(f"[EMAIL SERVICE] SMTP configured: host={self.smtp_host}, port={self.smtp_port}, user={self.smtp_username}, from={self.smtp_from}")
 
@@ -259,7 +260,7 @@ class EmailService:
                 },
                 json={
                     "from": self.resend_from,
-                    "to": [self.resend_from],  # Envoyer à l'admin
+                    "to": [self.contact_admin_email],  # Envoyer à l'admin configuré
                     "subject": f"[Contact TELNET] {subject} - de {name}",
                     "text": text_content,
                     "html": html_content
@@ -297,7 +298,7 @@ class EmailService:
         try:
             message = MIMEMultipart('alternative')
             message["From"] = self.smtp_from
-            message["To"] = self.smtp_from  # Envoyer à l'admin
+            message["To"] = self.contact_admin_email  # Envoyer à l'admin configuré
             message["Subject"] = f"[Contact TELNET] {subject} - de {name}"
             
             part1 = MIMEText(text_content, 'plain')
