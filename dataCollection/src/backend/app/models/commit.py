@@ -16,7 +16,7 @@ class Commit(Base):
 
     __tablename__ = "git_commit"
 
-    id               = Column(Integer, primary_key=True)
+    id               = Column(Integer, primary_key=True, autoincrement=True)
     gitlab_commit_id = Column(String(64),  nullable=False)  # SHA-1 ou SHA-256 du commit
     title            = Column(String(500), nullable=False)
     message          = Column(Text,        nullable=True)
