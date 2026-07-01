@@ -259,7 +259,7 @@ class EmailService:
                 },
                 json={
                     "from": self.resend_from,
-                    "to": [email],  # Envoyer à l'expéditeur pour confirmation
+                    "to": [self.resend_from],  # Envoyer à l'admin
                     "subject": f"[Contact TELNET] {subject} - de {name}",
                     "text": text_content,
                     "html": html_content
@@ -297,7 +297,7 @@ class EmailService:
         try:
             message = MIMEMultipart('alternative')
             message["From"] = self.smtp_from
-            message["To"] = email  # Envoyer à l'expéditeur pour confirmation
+            message["To"] = self.smtp_from  # Envoyer à l'admin
             message["Subject"] = f"[Contact TELNET] {subject} - de {name}"
             
             part1 = MIMEText(text_content, 'plain')
