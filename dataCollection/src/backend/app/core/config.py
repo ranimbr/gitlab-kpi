@@ -14,6 +14,8 @@ CORRECTIONS :
 
     3. AJOUT — LOG_FILE configurable (évite "app.log" hardcodé en CWD).
 """
+
+import os
 from __future__ import annotations
 
 import json
