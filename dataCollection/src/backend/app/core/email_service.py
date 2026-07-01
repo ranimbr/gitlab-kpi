@@ -2,13 +2,15 @@
 core/email_service.py
 
 Service d'envoi d'emails pour la réinitialisation de mot de passe.
-Utilise SMTP avec Gmail App Password.
+Supporte Mailgun API (prioritaire) et SMTP (fallback).
 """
 import logging
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
+import requests
 
 from app.core.config import get_settings
 
@@ -17,9 +19,15 @@ settings = get_settings()
 
 
 class EmailService:
-    """Service d'envoi d'emails via SMTP"""
+    """Service d'envoi d'emails via Mailgun API (prioritaire) ou SMTP (fallback)"""
 
     def __init__(self):
+        # Mailgun configuration
+        self.mailgun_api_key = os.getenv('MAILGUN_API_KEY')
+        self.mailgun_domain = os.getenv('MAILGUN_DOMAIN')
+        self.mailgun_from = os.getenv('MAILGUN_FROM') or 'noreply@telnet.com'
+        
+        # SMTP configuration (fallback)
         self.smtp_host = settings.SMTP_HOST
         self.smtp_port = settings.SMTP_PORT
         self.smtp_username = settings.SMTP_USERNAME
@@ -27,7 +35,11 @@ class EmailService:
         self.smtp_from = settings.SMTP_FROM or self.smtp_username
         self.smtp_use_tls = settings.SMTP_USE_TLS
         
-        logger.info(f"[EMAIL SERVICE] SMTP configured: host={self.smtp_host}, port={self.smtp_port}, user={self.smtp_username}, from={self.smtp_from}")
+        # Log configuration
+        if self.mailgun_api_key and self.mailgun_domain:
+            logger.info(f"[EMAIL SERVICE] Mailgun configured: domain={self.mailgun_domain}, from={self.mailgun_from}")
+        else:
+            logger.info(f"[EMAIL SERVICE] SMTP configured: host={self.smtp_host}, port={self.smtp_port}, user={self.smtp_username}, from={self.smtp_from}")
 
     def send_password_reset_email(
         self,
@@ -37,7 +49,8 @@ class EmailService:
         expiry_minutes: int = 30
     ) -> bool:
         """
-        Envoie un email de réinitialisation de mot de passe via SMTP.
+        Envoie un email de réinitialisation de mot de passe.
+        Essaie Mailgun API d'abord, fallback sur SMTP si Mailgun n'est pas configuré.
 
         Args:
             to_email: Email du destinataire
@@ -48,14 +61,101 @@ class EmailService:
         Returns:
             True si l'email a été envoyé avec succès, False sinon
         """
+        logger.debug(f"[EMAIL START] Sending password reset email to {to_email}")
+
+        # Try Mailgun first
+        if self.mailgun_api_key and self.mailgun_domain:
+            if self._send_via_mailgun(to_email, reset_link, to_name, expiry_minutes):
+                return True
+            logger.warning("Mailgun failed, falling back to SMTP")
+
+        # Fallback to SMTP
+        return self._send_via_smtp(to_email, reset_link, to_name, expiry_minutes)
+
+    def _send_via_mailgun(
+        self,
+        to_email: str,
+        reset_link: str,
+        to_name: Optional[str] = None,
+        expiry_minutes: int = 30
+    ) -> bool:
+        """Envoie email via Mailgun API"""
+        try:
+            url = f"https://api.mailgun.net/v3/{self.mailgun_domain}/messages"
+            
+            # Prepare email content
+            html_content = self._generate_html_content(reset_link, to_name, expiry_minutes)
+            text_content = self._generate_text_content(reset_link, to_name, expiry_minutes)
+            
+            response = requests.post(
+                url,
+                auth=("api", self.mailgun_api_key),
+                data={
+                    "from": self.mailgun_from,
+                    "to": to_email,
+                    "subject": "Réinitialisation de votre mot de passe - TELNET Dashboard",
+                    "text": text_content,
+                    "html": html_content
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Password reset email sent successfully to {to_email} via Mailgun")
+                return True
+            else:
+                logger.error(f"Mailgun API error: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to send email via Mailgun: {e}", exc_info=True)
+            return False
+
+    def _send_via_smtp(
+        self,
+        to_email: str,
+        reset_link: str,
+        to_name: Optional[str] = None,
+        expiry_minutes: int = 30
+    ) -> bool:
+        """Envoie email via SMTP (fallback)"""
         logger.debug(f"[SMTP START] Sending password reset email to {to_email}")
 
         if not self.smtp_host or not self.smtp_port or not self.smtp_username or not self.smtp_password:
             logger.error("SMTP configuration incomplete. Cannot send email.")
             return False
 
-        # HTML Content
-        html_content = f"""
+        html_content = self._generate_html_content(reset_link, to_name, expiry_minutes)
+        text_content = self._generate_text_content(reset_link, to_name, expiry_minutes)
+
+        try:
+            message = MIMEMultipart('alternative')
+            message["From"] = self.smtp_from
+            message["To"] = to_email
+            message["Subject"] = "Réinitialisation de votre mot de passe - TELNET Dashboard"
+            
+            part1 = MIMEText(text_content, 'plain')
+            message.attach(part1)
+            
+            part2 = MIMEText(html_content, 'html')
+            message.attach(part2)
+
+            logger.debug(f"[SMTP MESSAGE] Message created, from={self.smtp_from}, to={to_email}")
+
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                if self.smtp_use_tls:
+                    server.starttls()
+                server.login(self.smtp_username, self.smtp_password)
+                server.send_message(message)
+
+            logger.info(f"Password reset email sent successfully to {to_email} via SMTP")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send password reset email to {to_email} via SMTP: {e}", exc_info=True)
+            return False
+
+    def _generate_html_content(self, reset_link: str, to_name: Optional[str], expiry_minutes: int) -> str:
+        """Génère le contenu HTML de l'email"""
+        return f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -74,8 +174,9 @@ class EmailService:
         </html>
         """
 
-        # Plain Text Content
-        text_content = f"""
+    def _generate_text_content(self, reset_link: str, to_name: Optional[str], expiry_minutes: int) -> str:
+        """Génère le contenu texte de l'email"""
+        return f"""
         Bonjour {to_name if to_name else ''},
 
         Vous avez demandé à réinitialiser le mot de passe de votre compte TELNET Dashboard.
@@ -90,34 +191,6 @@ class EmailService:
         Cordialement,
         L'équipe TELNET Dashboard
         """
-
-        try:
-            message = MIMEMultipart('alternative')
-            message["From"] = self.smtp_from
-            message["To"] = to_email
-            message["Subject"] = "Réinitialisation de votre mot de passe - TELNET Dashboard"
-            
-            # Plain text part
-            part1 = MIMEText(text_content, 'plain')
-            message.attach(part1)
-            
-            # HTML part
-            part2 = MIMEText(html_content, 'html')
-            message.attach(part2)
-
-            logger.debug(f"[SMTP MESSAGE] Message created, from={self.smtp_from}, to={to_email}")
-
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                if self.smtp_use_tls:
-                    server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(message)
-
-            logger.info(f"Password reset email sent successfully to {to_email} via SMTP")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send password reset email to {to_email} via SMTP: {e}", exc_info=True)
-            return False
 
     def send_password_changed_notification(
         self,
