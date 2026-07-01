@@ -259,8 +259,8 @@ class EmailService:
                 },
                 json={
                     "from": self.resend_from,
-                    "to": [self.resend_from],  # Envoyer à l'adresse configurée (admin)
-                    "subject": f"[Contact TELNET] {subject} - de {name} ({email})",
+                    "to": [email],  # Envoyer à l'expéditeur pour confirmation
+                    "subject": f"[Contact TELNET] {subject} - de {name}",
                     "text": text_content,
                     "html": html_content
                 },
@@ -297,8 +297,8 @@ class EmailService:
         try:
             message = MIMEMultipart('alternative')
             message["From"] = self.smtp_from
-            message["To"] = self.smtp_from  # Envoyer à l'adresse admin
-            message["Subject"] = f"[Contact TELNET] {subject} - de {name} ({email})"
+            message["To"] = email  # Envoyer à l'expéditeur pour confirmation
+            message["Subject"] = f"[Contact TELNET] {subject} - de {name}"
             
             part1 = MIMEText(text_content, 'plain')
             message.attach(part1)
