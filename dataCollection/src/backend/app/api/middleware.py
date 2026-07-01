@@ -14,7 +14,7 @@ DB_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]{1,50}$")
 AUTH_DB = "auth_db"
 
 # Routes d'authentification qui doivent utiliser la base partagée
-AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/me", "/auth/logout", "/users/me/password"]
+AUTH_ROUTES = ["/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/users/me/password"]
 
 class DatabaseSelectorMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
