@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USERNAME: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
-    SMTP_FROM: str = "kpi-dashboard@telnet.com"
+    SMTP_FROM: Optional[str] = None  # Will use SMTP_USERNAME if not set
     SMTP_USE_TLS: bool = True
     ADMIN_EMAILS: List[str] = []  # List of admin emails for alerts
 

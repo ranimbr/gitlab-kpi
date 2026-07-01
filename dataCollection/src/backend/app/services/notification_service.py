@@ -29,7 +29,8 @@ class NotificationService:
         self.smtp_port = getattr(settings, "SMTP_PORT", 587)
         self.smtp_username = getattr(settings, "SMTP_USERNAME", None)
         self.smtp_password = getattr(settings, "SMTP_PASSWORD", None)
-        self.smtp_from = getattr(settings, "SMTP_FROM", "kpi-dashboard@telnet.com")
+        # Use SMTP_FROM if set, otherwise fall back to SMTP_USERNAME
+        self.smtp_from = getattr(settings, "SMTP_FROM", None) or self.smtp_username
         self.smtp_use_tls = getattr(settings, "SMTP_USE_TLS", True)
         
         self.admin_emails = getattr(settings, "ADMIN_EMAILS", [])
