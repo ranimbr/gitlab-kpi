@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { gsap } from "gsap";
 import { Envelope, Globe, MapPin } from "@phosphor-icons/react";
+import authService from "../services/authService";
 import {
   ComposableMap,
   Geographies,
@@ -338,20 +339,14 @@ function ContactSection() {
     setSubmitStatus(null);
 
     try {
-      const response = await fetch('/api/v1/contact/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSubmitStatus('success');
-        setFormData({ name: '', email: '', subject: '', message: '' });
-      } else {
-        setSubmitStatus('error');
-      }
+      await authService.sendContact(
+        formData.name,
+        formData.email,
+        formData.subject,
+        formData.message
+      );
+      setSubmitStatus('success');
+      setFormData({ name: '', email: '', subject: '', message: '' });
     } catch (error) {
       setSubmitStatus('error');
     } finally {
