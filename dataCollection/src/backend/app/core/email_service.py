@@ -2,7 +2,7 @@
 core/email_service.py
 
 Service d'envoi d'emails pour la réinitialisation de mot de passe.
-Supporte Mailgun API (prioritaire) et SMTP (fallback).
+Supporte Resend API (prioritaire) et SMTP (fallback).
 """
 import logging
 import os
@@ -19,13 +19,12 @@ settings = get_settings()
 
 
 class EmailService:
-    """Service d'envoi d'emails via Mailgun API (prioritaire) ou SMTP (fallback)"""
+    """Service d'envoi d'emails via Resend API (prioritaire) ou SMTP (fallback)"""
 
     def __init__(self):
-        # Mailgun configuration
-        self.mailgun_api_key = os.getenv('MAILGUN_API_KEY')
-        self.mailgun_domain = os.getenv('MAILGUN_DOMAIN')
-        self.mailgun_from = os.getenv('MAILGUN_FROM') or 'noreply@telnet.com'
+        # Resend configuration
+        self.resend_api_key = os.getenv('RESEND_API_KEY')
+        self.resend_from = os.getenv('RESEND_FROM') or 'noreply@telnet.com'
         
         # SMTP configuration (fallback)
         self.smtp_host = settings.SMTP_HOST
@@ -36,8 +35,8 @@ class EmailService:
         self.smtp_use_tls = settings.SMTP_USE_TLS
         
         # Log configuration
-        if self.mailgun_api_key and self.mailgun_domain:
-            logger.info(f"[EMAIL SERVICE] Mailgun configured: domain={self.mailgun_domain}, from={self.mailgun_from}")
+        if self.resend_api_key:
+            logger.info(f"[EMAIL SERVICE] Resend configured: from={self.resend_from}")
         else:
             logger.info(f"[EMAIL SERVICE] SMTP configured: host={self.smtp_host}, port={self.smtp_port}, user={self.smtp_username}, from={self.smtp_from}")
 
@@ -50,7 +49,7 @@ class EmailService:
     ) -> bool:
         """
         Envoie un email de réinitialisation de mot de passe.
-        Essaie Mailgun API d'abord, fallback sur SMTP si Mailgun n'est pas configuré.
+        Essaie Resend API d'abord, fallback sur SMTP si Resend n'est pas configuré.
 
         Args:
             to_email: Email du destinataire
@@ -63,25 +62,25 @@ class EmailService:
         """
         logger.debug(f"[EMAIL START] Sending password reset email to {to_email}")
 
-        # Try Mailgun first
-        if self.mailgun_api_key and self.mailgun_domain:
-            if self._send_via_mailgun(to_email, reset_link, to_name, expiry_minutes):
+        # Try Resend first
+        if self.resend_api_key:
+            if self._send_via_resend(to_email, reset_link, to_name, expiry_minutes):
                 return True
-            logger.warning("Mailgun failed, falling back to SMTP")
+            logger.warning("Resend failed, falling back to SMTP")
 
         # Fallback to SMTP
         return self._send_via_smtp(to_email, reset_link, to_name, expiry_minutes)
 
-    def _send_via_mailgun(
+    def _send_via_resend(
         self,
         to_email: str,
         reset_link: str,
         to_name: Optional[str] = None,
         expiry_minutes: int = 30
     ) -> bool:
-        """Envoie email via Mailgun API"""
+        """Envoie email via Resend API"""
         try:
-            url = f"https://api.mailgun.net/v3/{self.mailgun_domain}/messages"
+            url = "https://api.resend.com/emails"
             
             # Prepare email content
             html_content = self._generate_html_content(reset_link, to_name, expiry_minutes)
@@ -89,10 +88,13 @@ class EmailService:
             
             response = requests.post(
                 url,
-                auth=("api", self.mailgun_api_key),
-                data={
-                    "from": self.mailgun_from,
-                    "to": to_email,
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": self.resend_from,
+                    "to": [to_email],
                     "subject": "Réinitialisation de votre mot de passe - TELNET Dashboard",
                     "text": text_content,
                     "html": html_content
@@ -101,13 +103,13 @@ class EmailService:
             )
             
             if response.status_code == 200:
-                logger.info(f"Password reset email sent successfully to {to_email} via Mailgun")
+                logger.info(f"Password reset email sent successfully to {to_email} via Resend")
                 return True
             else:
-                logger.error(f"Mailgun API error: {response.status_code} - {response.text}")
+                logger.error(f"Resend API error: {response.status_code} - {response.text}")
                 return False
         except Exception as e:
-            logger.error(f"Failed to send email via Mailgun: {e}", exc_info=True)
+            logger.error(f"Failed to send email via Resend: {e}", exc_info=True)
             return False
 
     def _send_via_smtp(

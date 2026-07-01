@@ -83,9 +83,9 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = True
 
     # ── Notifications (Email) ────────────────────────────────────────────────
-    # SendGrid API (preferred for Render deployment)
-    SENDGRID_API_KEY: Optional[str] = None
-    SENDGRID_FROM_EMAIL: Optional[str] = None  # Will use SMTP_USERNAME if not set
+    # Resend API (preferred for Render deployment)
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_FROM: Optional[str] = None  # Will use noreply@telnet.com if not set
     
     # SMTP (fallback, blocked on Render free tier)
     SMTP_HOST: str = "smtp.gmail.com"
