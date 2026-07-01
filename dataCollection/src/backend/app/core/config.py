@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     ADMIN_EMAILS: List[str] = []  # List of admin emails for alerts
 
     # ── Frontend URL (for password reset links) ─────────────────────────────
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = "https://gitlab-kpi-z68x-9ubf0t6b8-ranimbr-s-projects.vercel.app"
 
     # ── Notifications (Slack) ────────────────────────────────────────────────
     SLACK_WEBHOOK_URL: Optional[str] = None

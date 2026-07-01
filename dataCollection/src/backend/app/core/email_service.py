@@ -157,24 +157,35 @@ class EmailService:
 
     def _generate_html_content(self, reset_link: str, to_name: Optional[str], expiry_minutes: int) -> str:
         """Génère le contenu HTML de l'email"""
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Réinitialisation de votre mot de passe</title>
-        </head>
-        <body>
-            <p>Bonjour {to_name if to_name else ''},</p>
-            <p>Vous avez demandé à réinitialiser le mot de passe de votre compte TELNET Dashboard.</p>
-            <p>Veuillez cliquer sur le lien ci-dessous pour réinitialiser votre mot de passe :</p>
-            <p><a href="{reset_link}">Réinitialiser mon mot de passe</a></p>
-            <p>Ce lien expirera dans {expiry_minutes} minutes.</p>
-            <p>Si vous n'avez pas demandé cette réinitialisation, veuillez ignorer cet e-mail.</p>
-            <p>Cordialement,</p>
-            <p>L'équipe TELNET Dashboard</p>
-        </body>
-        </html>
-        """
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Réinitialisation de votre mot de passe</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .button {{ display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <p>Bonjour {to_name if to_name else ''},</p>
+        <p>Vous avez demandé à réinitialiser le mot de passe de votre compte TELNET Dashboard.</p>
+        <p>Veuillez cliquer sur le bouton ci-dessous pour réinitialiser votre mot de passe :</p>
+        <p><a href="{reset_link}" class="button">Réinitialiser mon mot de passe</a></p>
+        <p>Ou copiez et collez ce lien dans votre navigateur :</p>
+        <p style="word-break: break-all; color: #666;">{reset_link}</p>
+        <p>Ce lien expirera dans {expiry_minutes} minutes.</p>
+        <p>Si vous n'avez pas demandé cette réinitialisation, veuillez ignorer cet e-mail.</p>
+        <div class="footer">
+            <p>Cordialement,<br>L'équipe TELNET Dashboard</p>
+        </div>
+    </div>
+</body>
+</html>"""
 
     def _generate_text_content(self, reset_link: str, to_name: Optional[str], expiry_minutes: int) -> str:
         """Génère le contenu texte de l'email"""
