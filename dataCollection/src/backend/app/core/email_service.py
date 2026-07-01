@@ -25,8 +25,11 @@ class EmailService:
         self.smtp_port = settings.SMTP_PORT
         self.smtp_username = settings.SMTP_USERNAME
         self.smtp_password = settings.SMTP_PASSWORD
-        self.smtp_from = settings.SMTP_FROM
+        # Use SMTP_FROM if set, otherwise fall back to SMTP_USERNAME
+        self.smtp_from = settings.SMTP_FROM or self.smtp_username
         self.smtp_use_tls = settings.SMTP_USE_TLS
+        
+        logger.info(f"[SMTP CONFIG] host={self.smtp_host}, port={self.smtp_port}, username={self.smtp_username}, from={self.smtp_from}, use_tls={self.smtp_use_tls}")
 
     def send_password_reset_email(
         self,
@@ -48,11 +51,15 @@ class EmailService:
             True si l'email a été envoyé avec succès, False sinon
         """
         try:
+            logger.info(f"[SMTP START] Sending password reset email to {to_email}")
+            
             # Création du message multipart
             msg = MIMEMultipart("alternative")
             msg["Subject"] = "Réinitialisation de votre mot de passe - TELNET Dashboard"
             msg["From"] = formataddr(("TELNET Dashboard", self.smtp_from))
             msg["To"] = formataddr((to_name or "", to_email))
+
+            logger.info(f"[SMTP MESSAGE] Message created, from={self.smtp_from}, to={to_email}")
 
             # Version texte brut
             text_content = f"""
@@ -281,15 +288,25 @@ L'équipe TELNET
             msg.attach(part1)
             msg.attach(part2)
 
+            logger.info(f"[SMTP CONNECT] Connecting to {self.smtp_host}:{self.smtp_port}")
+            
             # Connexion SMTP et envoi
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                logger.info(f"[SMTP CONNECTED] Connected to SMTP server")
+                
                 if self.smtp_use_tls:
+                    logger.info(f"[SMTP TLS] Starting TLS")
                     server.starttls()
+                    logger.info(f"[SMTP TLS] TLS started")
                 
                 if self.smtp_username and self.smtp_password:
+                    logger.info(f"[SMTP LOGIN] Logging in as {self.smtp_username}")
                     server.login(self.smtp_username, self.smtp_password)
+                    logger.info(f"[SMTP LOGIN] Login successful")
                 
+                logger.info(f"[SMTP SEND] Sending message")
                 server.send_message(msg)
+                logger.info(f"[SMTP SEND] Message sent successfully")
             
             logger.info(f"Password reset email sent to {to_email}")
             return True
