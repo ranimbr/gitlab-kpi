@@ -18,8 +18,10 @@ AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/me", "/auth/logout", "/us
 
 class DatabaseSelectorMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        logger.info(f"[MIDDLEWARE] Processing {request.method} {request.url.path}")
         # Ignorer les requêtes OPTIONS (CORS preflight)
         if request.method == "OPTIONS":
+            logger.info("[MIDDLEWARE] Skipping OPTIONS request")
             return await call_next(request)
         
         # Déterminer si c'est une requête d'authentification
