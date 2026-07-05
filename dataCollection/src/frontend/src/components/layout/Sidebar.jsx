@@ -1,19 +1,19 @@
 /**
- * Sidebar.jsx — TELNET HOLDING · Enterprise Precision v5
+ * Sidebar.jsx — TELNET HOLDING · Enterprise Precision v6
  *
  * Design reference : Linear, Vercel Dashboard, Salesforce Lightning
  *
  * Principes :
- *   · Fond deep slate #0F1623 — pas de bleu vif, pas de gradient criard
- *   · Icônes monochromes rgba(255,255,255,.45) → blanc pur au hover/actif
- *   · État actif : fond rgba(255,255,255,.07) + barre latérale #3B82F6 2px
- *   · Section headers en JetBrains Mono 9px uppercase 0.14em tracking
- *   · Logo Telnet dans un container propre, pas écrasé
- *   · Sous-menus avec indent visuel précis
- *   · Séparateur fin entre sections
- *   · Footer système : dot vert pulsant + "Système opérationnel"
+ *   · Fond deep slate #0B111D → #131B2C — sombre, sobre, sans bleu criard
+ *   · Texte & icônes en niveaux de blanc transparent (cohérent sur fond sombre)
+ *   · État actif : fond bleu tamisé + barre latérale #3B82F6 2px + glow discret
+ *   · Section headers en JetBrains Mono 9.5px uppercase 0.16em tracking
+ *   · Logo Telnet dans un container propre avec léger halo
+ *   · Sous-menus avec indent visuel précis et fil vertical
+ *   · Séparateurs fins entre sections
+ *   · Footer système : dot vert pulsant + statut + version
  */
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth, ROLES } from "../../context/AuthContext";
 import profileService from "../../services/profileService";
@@ -21,17 +21,30 @@ import profileService from "../../services/profileService";
 // ─── CSS injecté une seule fois ───────────────────────────────────────────────
 const SIDEBAR_CSS = `
   :root {
-    --sb-bg:        #0F1623;
-    --sb-border:    rgba(255,255,255,.06);
-    --sb-text:      rgba(255,255,255,.5);
-    --sb-text-h:    rgba(255,255,255,.88);
-    --sb-active-bg: rgba(255,255,255,.07);
-    --sb-active-bar:#3B82F6;
-    --sb-icon:      rgba(255,255,255,.4);
-    --sb-section:   rgba(255,255,255,.22);
-    --sb-mono:      'JetBrains Mono', 'DM Mono', 'Courier New', monospace;
-    --sb-sans:      'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
-    --sb-ease:      cubic-bezier(.16,1,.3,1);
+    --sb-bg-top:     #101827;
+    --sb-bg-bottom:  #0B111D;
+    --sb-bg-gradient: linear-gradient(180deg, var(--sb-bg-top) 0%, var(--sb-bg-bottom) 100%);
+    --sb-border:     rgba(255,255,255,.08);
+    --sb-border-strong: rgba(255,255,255,.14);
+
+    --sb-text:       rgba(255,255,255,.58);
+    --sb-text-h:     rgba(255,255,255,.96);
+    --sb-text-dim:   rgba(255,255,255,.38);
+    --sb-text-faint: rgba(255,255,255,.28);
+
+    --sb-accent:     #3B82F6;
+    --sb-accent-soft:#60A5FA;
+    --sb-active-bg:  linear-gradient(135deg, rgba(59,130,246,.16) 0%, rgba(59,130,246,.05) 100%);
+    --sb-active-bar: linear-gradient(180deg, #3B82F6 0%, #60A5FA 100%);
+    --sb-hover-bg:   rgba(255,255,255,.045);
+
+    --sb-icon:       rgba(255,255,255,.5);
+    --sb-section:    rgba(255,255,255,.32);
+
+    --sb-mono:       'JetBrains Mono', 'DM Mono', 'Courier New', monospace;
+    --sb-sans:       'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+    --sb-ease:       cubic-bezier(.16,1,.3,1);
+    --sb-shadow:     0 12px 32px -12px rgba(0,0,0,.6);
   }
 
   /* Shell — Fixed & Absolute Corner */
@@ -40,55 +53,71 @@ const SIDEBAR_CSS = `
     top: 0 !important;
     left: 0 !important;
     bottom: 0 !important;
-    width: 240px;
-    background: var(--sb-bg);
-    border-right: 1px solid rgba(255,255,255,.05);
+    width: 220px;
+    background: var(--sb-bg-gradient);
+    border-right: 1px solid var(--sb-border);
     display: flex;
     flex-direction: column;
     padding: 0;
-    z-index: 1005; /* Above everything */
+    z-index: 1005;
     font-family: var(--sb-sans);
     -webkit-font-smoothing: antialiased;
-    transition: transform var(--sb-ease);
+    transition: transform var(--sb-ease), width var(--sb-ease);
+    box-shadow: var(--sb-shadow);
   }
 
   /* Brand Header — Enterprise Monolith */
   .sb-brand {
-    height: 56px;
+    height: 58px;
     display: flex;
     align-items: center;
-    padding: 0 24px;
+    padding: 0 20px;
     gap: 14px;
-    background: rgba(255,255,255,.025);
-    border-bottom: 1px solid rgba(255,255,255,.06);
+    background: linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,.01) 100%);
+    border-bottom: 1px solid var(--sb-border);
     text-decoration: none;
     flex-shrink: 0;
+    position: relative;
+  }
+  .sb-brand::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.12) 50%, transparent 100%);
   }
 
   .sb-logo-box {
     display: flex;
     align-items: center;
     gap: 14px;
+    min-width: 0;
   }
 
   .sb-brand-img-wrap {
-    width: 32px; height: 32px;
+    width: 34px; height: 34px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
-    color: #FFFFFF;
+    background: rgba(255,255,255,.04);
+    border-radius: 10px;
+    border: 1px solid var(--sb-border-strong);
   }
   .sb-brand-name {
-    font-size: 19px; font-weight: 800;
-    color: #00D1FF; /* Electric Cyan */
+    font-size: 15px; font-weight: 800;
+    color: var(--sb-text-h);
     letter-spacing: 0.08em;
-    text-transform: uppercase; line-height: 1;
+    text-transform: uppercase; line-height: 1.1;
     display: flex; flex-direction: column;
-    filter: drop-shadow(0 0 8px rgba(0, 209, 255, 0.3));
+    white-space: nowrap;
   }
   .sb-brand-sub {
-    font-size: 8.5px; font-weight: 600;
-    color: rgba(255,255,255,0.35);
-    letter-spacing: 0.38em; margin-top: 3px;
+    font-family: var(--sb-mono);
+    font-size: 8px; font-weight: 600;
+    color: #38BDF8;
+    letter-spacing: .32em; margin-top: 5px;
+    opacity: .85;
   }
 
   /* Navigation — Flexible Layer */
@@ -96,7 +125,7 @@ const SIDEBAR_CSS = `
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Header stays, body scrolls */
+    overflow: hidden;
   }
 
   /* Scroll area */
@@ -104,20 +133,25 @@ const SIDEBAR_CSS = `
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px 14px 30px; /* Refined padding */
+    padding: 16px 14px 24px;
   }
-  .sb-scroll::-webkit-scrollbar { width: 3px; }
+  .sb-scroll::-webkit-scrollbar { width: 4px; }
   .sb-scroll::-webkit-scrollbar-track { background: transparent; }
-  .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 99px; }
+  .sb-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.12);
+    border-radius: 99px;
+    transition: background .2s;
+  }
+  .sb-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
 
   /* Section header */
-  .sb-section + .sb-section { margin-top: 6px; }
+  .sb-section + .sb-section { margin-top: 18px; }
   .sb-section-hd {
     font-family: var(--sb-mono);
-    font-size: 9px; font-weight: 600;
+    font-size: 9.5px; font-weight: 700;
     color: var(--sb-section);
-    letter-spacing: .14em; text-transform: uppercase;
-    padding: 12px 10px 5px;
+    letter-spacing: .16em; text-transform: uppercase;
+    padding: 6px 10px 9px;
     display: block;
   }
 
@@ -125,19 +159,19 @@ const SIDEBAR_CSS = `
   .sb-item {
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 7px 10px;
+    gap: 11px;
+    padding: 9px 10px;
     border-radius: 7px;
     color: var(--sb-text);
     text-decoration: none;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 500;
     cursor: pointer;
-    border: none;
+    border: 1px solid transparent;
     background: transparent;
     width: 100%;
     text-align: left;
-    transition: background .15s var(--sb-ease), color .15s;
+    transition: background .16s var(--sb-ease), color .16s var(--sb-ease), border-color .16s var(--sb-ease);
     position: relative;
     line-height: 1.4;
     user-select: none;
@@ -147,95 +181,110 @@ const SIDEBAR_CSS = `
     color: var(--sb-icon);
     flex-shrink: 0;
     width: 18px;
-    transition: color .15s;
+    text-align: center;
+    transition: color .16s var(--sb-ease);
   }
   .sb-item:hover {
-    background: rgba(255,255,255,.04);
+    background: var(--sb-hover-bg);
     color: var(--sb-text-h);
+    border-color: var(--sb-border);
   }
-  .sb-item:hover i.sb-icon { color: rgba(255,255,255,.72); }
+  .sb-item:hover i.sb-icon {
+    color: rgba(255,255,255,.85);
+  }
 
   /* Active */
   .sb-item.is-active {
     background: var(--sb-active-bg);
-    color: #fff;
+    color: #EAF2FF;
+    border-color: rgba(59,130,246,.28);
   }
-  .sb-item.is-active i.sb-icon { color: #fff; }
+  .sb-item.is-active i.sb-icon {
+    color: var(--sb-accent-soft);
+  }
   .sb-item.is-active::before {
     content: '';
     position: absolute;
-    left: 0; top: 6px; bottom: 6px;
+    left: -14px; top: 7px; bottom: 7px;
     width: 2px;
     background: var(--sb-active-bar);
-    border-radius: 0 2px 2px 0;
+    border-radius: 0 3px 3px 0;
+    box-shadow: 0 0 10px rgba(59,130,246,.55);
   }
 
   /* Chevron */
   .sb-chevron {
-    font-size: 14px;
-    color: rgba(255,255,255,.25);
+    font-size: 16px;
+    color: var(--sb-text-faint);
     margin-left: auto;
     flex-shrink: 0;
-    transition: transform .2s var(--sb-ease), color .15s;
+    transition: transform .25s var(--sb-ease), color .2s;
   }
-  .sb-chevron.is-open { transform: rotate(90deg); color: rgba(255,255,255,.45); }
+  .sb-chevron.is-open { transform: rotate(90deg); color: var(--sb-text-dim); }
 
   /* Badge */
   .sb-badge {
     font-family: var(--sb-mono);
-    font-size: 9px; font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
+    font-size: 9.5px; font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 5px;
     background: rgba(34,197,94,.12);
-    color: #22C55E;
-    letter-spacing: .06em;
+    color: #4ADE80;
+    letter-spacing: .08em;
     flex-shrink: 0;
     margin-left: auto;
+    border: 1px solid rgba(34,197,94,.22);
   }
 
   /* Sub-menu */
   .sb-sub {
-    margin: 2px 0 2px 28px;
-    border-left: 1px solid rgba(255,255,255,.07);
-    padding-left: 8px;
+    margin: 2px 0 6px 27px;
+    border-left: 1px solid var(--sb-border);
+    padding-left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
   .sb-sub-item {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 6px 8px;
+    gap: 8px;
+    padding: 7px 10px;
     border-radius: 6px;
-    color: rgba(255,255,255,.4);
-    font-size: 12.5px;
+    color: var(--sb-text-dim);
+    font-size: 12px;
     font-weight: 500;
     text-decoration: none;
-    transition: background .15s, color .15s;
+    transition: background .16s var(--sb-ease), color .16s var(--sb-ease);
     position: relative;
   }
   .sb-sub-item:hover {
-    background: rgba(255,255,255,.04);
-    color: rgba(255,255,255,.82);
+    background: var(--sb-hover-bg);
+    color: var(--sb-text-h);
   }
   .sb-sub-item.is-active {
-    color: rgba(255,255,255,.92);
-    background: rgba(255,255,255,.05);
+    color: var(--sb-accent-soft);
+    background: rgba(59,130,246,.08);
+    font-weight: 600;
   }
   .sb-sub-item.is-active::before {
     content: '';
-    position: absolute; left: -9px; top: 50%; transform: translateY(-50%);
-    width: 1px; height: 14px;
+    position: absolute; left: -13px; top: 50%; transform: translateY(-50%);
+    width: 2px; height: 14px;
     background: var(--sb-active-bar);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(59,130,246,.5);
   }
 
   /* Responsive collapse */
   @media (max-width: 1024px) {
-    .sb-shell { transform: translateX(-100%); transition: transform .25s var(--sb-ease); }
+    .sb-shell { transform: translateX(-100%); transition: transform .3s var(--sb-ease); }
     .sb-shell.is-open { transform: translateX(0); }
   }
 
   /* Collapsed mode (icon-only) */
   .sb-shell.is-collapsed {
-    width: 64px;
+    width: 72px;
   }
   .sb-shell.is-collapsed .sb-brand {
     padding: 0;
@@ -248,13 +297,13 @@ const SIDEBAR_CSS = `
     gap: 0;
   }
   .sb-shell.is-collapsed .sb-scroll {
-    padding: 10px 8px 30px;
+    padding: 16px 10px 24px;
   }
   .sb-shell.is-collapsed .sb-section-hd {
     display: none;
   }
   .sb-shell.is-collapsed .sb-item {
-    padding: 10px;
+    padding: 11px;
     justify-content: center;
   }
   .sb-shell.is-collapsed .sb-item span:not([class*="sb-icon"]) {
@@ -273,10 +322,10 @@ const SIDEBAR_CSS = `
     display: none;
   }
   .sb-shell.is-collapsed .sb-divider {
-    margin: 6px 12px;
+    margin: 8px 14px;
   }
   .sb-shell.is-collapsed .sb-footer {
-    padding: 12px 8px;
+    padding: 14px 10px;
     justify-content: center;
   }
   .sb-shell.is-collapsed .sb-footer-txt,
@@ -290,78 +339,81 @@ const SIDEBAR_CSS = `
   /* Toggle button */
   .sb-toggle-btn {
     position: absolute;
-    right: -12px;
+    right: -13px;
     top: 50%;
     transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    background: var(--sb-bg);
-    border: 1px solid var(--sb-border);
+    width: 26px;
+    height: 26px;
+    background: var(--sb-bg-top);
+    border: 1px solid var(--sb-border-strong);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     color: var(--sb-text);
-    transition: all .15s var(--sb-ease);
+    transition: background .18s var(--sb-ease), color .18s var(--sb-ease), border-color .18s var(--sb-ease);
     z-index: 10;
+    box-shadow: 0 4px 14px rgba(0,0,0,.45);
   }
   .sb-toggle-btn:hover {
-    background: rgba(255,255,255,.1);
+    background: rgba(255,255,255,.08);
     color: #fff;
-    border-color: rgba(255,255,255,.15);
+    border-color: rgba(255,255,255,.24);
   }
   .sb-shell.is-collapsed .sb-toggle-btn {
-    right: -12px;
+    right: -13px;
   }
 
   /* Divider */
   .sb-divider {
     height: 1px;
-    background: var(--sb-border);
-    margin: 6px 8px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.09) 50%, transparent 100%);
+    margin: 8px 10px;
   }
 
   /* Footer */
   .sb-footer {
-    padding: 12px 16px;
+    padding: 13px 18px;
     border-top: 1px solid var(--sb-border);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex-shrink: 0;
-    background: rgba(0,0,0,.18);
+    background: linear-gradient(180deg, rgba(255,255,255,.015) 0%, rgba(0,0,0,.08) 100%);
   }
   .sb-footer-dot {
     width: 7px; height: 7px;
     border-radius: 50%;
     background: #22C55E;
     flex-shrink: 0;
-    box-shadow: 0 0 0 2px rgba(34,197,94,.2);
+    box-shadow: 0 0 0 3px rgba(34,197,94,.2), 0 0 10px rgba(34,197,94,.45);
     animation: sb-pulse 2.5s ease-in-out infinite;
   }
   @keyframes sb-pulse {
-    0%,100% { box-shadow: 0 0 0 2px rgba(34,197,94,.2); }
-    50%      { box-shadow: 0 0 0 5px rgba(34,197,94,.06); }
+    0%,100% { box-shadow: 0 0 0 3px rgba(34,197,94,.2), 0 0 10px rgba(34,197,94,.45); }
+    50%      { box-shadow: 0 0 0 5px rgba(34,197,94,.1), 0 0 14px rgba(34,197,94,.3); }
   }
   .sb-footer-txt {
     font-family: var(--sb-mono);
-    font-size: 10px; color: rgba(255,255,255,.28);
-    letter-spacing: .04em;
+    font-size: 10.5px; color: var(--sb-text-dim);
+    letter-spacing: .05em;
+    font-weight: 500;
   }
   .sb-footer-ver {
     margin-left: auto;
     font-family: var(--sb-mono);
-    font-size: 9px;
-    color: rgba(255,255,255,.18);
+    font-size: 9.5px;
+    color: var(--sb-text-faint);
     letter-spacing: .06em;
+    font-weight: 600;
   }
 `;
 
 // ─── Logo Component (Premium Industrial Vector) ───────────────────────────
 function TelnetSymbol() {
   return (
-    <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{filter:'drop-shadow(0 0 10px rgba(0,209,255,0.25))'}}>
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{filter:'drop-shadow(0 0 8px rgba(0,209,255,0.35))'}}>
       <defs>
         <linearGradient id="sphereGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#E5E7EB" />
@@ -373,13 +425,10 @@ function TelnetSymbol() {
           <feComposite in="SourceGraphic" in2="blur" operator="over" />
         </filter>
       </defs>
-      {/* Polished Sphere */}
       <circle cx="16" cy="16" r="14" fill="url(#sphereGrad)" />
-      {/* Light Reflections (Stripes) */}
       <path d="M5 21Q16 13 27 21" stroke="white" strokeWidth="0.8" strokeOpacity="0.6" fill="none" />
       <path d="M8 25Q16 19 24 25" stroke="white" strokeWidth="0.8" strokeOpacity="0.4" fill="none" />
       <path d="M12 29Q16 26 20 29" stroke="white" strokeWidth="0.8" strokeOpacity="0.2" fill="none" />
-      {/* Electric Triangle Cutout */}
       <path d="M14 2L28 2L16 14Z" fill="#00D1FF" filter="url(#innerGlow)" />
       <circle cx="16" cy="16" r="14" stroke="white" strokeWidth="0.5" strokeOpacity="0.15" fill="none" />
     </svg>
@@ -398,6 +447,7 @@ function injectCSS() {
 // ─── Sub-item ─────────────────────────────────────────────────────────────────
 function SubItem({ to, label }) {
   const { pathname } = useLocation();
+  if (!to) return null;
   const active = pathname === to || pathname.startsWith(to + "/");
   return (
     <Link to={to} className={`sb-sub-item ${active ? "is-active" : ""}`}>
@@ -413,7 +463,7 @@ function NavItem({ icon, label, to, badge, children, accessible = true, isCollap
     accessible &&
     (to
       ? pathname === to || pathname.startsWith(to + "/")
-      : children?.some((c) => pathname === c.to || pathname.startsWith(c.to + "/")));
+      : children?.some((c) => c.to && (pathname === c.to || pathname.startsWith(c.to + "/"))));
 
   const [open, setOpen] = useState(isActive && !!children);
 
@@ -480,7 +530,7 @@ export default function Sidebar() {
   const isProjectManager = user?.role === ROLES.PROJECT_MANAGER;
   const isViewer = user?.role === ROLES.VIEWER;
   const [menuItems, setMenuItems] = useState([]);
-  const [loadingMenus, setLoadingMenus] = useState(true);
+  const [, setLoadingMenus] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
     return saved === 'true';
@@ -490,7 +540,6 @@ export default function Sidebar() {
     setIsCollapsed(prev => {
       const newValue = !prev;
       localStorage.setItem('sidebar-collapsed', String(newValue));
-      // Dispatch custom event for AppLayout
       window.dispatchEvent(new CustomEvent('sidebar-toggle', { detail: newValue }));
       return newValue;
     });
@@ -509,9 +558,7 @@ export default function Sidebar() {
   const loadAccessibleMenus = useCallback(async () => {
     try {
       setLoadingMenus(true);
-      // Récupérer les menus accessibles selon le profil de l'utilisateur
       const data = await profileService.getActiveMenuItems();
-      console.log("Menus chargés:", data);
       setMenuItems(data);
     } catch (err) {
       console.error("Erreur chargement menus:", err);
@@ -535,7 +582,7 @@ export default function Sidebar() {
 
       {/* Brand Header — Elite Corner (Monolith) */}
       <div className="sb-brand">
-        <div className="sb-logo-box" style={{display:'flex', alignItems:'center', gap:'12px'}}>
+        <div className="sb-logo-box">
           <div className="sb-brand-img-wrap">
             <TelnetSymbol />
           </div>
@@ -550,11 +597,7 @@ export default function Sidebar() {
       <div className="sb-nav-container">
         <div className="sb-scroll">
           <Section title="Pilotage" isCollapsed={isCollapsed}>
-            {/* ✅ [REMOVED] Dashboard Global - Page principale supprimée */}
-            {/* <NavItem icon="ri-dashboard-3-line"      label="Dashboard Global"    to="/dashboard"         badge="Live" accessible={isMenuAccessible("/dashboard")} isCollapsed={isCollapsed} /> */}
-            <NavItem icon="ri-pie-chart-2-line" label="Analyse Stratégique" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/analytics/comparison")} isCollapsed={isCollapsed} />
-            {/* ✅ [REMOVED] Diagnostic Avancé - Non fonctionnelle */}
-            {/* <NavItem icon="ri-stethoscope-line" label="Diagnostic Avancé" to={`/analytics/diagnostic${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/analytics/diagnostic")} isCollapsed={isCollapsed} /> */}
+            <NavItem icon="ri-pie-chart-2-line" label="Tableau de bord" to={`/analytics/comparison${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/analytics/comparison")} isCollapsed={isCollapsed} />
             <NavItem icon="ri-code-s-slash-line"     label="Hub Développeurs"    to="/developers" accessible={isMenuAccessible("/developers")} isCollapsed={isCollapsed} />
           </Section>
 
@@ -563,10 +606,6 @@ export default function Sidebar() {
           <Section title="Activité Code" isCollapsed={isCollapsed}>
             <NavItem icon="ri-git-merge-line"        label="Merge Requests"      to={`/merge${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/merge")} isCollapsed={isCollapsed} />
             <NavItem icon="ri-git-commit-line"       label="Commits GitLab"      to={`/commits${localStorage.getItem("last_project_id") ? `?project_id=${localStorage.getItem("last_project_id")}` : ""}`} accessible={isMenuAccessible("/commits")} isCollapsed={isCollapsed} />
-            {/* ✅ [REMOVED] Analyses KPI - Non fonctionnelle */}
-            {/* <NavItem icon="ri-line-chart-line"       label="Analyses KPI"        to="/kpi-analysis" accessible={isMenuAccessible("/kpi-analysis")} isCollapsed={isCollapsed} /> */}
-            {/* ✅ [REMOVED] Alerts KPI - Non fonctionnelle */}
-            {/* <NavItem icon="ri-notification-3-line"   label="Alertes KPI"         to="/alerts" accessible={isMenuAccessible("/alerts")} isCollapsed={isCollapsed} /> */}
           </Section>
 
           <div className="sb-divider" />
@@ -576,21 +615,20 @@ export default function Sidebar() {
             <NavItem icon="ri-rocket-2-line"         label="Moteur d'Extraction" to="/extraction" accessible={isMenuAccessible("/extraction")} isCollapsed={isCollapsed} />
           </Section>
 
+          <div className="sb-divider" />
+
           <Section title="Administration" accessible={isAdmin || isLead || isProjectManager || isViewer} isCollapsed={isCollapsed}>
             <NavItem icon="ri-settings-3-line" label="Configuration" accessible={isMenuAccessible("/admin/sites")} isCollapsed={isCollapsed} children={[
-              { to: "/admin/sites",          label: "Sites Telnet",         accessible: isMenuAccessible("/admin/sites") },
-              { to: "/admin/projects",       label: "Projets GitLab",       accessible: isMenuAccessible("/admin/projects") },
-              { to: "/admin/gitlab-configs", label: "Configs GitLab",       accessible: isMenuAccessible("/admin/gitlab-configs") },
-              { to: "/admin/users",          label: "Utilisateurs",         accessible: isMenuAccessible("/admin/users") },
-              { to: "/admin/developers",     label: "Validation Profils",   accessible: isMenuAccessible("/admin/developers") },
-              { to: "/admin/periods",        label: "Périodes",             accessible: isMenuAccessible("/admin/periods") },
-              { to: "/admin/kpi-definitions",label: "Définitions KPI",      accessible: isMenuAccessible("/admin/kpi-definitions") },
-              {/* { to: "/admin/kpi-thresholds", label: "Seuils KPI",           accessible={isMenuAccessible("/admin/kpi-thresholds") }, */}
+              { to: "/admin/sites",          label: "Sites Telnet" },
+              { to: "/admin/projects",       label: "Projets GitLab" },
+              { to: "/admin/gitlab-configs", label: "Configs GitLab" },
+              { to: "/admin/users",          label: "Utilisateurs" },
+              { to: "/admin/developers",     label: "Validation Profils" },
+              { to: "/admin/periods",        label: "Périodes" },
+              { to: "/admin/kpi-definitions",label: "Définitions KPI" },
             ]} />
             <NavItem icon="ri-user-settings-line" label="Profils & Menu"      to="/admin/profiles" accessible={isMenuAccessible("/admin/profiles")} isCollapsed={isCollapsed} />
             <NavItem icon="ri-time-line"         label="Scheduler Admin"    to="/admin/scheduler" accessible={isMenuAccessible("/admin/scheduler")} isCollapsed={isCollapsed} />
-            {/* ✅ [REMOVED] Business Units - Page supprimée */}
-            {/* <NavItem icon="ri-building-2-line"   label="Business Units"    to="/team" accessible={isMenuAccessible("/team")} isCollapsed={isCollapsed} /> */}
             <NavItem icon="ri-upload-2-line"     label="Import Développeurs" to="/admin/developers/import" accessible={isMenuAccessible("/admin/developers/import")} isCollapsed={isCollapsed} />
             <NavItem icon="ri-shield-check-line" label="Audit Log"         to="/admin/audit-log" accessible={isMenuAccessible("/admin/audit-log")} isCollapsed={isCollapsed} />
           </Section>
@@ -598,7 +636,11 @@ export default function Sidebar() {
       </div>
 
       {/* Footer System Status */}
-      
+      <div className="sb-footer">
+        <span className="sb-footer-dot" />
+        <span className="sb-footer-txt">Système opérationnel</span>
+        <span className="sb-footer-ver">v5.2</span>
+      </div>
     </aside>
   );
 }

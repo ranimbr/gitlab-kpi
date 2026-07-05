@@ -782,7 +782,7 @@ export default function DevelopersImportPage() {
                   <div className="col-md-12">
                     <label className="form-label fw-medium fs-13">
                       Instance GitLab {" "}
-                      <span className="text-muted fw-normal">(recommandé si vous créez de nouveaux projets)</span>
+                      
                     </label>
                     <div className="input-group">
                       <span className="input-group-text bg-light"><i className="ri-git-merge-line"></i></span>

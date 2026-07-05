@@ -1,38 +1,41 @@
 /**
- * Topbar.jsx — TELNET HOLDING · Enterprise Precision v5
+ * Topbar.jsx — TELNET HOLDING · Enterprise Precision v6
  *
  * Design reference : Vercel, Linear, Salesforce Lightning
  *
  * Principes :
- *   · Fond blanc (#fff) en light, #161B27 en dark — jamais de couleur vive
+ *   · Fond blanc (#fff) en light, slate sombre aligné à la sidebar en dark
  *   · Hauteur fixe 56px — standard enterprise
  *   · Gauche : breadcrumb précis avec icône de page + séparateur fin
- *   · Centre : search bar fonctionnelle (sans décoration excessive)
+ *   · Décalage gauche synchronisé avec l'état (ouverte/repliée) de la sidebar
  *   · Droite : actions groupées (theme, notifs) + avatar user propre
  *   · Dropdown profile : hiérarchie claire, actions accessibles
- *   · Bordure bottom fine rgba(0,0,0,.06) — subtile, pas criarde
+ *   · Bordure bottom fine — subtile, pas criarde
  *   · Aucun logo dans la topbar — il est déjà dans la sidebar
  */
 import { useState, useRef, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 const TOPBAR_CSS = `
   :root {
-    --tb-h:        56px;
-    --tb-bg-light: #ffffff;
-    --tb-bg-dark:  #161B27;
-    --tb-border-l: rgba(0,0,0,.07);
-    --tb-border-d: rgba(255,255,255,.06);
-    --tb-text-l:   #111827;
-    --tb-text-d:   rgba(255,255,255,.9);
-    --tb-muted-l:  #6B7280;
-    --tb-muted-d:  rgba(255,255,255,.4);
-    --tb-blue:     #3B82F6;
-    --tb-sans:     'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
-    --tb-mono:     'JetBrains Mono', 'DM Mono', 'Courier New', monospace;
-    --tb-ease:     cubic-bezier(.16,1,.3,1);
+    --tb-h:            56px;
+    --tb-sidebar-w:     220px;
+    --tb-sidebar-w-collapsed: 72px;
+    --tb-bg-light:      #ffffff;
+    --tb-bg-dark:       #121A2B;
+    --tb-border-l:      rgba(0,0,0,.07);
+    --tb-border-d:      rgba(255,255,255,.07);
+    --tb-text-l:        #111827;
+    --tb-text-d:        rgba(255,255,255,.92);
+    --tb-muted-l:       #6B7280;
+    --tb-muted-d:       rgba(255,255,255,.4);
+    --tb-blue:          #3B82F6;
+    --tb-blue-soft:     #60A5FA;
+    --tb-sans:          'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+    --tb-mono:          'JetBrains Mono', 'DM Mono', 'Courier New', monospace;
+    --tb-ease:          cubic-bezier(.16,1,.3,1);
   }
 
   /* Shell */
@@ -44,12 +47,23 @@ const TOPBAR_CSS = `
     border-bottom: 1px solid var(--tb-border-l);
     display: flex;
     align-items: center;
-    padding: 0 24px 0 calc(240px + 24px);
+    padding: 0 24px 0 calc(var(--tb-sidebar-w) + 24px);
     gap: 16px;
     z-index: 900;
     font-family: var(--tb-sans);
     -webkit-font-smoothing: antialiased;
-    transition: background .2s, border-color .2s;
+    transition: background .2s, border-color .2s, padding-left .25s var(--tb-ease);
+  }
+
+  #page-topbar.tb-shell.is-sb-collapsed {
+    padding-left: calc(var(--tb-sidebar-w-collapsed) + 24px);
+  }
+
+  @media (max-width: 1024px) {
+    #page-topbar.tb-shell,
+    #page-topbar.tb-shell.is-sb-collapsed {
+      padding-left: 24px;
+    }
   }
 
   [data-bs-theme="dark"] #page-topbar.tb-shell {
@@ -61,80 +75,33 @@ const TOPBAR_CSS = `
   .tb-bread {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 9px;
     flex-shrink: 0;
+    min-width: 0;
+  }
+  .tb-bread-icon {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(59,130,246,.09);
+    color: var(--tb-blue);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  [data-bs-theme="dark"] .tb-bread-icon {
+    background: rgba(59,130,246,.14);
+    color: var(--tb-blue-soft);
   }
   .tb-bread-page {
     font-size: 14px;
     font-weight: 600;
     color: var(--tb-text-l);
     letter-spacing: -.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   [data-bs-theme="dark"] .tb-bread-page { color: var(--tb-text-d); }
-
-  .tb-bread-dot {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--tb-blue);
-    flex-shrink: 0;
-  }
-
-  /* Search */
-  .tb-search {
-    flex: 1;
-    max-width: 340px;
-    position: relative;
-    margin-left: 8px;
-  }
-  .tb-search-icon {
-    position: absolute;
-    left: 11px; top: 50%; transform: translateY(-50%);
-    font-size: 14px;
-    color: #9CA3AF;
-    pointer-events: none;
-  }
-  .tb-search-input {
-    width: 100%;
-    height: 34px;
-    padding: 0 12px 0 34px;
-    background: #F3F4F6;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    font-family: var(--tb-sans);
-    font-size: 13px;
-    color: var(--tb-text-l);
-    outline: none;
-    transition: background .15s, border-color .15s, box-shadow .15s;
-  }
-  .tb-search-input::placeholder { color: #9CA3AF; }
-  .tb-search-input:focus {
-    background: #fff;
-    border-color: rgba(59,130,246,.35);
-    box-shadow: 0 0 0 3px rgba(59,130,246,.08);
-  }
-  [data-bs-theme="dark"] .tb-search-input {
-    background: rgba(255,255,255,.05);
-    color: rgba(255,255,255,.85);
-    border-color: rgba(255,255,255,.06);
-  }
-  [data-bs-theme="dark"] .tb-search-input::placeholder { color: rgba(255,255,255,.25); }
-  [data-bs-theme="dark"] .tb-search-input:focus {
-    background: rgba(255,255,255,.08);
-    border-color: rgba(59,130,246,.4);
-    box-shadow: 0 0 0 3px rgba(59,130,246,.1);
-  }
-  .tb-search-kbd {
-    position: absolute;
-    right: 8px; top: 50%; transform: translateY(-50%);
-    font-family: var(--tb-mono);
-    font-size: 10px;
-    color: #9CA3AF;
-    background: #E5E7EB;
-    padding: 1px 5px;
-    border-radius: 4px;
-    pointer-events: none;
-  }
-  [data-bs-theme="dark"] .tb-search-kbd { background: rgba(255,255,255,.1); color: rgba(255,255,255,.3); }
 
   /* Spacer */
   .tb-spacer { flex: 1; }
@@ -150,8 +117,8 @@ const TOPBAR_CSS = `
     background: #F9FAFB;
   }
   [data-bs-theme="dark"] .tb-actions {
-    border-color: rgba(255,255,255,.07);
-    background: rgba(255,255,255,.04);
+    border-color: rgba(255,255,255,.08);
+    background: rgba(255,255,255,.035);
   }
 
   .tb-icon-btn {
@@ -168,17 +135,7 @@ const TOPBAR_CSS = `
   }
   .tb-icon-btn:hover { background: rgba(0,0,0,.05); color: #374151; }
   [data-bs-theme="dark"] .tb-icon-btn { color: rgba(255,255,255,.45); }
-  [data-bs-theme="dark"] .tb-icon-btn:hover { background: rgba(255,255,255,.07); color: rgba(255,255,255,.85); }
-
-  .tb-notif-badge {
-    position: absolute;
-    top: 6px; right: 6px;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #EF4444;
-    border: 1.5px solid var(--tb-bg-light);
-  }
-  [data-bs-theme="dark"] .tb-notif-badge { border-color: var(--tb-bg-dark); }
+  [data-bs-theme="dark"] .tb-icon-btn:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.9); }
 
   /* Divider */
   .tb-vdiv {
@@ -187,7 +144,7 @@ const TOPBAR_CSS = `
     flex-shrink: 0;
     margin: 0 4px;
   }
-  [data-bs-theme="dark"] .tb-vdiv { background: rgba(255,255,255,.08); }
+  [data-bs-theme="dark"] .tb-vdiv { background: rgba(255,255,255,.09); }
 
   /* User button */
   .tb-user-btn {
@@ -206,21 +163,22 @@ const TOPBAR_CSS = `
     border-color: #D1D5DB;
   }
   [data-bs-theme="dark"] .tb-user-btn {
-    border-color: rgba(255,255,255,.08);
+    border-color: rgba(255,255,255,.09);
   }
   [data-bs-theme="dark"] .tb-user-btn:hover {
-    background: rgba(255,255,255,.05);
-    border-color: rgba(255,255,255,.12);
+    background: rgba(255,255,255,.055);
+    border-color: rgba(255,255,255,.14);
   }
 
   .tb-avatar {
     width: 28px; height: 28px;
-    border-radius: 7px;
-    background: #1E40AF;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; color: #fff;
     flex-shrink: 0;
     letter-spacing: .02em;
+    box-shadow: 0 2px 6px rgba(59,130,246,.35);
   }
 
   .tb-user-name {
@@ -246,7 +204,7 @@ const TOPBAR_CSS = `
     transition: transform .2s var(--tb-ease);
   }
   .tb-chevron.is-open { transform: rotate(180deg); }
-  [data-bs-theme="dark"] .tb-chevron { color: rgba(255,255,255,.3); }
+  [data-bs-theme="dark"] .tb-chevron { color: rgba(255,255,255,.32); }
 
   /* Dropdown */
   .tb-dropdown {
@@ -264,9 +222,9 @@ const TOPBAR_CSS = `
   }
   @keyframes tb-dd-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
   [data-bs-theme="dark"] .tb-dropdown {
-    background: #1E2536;
-    border-color: rgba(255,255,255,.08);
-    box-shadow: 0 10px 40px rgba(0,0,0,.4);
+    background: #182036;
+    border-color: rgba(255,255,255,.09);
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
   }
 
   .tb-dd-header {
@@ -276,10 +234,10 @@ const TOPBAR_CSS = `
   }
   [data-bs-theme="dark"] .tb-dd-header {
     background: rgba(255,255,255,.03);
-    border-color: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.07);
   }
   .tb-dd-name { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 1px; }
-  [data-bs-theme="dark"] .tb-dd-name { color: rgba(255,255,255,.88); }
+  [data-bs-theme="dark"] .tb-dd-name { color: rgba(255,255,255,.9); }
   .tb-dd-email { font-size: 11px; color: #6B7280; }
   [data-bs-theme="dark"] .tb-dd-email { color: rgba(255,255,255,.35); }
 
@@ -296,21 +254,21 @@ const TOPBAR_CSS = `
     width: 100%; border: none; background: transparent; text-align: left;
   }
   .tb-dd-item:hover { background: #F3F4F6; color: #111827; }
-  [data-bs-theme="dark"] .tb-dd-item { color: rgba(255,255,255,.65); }
-  [data-bs-theme="dark"] .tb-dd-item:hover { background: rgba(255,255,255,.05); color: rgba(255,255,255,.88); }
+  [data-bs-theme="dark"] .tb-dd-item { color: rgba(255,255,255,.68); }
+  [data-bs-theme="dark"] .tb-dd-item:hover { background: rgba(255,255,255,.06); color: rgba(255,255,255,.9); }
 
   .tb-dd-item i { font-size: 15px; color: #6B7280; flex-shrink: 0; }
-  [data-bs-theme="dark"] .tb-dd-item i { color: rgba(255,255,255,.35); }
+  [data-bs-theme="dark"] .tb-dd-item i { color: rgba(255,255,255,.38); }
   .tb-dd-item:hover i { color: var(--tb-blue); }
 
   .tb-dd-sep { height: 1px; background: #F3F4F6; margin: 4px 6px; }
-  [data-bs-theme="dark"] .tb-dd-sep { background: rgba(255,255,255,.06); }
+  [data-bs-theme="dark"] .tb-dd-sep { background: rgba(255,255,255,.07); }
 
   .tb-dd-item.is-danger { color: #EF4444; }
   [data-bs-theme="dark"] .tb-dd-item.is-danger { color: #F87171; }
   .tb-dd-item.is-danger i { color: #EF4444; }
   .tb-dd-item.is-danger:hover { background: #FEF2F2; color: #DC2626; }
-  [data-bs-theme="dark"] .tb-dd-item.is-danger:hover { background: rgba(239,68,68,.1); color: #FCA5A5; }
+  [data-bs-theme="dark"] .tb-dd-item.is-danger:hover { background: rgba(239,68,68,.12); color: #FCA5A5; }
 
   /* DB Selector */
   .tb-db-btn {
@@ -330,15 +288,16 @@ const TOPBAR_CSS = `
   .tb-db-btn:hover { background: #F3F4F6; border-color: #D1D5DB; }
   [data-bs-theme="dark"] .tb-db-btn {
     background: rgba(255,255,255,.03);
-    border-color: rgba(255,255,255,.07);
+    border-color: rgba(255,255,255,.08);
     color: var(--tb-text-d);
   }
   [data-bs-theme="dark"] .tb-db-btn:hover {
-    background: rgba(255,255,255,.06);
-    border-color: rgba(255,255,255,.12);
+    background: rgba(255,255,255,.065);
+    border-color: rgba(255,255,255,.14);
   }
   .tb-db-btn i:first-child { color: var(--tb-blue); font-size: 15px; }
-  
+  [data-bs-theme="dark"] .tb-db-btn i:first-child { color: var(--tb-blue-soft); }
+
   .tb-db-dropdown {
     position: absolute;
     top: calc(100% + 6px);
@@ -353,9 +312,9 @@ const TOPBAR_CSS = `
     animation: tb-dd-in .16s var(--tb-ease);
   }
   [data-bs-theme="dark"] .tb-db-dropdown {
-    background: #1E2536;
-    border-color: rgba(255,255,255,.08);
-    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    background: #182036;
+    border-color: rgba(255,255,255,.09);
+    box-shadow: 0 10px 30px rgba(0,0,0,.45);
   }
   .tb-db-item {
     display: flex; align-items: center; justify-content: space-between;
@@ -365,13 +324,13 @@ const TOPBAR_CSS = `
     cursor: pointer; transition: background .12s;
   }
   .tb-db-item:hover { background: #F9FAFB; color: #111827; }
-  [data-bs-theme="dark"] .tb-db-item { color: rgba(255,255,255,.7); }
-  [data-bs-theme="dark"] .tb-db-item:hover { background: rgba(255,255,255,.04); color: rgba(255,255,255,.9); }
+  [data-bs-theme="dark"] .tb-db-item { color: rgba(255,255,255,.72); }
+  [data-bs-theme="dark"] .tb-db-item:hover { background: rgba(255,255,255,.045); color: rgba(255,255,255,.92); }
   .tb-db-item-left { display: flex; align-items: center; gap: 8px; }
   .tb-db-item-left i { color: #9CA3AF; font-size: 15px; }
   .tb-db-item.is-active { background: #EFF6FF; color: var(--tb-blue); }
   .tb-db-item.is-active .tb-db-item-left i { color: var(--tb-blue); }
-  [data-bs-theme="dark"] .tb-db-item.is-active { background: rgba(59,130,246,.1); color: #60A5FA; }
+  [data-bs-theme="dark"] .tb-db-item.is-active { background: rgba(59,130,246,.12); color: #60A5FA; }
   [data-bs-theme="dark"] .tb-db-item.is-active .tb-db-item-left i { color: #60A5FA; }
   .tb-db-check { color: var(--tb-blue); font-size: 16px; opacity: 0; }
   .tb-db-item.is-active .tb-db-check { opacity: 1; }
@@ -390,14 +349,11 @@ function injectTopbarCSS() {
 const LABELS = {
   "/": { label: "Dashboard", icon: "ri-dashboard-3-line" },
   "/dashboard": { label: "Dashboard", icon: "ri-dashboard-3-line" },
+  "/analytics/comparison": { label: "Tableau de bord", icon: "ri-pie-chart-2-line" },
   "/developers": { label: "Hub Développeurs", icon: "ri-code-s-slash-line" },
   "/team": { label: "Gestion d'Équipe", icon: "ri-team-line" },
   "/merge": { label: "Merge Requests", icon: "ri-git-merge-line" },
   "/commits": { label: "Commits GitLab", icon: "ri-git-commit-line" },
-  // ✅ [REMOVED] Analyses KPI - Non fonctionnelle
-  // "/kpi-analysis":             { label: "Analyses KPI",       icon: "ri-line-chart-line"      },
-  // ✅ [REMOVED] Alerts KPI - Non fonctionnelle
-  // "/alerts":                   { label: "Alertes KPI",        icon: "ri-notification-3-line"  },
   "/extraction-lots": { label: "Registre des Lots", icon: "ri-database-2-line" },
   "/extraction": { label: "Moteur d'Extraction", icon: "ri-rocket-2-line" },
   "/periods": { label: "Périodes", icon: "ri-calendar-2-line" },
@@ -412,6 +368,8 @@ const LABELS = {
   "/admin/kpi-definitions": { label: "Définitions KPI", icon: "ri-file-list-3-line" },
   "/admin/kpi-thresholds": { label: "Seuils KPI", icon: "ri-alert-line" },
   "/admin/dashboards": { label: "Dashboards", icon: "ri-layout-grid-line" },
+  "/admin/profiles": { label: "Profils & Menu", icon: "ri-user-settings-line" },
+  "/admin/scheduler": { label: "Scheduler Admin", icon: "ri-time-line" },
 };
 
 // ─── Main Topbar ──────────────────────────────────────────────────────────────
@@ -423,6 +381,7 @@ export default function Topbar() {
   const [dark, setDark] = useState(() => document.documentElement.getAttribute("data-bs-theme") === "dark");
   const [ddOpen, setDdOpen] = useState(false);
   const [dbDdOpen, setDbDdOpen] = useState(false);
+  const [sbCollapsed, setSbCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
   const ddRef = useRef(null);
   const dbDdRef = useRef(null);
@@ -455,6 +414,13 @@ export default function Topbar() {
     document.body.setAttribute("data-layout-mode", next);
   };
 
+  // Rester synchro avec l'état replié/déplié de la sidebar
+  useEffect(() => {
+    const onToggle = (e) => setSbCollapsed(!!e.detail);
+    window.addEventListener("sidebar-toggle", onToggle);
+    return () => window.removeEventListener("sidebar-toggle", onToggle);
+  }, []);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = e => {
@@ -466,11 +432,13 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header id="page-topbar" className="tb-shell">
+    <header id="page-topbar" className={`tb-shell ${sbCollapsed ? "is-sb-collapsed" : ""}`}>
 
       {/* Left: breadcrumb */}
       <div className="tb-bread">
-        <div className="tb-bread-dot" />
+        <div className="tb-bread-icon">
+          <i className={page.icon} />
+        </div>
         <span className="tb-bread-page">{page.label}</span>
       </div>
 
@@ -537,8 +505,6 @@ export default function Topbar() {
               <div className="tb-dd-email">{userEmail || "Session active"}</div>
             </div>
             <div className="tb-dd-body">
-
-
               <div className="tb-dd-sep" />
               <button className="tb-dd-item is-danger" onClick={() => { setDdOpen(false); logout(); }}>
                 <i className="ri-logout-box-r-line" />
