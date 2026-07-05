@@ -807,6 +807,22 @@ export default function DevelopersImportPage() {
                   </div>
                 </div>
 
+                {/* Toggle mode création réelle - toujours activé par défaut */}
+                <div className="mb-3">
+                  <div className="p-3 rounded-3"
+                    style={{ background: "#DCFCE7", border: "1px solid #86EFAC" }}>
+                    <div className="d-flex align-items-center gap-2">
+                      <i className="ri-checkbox-circle-fill text-success fs-18"></i>
+                      <span className="fw-semibold fs-13" style={{ color: "#15803d" }}>
+                        Mode création réelle activé
+                      </span>
+                    </div>
+                    <p className="text-muted fs-12 mb-0 mt-1">
+                      Les développeurs seront créés directement en base de données.
+                    </p>
+                  </div>
+                </div>
+
                 {/* Commenté pour simplifier l'UX - options avancées cachées */}
                 {/*
                 <div className="mb-3">
@@ -823,97 +839,81 @@ export default function DevelopersImportPage() {
 
                 {showAdvancedOptions && (
                   <>
-                    <div className="mb-3">
-                      <EnterpriseToggle
-                        checked={dryRun}
-                        onChange={() => { setDryRun(v => !v); setShowResolutionStep(false); }}
-                        labelOn="Mode prévisualisation (dry run)"
-                        labelOff="Mode création réelle"
-                        descOn="Détecte les conflits sans créer de données — étape de résolution disponible"
-                        descOff="Crée réellement les développeurs en base de données"
-                        colorOn="#1D4ED8"
-                      />
+                    <div className="d-flex align-items-center gap-2 my-3">
+                      <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
+                      <span className="text-muted fs-11 fw-semibold text-uppercase px-2"
+                        style={{ letterSpacing: ".06em", whiteSpace: "nowrap" }}>
+                        Auto-création d'entités
+                      </span>
+                      <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
                     </div>
 
-                    {!dryRun && (
-                      <>
-                        <div className="d-flex align-items-center gap-2 my-3">
-                          <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
-                          <span className="text-muted fs-11 fw-semibold text-uppercase px-2"
-                            style={{ letterSpacing: ".06em", whiteSpace: "nowrap" }}>
-                            Auto-création d'entités
-                          </span>
-                          <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
-                        </div>
+                    <div className="p-3 rounded-3 mb-3"
+                      style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                      <p className="fs-12 mb-0" style={{ color: "#1E40AF" }}>
+                        <i className="ri-information-line me-1"></i>
+                        <strong>Recommandation :</strong> ces options sont pour les imports de confiance où vous êtes sûr que les
+                        noms correspondent exactement aux entités en base.
+                      </p>
+                    </div>
 
-                        <div className="p-3 rounded-3 mb-3"
-                          style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                          <p className="fs-12 mb-0" style={{ color: "#1E40AF" }}>
-                            <i className="ri-information-line me-1"></i>
-                            <strong>Recommandation :</strong> ces options sont pour les imports de confiance où vous êtes sûr que les
-                            noms correspondent exactement aux entités en base.
-                          </p>
-                        </div>
-
-                        <div className="mb-3">
-                          <EnterpriseToggle
-                            checked={createMissingSites}
-                            onChange={() => setCreateMissingSites(v => !v)}
-                            labelOn="Créer automatiquement les sites manquants"
-                            labelOff="Sites manquants ignorés (listés dans le rapport)"
-                            descOn="Les sites du CSV absents en base seront créés (country='À définir')"
-                            descOff="Les développeurs seront créés sans site — réassignez manuellement"
-                            colorOn="#059669"
-                          />
-                        </div>
-                        <div className="mb-0">
-                          <EnterpriseToggle
-                            checked={createMissingProjects}
-                            onChange={() => setCreateMissingProjects(v => !v)}
-                            labelOn="Créer automatiquement les projets manquants"
-                            labelOff="Projets manquants ignorés (listés dans le rapport)"
-                            descOn="Les projets du CSV absents en base seront créés automatiquement"
-                            descOff="Les développeurs seront créés sans projet — réassignez manuellement"
-                            colorOn="#059669"
-                          />
-                        </div>
-                        <div className="mb-0">
-                          <EnterpriseToggle
-                            checked={createMissingGroups}
-                            onChange={() => setCreateMissingGroups(v => !v)}
-                            labelOn="Créer automatiquement les groupes manquants"
-                            labelOff="Groupes manquants ignorés (listés dans le rapport)"
-                            descOn="Les groupes du CSV absents en base seront créés automatiquement"
-                            descOff="Les développeurs seront créés sans groupe — réassignez manuellement"
-                            colorOn="#059669"
-                          />
-                        </div>
-                        <div className="mb-0 mt-3">
-                          <EnterpriseToggle
-                            checked={fullSync}
-                            onChange={() => setFullSync(v => !v)}
-                            labelOn="Mode Synchronisation Totale (Full Sync) — ACTIF"
-                            labelOff="Mode Mise à jour simple (Append/Update)"
-                            descOn="Désactive les développeurs absents du CSV pour synchroniser avec l'effectif actuel."
-                            descOff="Ajoute les nouveaux et met à jour les existants sans toucher aux autres."
-                            colorOn="#DC2626"
-                          />
-                        </div>
-                        {(createMissingSites || createMissingProjects || createMissingGroups) && (
-                          <div className="mt-3 d-flex align-items-start gap-2 p-3 rounded-3"
-                            style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
-                            <i className="ri-shield-check-line text-warning flex-shrink-0 fs-16 mt-1"></i>
-                            <p className="fs-12 text-muted mb-0">
-                              <strong style={{ color: "#92400E" }}>Vérifiez votre fichier source.</strong>{" "}
-                              L'auto-création génère des entités avec des données minimales.
-                              Complétez-les après l'import dans{" "}
-                              <Link to="/admin/sites" className="text-warning fw-medium">Sites</Link>{" "},{" "}
-                              <Link to="/admin/projects" className="text-warning fw-medium">Projets</Link>{" "}et{" "}
-                              <Link to="/admin/developers" className="text-warning fw-medium">Groupes</Link>.
-                            </p>
-                          </div>
-                        )}
-                      </>
+                    <div className="mb-3">
+                      <EnterpriseToggle
+                        checked={createMissingSites}
+                        onChange={() => setCreateMissingSites(v => !v)}
+                        labelOn="Créer automatiquement les sites manquants"
+                        labelOff="Sites manquants ignorés (listés dans le rapport)"
+                        descOn="Les sites du CSV absents en base seront créés (country='À définir')"
+                        descOff="Les développeurs seront créés sans site — réassignez manuellement"
+                        colorOn="#059669"
+                      />
+                    </div>
+                    <div className="mb-0">
+                      <EnterpriseToggle
+                        checked={createMissingProjects}
+                        onChange={() => setCreateMissingProjects(v => !v)}
+                        labelOn="Créer automatiquement les projets manquants"
+                        labelOff="Projets manquants ignorés (listés dans le rapport)"
+                        descOn="Les projets du CSV absents en base seront créés automatiquement"
+                        descOff="Les développeurs seront créés sans projet — réassignez manuellement"
+                        colorOn="#059669"
+                      />
+                    </div>
+                    <div className="mb-0">
+                      <EnterpriseToggle
+                        checked={createMissingGroups}
+                        onChange={() => setCreateMissingGroups(v => !v)}
+                        labelOn="Créer automatiquement les groupes manquants"
+                        labelOff="Groupes manquants ignorés (listés dans le rapport)"
+                        descOn="Les groupes du CSV absents en base seront créés automatiquement"
+                        descOff="Les développeurs seront créés sans groupe — réassignez manuellement"
+                        colorOn="#059669"
+                      />
+                    </div>
+                    <div className="mb-0 mt-3">
+                      <EnterpriseToggle
+                        checked={fullSync}
+                        onChange={() => setFullSync(v => !v)}
+                        labelOn="Mode Synchronisation Totale (Full Sync) — ACTIF"
+                        labelOff="Mode Mise à jour simple (Append/Update)"
+                        descOn="Désactive les développeurs absents du CSV pour synchroniser avec l'effectif actuel."
+                        descOff="Ajoute les nouveaux et met à jour les existants sans toucher aux autres."
+                        colorOn="#DC2626"
+                      />
+                    </div>
+                    {(createMissingSites || createMissingProjects || createMissingGroups) && (
+                      <div className="mt-3 d-flex align-items-start gap-2 p-3 rounded-3"
+                        style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
+                        <i className="ri-shield-check-line text-warning flex-shrink-0 fs-16 mt-1"></i>
+                        <p className="fs-12 text-muted mb-0">
+                          <strong style={{ color: "#92400E" }}>Vérifiez votre fichier source.</strong>{" "}
+                          L'auto-création génère des entités avec des données minimales.
+                          Complétez-les après l'import dans{" "}
+                          <Link to="/admin/sites" className="text-warning fw-medium">Sites</Link>{" "},{" "}
+                          <Link to="/admin/projects" className="text-warning fw-medium">Projets</Link>{" "}et{" "}
+                          <Link to="/admin/developers" className="text-warning fw-medium">Groupes</Link>.
+                        </p>
+                      </div>
                     )}
                   </>
                 )}
