@@ -731,10 +731,22 @@ export default function DeveloperProfilePage() {
             id: s.period_id,
             label: new Date(s.snapshot_date).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
           })).reverse();
-          setPeriods(projectPeriods);
-
-          targetPeriodId = selectedPeriodId || (projectPeriods.length > 0 ? projectPeriods[0].id : null);
-          if (targetPeriodId && !selectedPeriodId) setSelectedPeriodId(targetPeriodId);
+          
+          // Check if selected period exists in project periods
+          const selectedExists = projectPeriods.some(p => p.id === selectedPeriodId);
+          
+          if (selectedExists) {
+            // Keep selected period, use project periods
+            setPeriods(projectPeriods);
+            targetPeriodId = selectedPeriodId;
+          } else {
+            // Selected period not in project periods, use project periods and select first
+            setPeriods(projectPeriods);
+            targetPeriodId = projectPeriods.length > 0 ? projectPeriods[0].id : null;
+            if (targetPeriodId && targetPeriodId !== selectedPeriodId) {
+              setSelectedPeriodId(targetPeriodId);
+            }
+          }
         }
 
         let snap = null;
@@ -775,13 +787,6 @@ export default function DeveloperProfilePage() {
       }
     }
   }, [id, selectedPid, selectedPeriodId, heatmapMonths, selectedLotId]);
-
-  // Reload data when period changes (similar to DevelopersHubPage)
-  useEffect(() => {
-    if (selectedPeriodId !== null) {
-      loadData();
-    }
-  }, [selectedPeriodId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
