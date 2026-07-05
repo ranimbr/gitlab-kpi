@@ -4,7 +4,7 @@
  * SENIOR REFACTOR: Harmonized with Corporate/Velzon style.
  * Using standard card-animate, page-title-box, and brand colors.
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import developerService from "../services/developerService";
 import analyticsService from "../services/analyticsService";
@@ -549,13 +549,27 @@ export default function DeveloperProfilePage() {
   const [projects, setProjects] = useState([]);
   const [selectedPid, setSelectedPid] = useState(projectId || localStorage.getItem("last_project_id") || "");
   const [selectedPeriodId, setSelectedPeriodId] = useState(searchParams.get("period_id") ? Number(searchParams.get("period_id")) : null);
-
-  // Debug: Log period changes
-  useEffect(() => {
-    console.log("selectedPeriodId changed:", selectedPeriodId);
-  }, [selectedPeriodId]);
   const [selectedLotId, setSelectedLotId] = useState(lotIdParam || "");
   const [periods, setPeriods] = useState([]);
+  
+  // Use refs to avoid stale closure issues
+  const selectedPeriodIdRef = useRef(selectedPeriodId);
+  const selectedPidRef = useRef(selectedPid);
+  const selectedLotIdRef = useRef(selectedLotId);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    selectedPeriodIdRef.current = selectedPeriodId;
+    console.log("selectedPeriodId changed:", selectedPeriodId);
+  }, [selectedPeriodId]);
+  
+  useEffect(() => {
+    selectedPidRef.current = selectedPid;
+  }, [selectedPid]);
+  
+  useEffect(() => {
+    selectedLotIdRef.current = selectedLotId;
+  }, [selectedLotId]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -660,17 +674,17 @@ export default function DeveloperProfilePage() {
     }
   }, [loading]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (periodIdOverride = null) => {
     if (!id) return;
     setLoading(true);
     setError(null);
     
-    // Capture current values to avoid stale closure issues
-    const currentPeriodId = selectedPeriodId;
-    const currentPid = selectedPid;
-    const currentLotId = selectedLotId;
+    // Use override if provided, otherwise use ref
+    const currentPeriodId = periodIdOverride !== null ? periodIdOverride : selectedPeriodIdRef.current;
+    const currentPid = selectedPidRef.current;
+    const currentLotId = selectedLotIdRef.current;
     
-    console.log("loadData called with selectedPeriodId:", currentPeriodId);
+    console.log("loadData called with periodIdOverride:", periodIdOverride, "currentPeriodId:", currentPeriodId);
     try {
       // 1. Fetch Core Developer Data
       const devData = await developerService.getById(id, currentPeriodId);
@@ -796,7 +810,10 @@ export default function DeveloperProfilePage() {
     }
   }, [id, selectedPid, selectedPeriodId, heatmapMonths, selectedLotId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { 
+    // Pass current selectedPeriodId directly to avoid closure issues
+    loadData(selectedPeriodId); 
+  }, [loadData, selectedPeriodId]);
 
   if (loading) return <LoadingSpinner fullPage text="Chargement du profil..." />;
   if (!developer) return <EmptyState title="Profil introuvable" />;
