@@ -721,35 +721,24 @@ export default function DeveloperProfilePage() {
       }
 
       if (p_id) {
-        // Mode Projet Spécifique
-        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id) }).catch(() => null);
+        // Mode Projet Spécifique - Use global periods like DevelopersHubPage
+        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: selectedPeriodId }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
 
-        // Update periods with project-specific snapshots if available
-        let targetPeriodId = selectedPeriodId;
-        if (snaps && snaps.length > 0) {
+        // Keep global periods (don't replace with project-specific snapshots)
+        // This ensures consistency with DevelopersHubPage behavior
+        // Only use project periods if no global periods exist
+        if (periods.length === 0 && snaps && snaps.length > 0) {
           const projectPeriods = snaps.map(s => ({
             id: s.period_id,
             label: new Date(s.snapshot_date).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
           })).reverse();
-          
-          // Check if selected period exists in project periods
-          const selectedExists = projectPeriods.some(p => p.id === selectedPeriodId);
-          
-          if (selectedExists) {
-            // Keep selected period, use project periods
-            setPeriods(projectPeriods);
-            targetPeriodId = selectedPeriodId;
-          } else {
-            // Selected period not in project periods, use project periods and select first
-            setPeriods(projectPeriods);
-            targetPeriodId = projectPeriods.length > 0 ? projectPeriods[0].id : null;
-            if (targetPeriodId && targetPeriodId !== selectedPeriodId) {
-              setSelectedPeriodId(targetPeriodId);
-            }
-          }
+          setPeriods(projectPeriods);
         }
 
+        let targetPeriodId = selectedPeriodId;
+        
+        // Find snapshot for selected period
         let snap = null;
         if (targetPeriodId && !selectedLotId) {
           snap = snaps.find(s => s.period_id === targetPeriodId);
