@@ -1231,8 +1231,8 @@ const CSS = `
   /* ── Hero custom image ── */
   .hero-img-scene {
     position: relative;
-    /* bigger — fills the right column and bleeds */
-    width: 135%;
+    /* smaller — fits better in the right column */
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: flex-end;
