@@ -777,7 +777,7 @@ export default function LandingPage() {
             </p>
             <div className="hero-actions hero-anim">
               <Link
-                to={isAuthenticated ? "/developers" : "/login"}
+                to={isAuthenticated ? "/analytics/comparison" : "/login"}
                 className="hero-cta-primary"
               >
                 {isAuthenticated ? "Ouvrir le Hub" : "Accéder au Hub"} →
