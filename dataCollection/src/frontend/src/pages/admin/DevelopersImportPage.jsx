@@ -660,6 +660,8 @@ export default function DevelopersImportPage() {
                 </h6>
               </div>
               <div className="card-body">
+                {/* Commenté pour simplifier l'UX - champs cachés par défaut */}
+                {/*
                 <div className="row g-3 mb-4">
                   {!showDefaultSite ? (
                     <div className="col-md-6">
@@ -774,6 +776,8 @@ export default function DevelopersImportPage() {
                       </button>
                     </div>
                   )}
+                */}
+                <div className="row g-3 mb-4">
 
                   <div className="col-md-12">
                     <label className="form-label fw-medium fs-13">
