@@ -2525,9 +2525,9 @@ export default function ComparativeAnalyticsPage() {
                     <i className="ri-table-alt-line text-primary fs-5"></i>
                   </div>
                   <div>
-                    <h6 className="mb-0 fw-bold">Détails d'Audit et Données Granulaires</h6>
+                    <h6 className="mb-0 fw-bold">Données Détaillées par Période</h6>
                     <p className="text-muted mb-0 fs-11 fw-medium uppercase letter-spacing-1">
-                      {showDetailedAudit ? "Masquer les détails pour épurer la vue" : "Cliquer pour afficher les chiffres détaillés par période"}
+                      {showDetailedAudit ? "Masquer les données détaillées" : "Voir les chiffres détaillés mois par mois"}
                     </p>
                   </div>
                 </div>
@@ -2539,18 +2539,24 @@ export default function ComparativeAnalyticsPage() {
 
               {showDetailedAudit && (
                 <div className="card-body p-0 border-top animate__animated animate__fadeIn">
+                  <div className="p-3 bg-light-subtle border-bottom">
+                    <p className="text-muted mb-0 fs-12">
+                      <i className="ri-information-line me-1"></i>
+                      Ce tableau montre les chiffres bruts pour chaque site/équipe et chaque mois. Utilisez-le pour analyser l'évolution dans le temps.
+                    </p>
+                  </div>
                   <div className="table-responsive">
                     <table className="table table-hover align-middle mb-0" style={{ fontFamily: "var(--sb-sans)" }}>
                       <thead>
                         <tr className="bg-light-subtle">
-                          <th className="ps-4 py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Site / Équipe</th>
-                          <th className="py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Période</th>
-                          <th className="text-center py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Commits</th>
-                          <th className="text-center py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>MRs</th>
-                          <th className="text-center py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Vélocité</th>
-                          <th className="text-center py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Qualité</th>
-                          <th className="text-center py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Fusion</th>
-                          <th className="text-center pe-4 py-3" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: "#6b7280", fontWeight: 700 }}>Review</th>
+                          <th className="ps-4 py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Site / Équipe</th>
+                          <th className="py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Mois</th>
+                          <th className="text-center py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Commits</th>
+                          <th className="text-center py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>MRs</th>
+                          <th className="text-center py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Vélocité</th>
+                          <th className="text-center py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Approbation</th>
+                          <th className="text-center py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Fusion</th>
+                          <th className="text-center pe-4 py-3" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "#6b7280", fontWeight: 700 }}>Revue (h)</th>
                         </tr>
                       </thead>
                       <tbody className="border-top-0">
