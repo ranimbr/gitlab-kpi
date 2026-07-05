@@ -316,6 +316,7 @@ export default function DevelopersImportPage() {
   const [showResolutionStep,    setShowResolutionStep]   = useState(false);
   const [showDefaultSite,       setShowDefaultSite]      = useState(false);
   const [showDefaultGroup,      setShowDefaultGroup]     = useState(false);
+  const [showPeriod,            setShowPeriod]            = useState(false);
   const [showAdvancedOptions,   setShowAdvancedOptions]   = useState(false);
   const fileInputRef = useRef();
   const resultsRef   = useRef(null);
@@ -687,35 +688,56 @@ export default function DevelopersImportPage() {
                     </div>
                   )}
 
-                  <div className="col-md-12">
-                    <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                      <label className="form-label fw-bold fs-13 mb-2">
-                        <i className="ri-calendar-event-line me-1"></i> Période de Mission (Optionnel)
-                      </label>
-                      <div className="d-flex align-items-center gap-3">
-                        <select 
-                          className="form-select flex-grow-1" 
-                          value={periodId} 
-                          onChange={e => setPeriodId(e.target.value)}
-                        >
-                          <option value="">-- Optionnel (pour Full Sync uniquement) --</option>
-                          {periods.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="flex-shrink-0">
-                          <span className="badge bg-secondary px-3 py-2">Scope Temporel</span>
-                        </div>
-                      </div>
-                      <p className="text-muted fs-11 mt-2 mb-0">
-                        <i className="ri-information-line me-1"></i>
-                        <strong>Optionnel</strong> : Laissez vide pour l'import initial ou les corrections. 
-                        Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
-                      </p>
+                  {!showPeriod ? (
+                    <div className="col-md-12">
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-soft-secondary w-100 py-2"
+                        onClick={() => setShowPeriod(true)}
+                        style={{ borderRadius: 8 }}
+                      >
+                        <i className="ri-add-line me-1"></i>
+                        Ajouter une période de mission (Optionnel - pour Full Sync)
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="col-md-12">
+                      <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                        <label className="form-label fw-bold fs-13 mb-2">
+                          <i className="ri-calendar-event-line me-1"></i> Période de Mission (Optionnel)
+                        </label>
+                        <div className="d-flex align-items-center gap-3">
+                          <select 
+                            className="form-select flex-grow-1" 
+                            value={periodId} 
+                            onChange={e => setPeriodId(e.target.value)}
+                          >
+                            <option value="">-- Optionnel (pour Full Sync uniquement) --</option>
+                            {periods.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex-shrink-0">
+                            <span className="badge bg-secondary px-3 py-2">Scope Temporel</span>
+                          </div>
+                        </div>
+                        <p className="text-muted fs-11 mt-2 mb-0">
+                          <i className="ri-information-line me-1"></i>
+                          <strong>Optionnel</strong> : Laissez vide pour l'import initial ou les corrections. 
+                          Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
+                        </p>
+                        <button 
+                          type="button"
+                          className="btn btn-xs btn-link text-muted mt-1 p-0 fs-11"
+                          onClick={() => setShowPeriod(false)}
+                        >
+                          <i className="ri-close-line me-1"></i>Masquer
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {!showDefaultGroup ? (
                     <div className="col-md-6">
@@ -791,15 +813,6 @@ export default function DevelopersImportPage() {
 
                 {showAdvancedOptions && (
                   <>
-                    <div className="p-3 rounded-3 mb-3"
-                      style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                      <p className="fs-12 mb-0" style={{ color: "#475569" }}>
-                        <i className="ri-information-line me-1"></i>
-                        <strong>Mode prévisualisation (dry run) :</strong> détecte les conflits (sites/projets inconnus) sans créer de données.
-                        Utilisez-le pour résoudre les conflits via l'étape de résolution avant l'import réel.
-                      </p>
-                    </div>
-
                     <div className="mb-3">
                       <EnterpriseToggle
                         checked={dryRun}
