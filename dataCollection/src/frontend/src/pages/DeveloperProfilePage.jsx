@@ -664,6 +664,7 @@ export default function DeveloperProfilePage() {
     if (!id) return;
     setLoading(true);
     setError(null);
+    console.log("loadData called with selectedPeriodId:", selectedPeriodId);
     try {
       // 1. Fetch Core Developer Data
       const devData = await developerService.getById(id, selectedPeriodId);
@@ -755,9 +756,11 @@ export default function DeveloperProfilePage() {
         } else {
           snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         }
+        console.log("Snapshot for period", targetPeriodId, ":", snap);
         setSnapshot(snap);
 
         const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
+        console.log("Summary for period", selectedPeriodId, ":", summ);
         setSummary(summ);
 
         const currentIndex = snaps.findIndex(s => s.period_id === targetPeriodId);
