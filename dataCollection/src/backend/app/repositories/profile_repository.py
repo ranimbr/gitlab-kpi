@@ -19,6 +19,36 @@ class ProfileRepository(BaseRepository[Profile]):
     def __init__(self):
         super().__init__(Profile)
     
+    def delete(self, db: Session, obj_id: int) -> Optional[Profile]:
+        """
+        Supprime un profil.
+        
+        Avant la suppression, met à NULL le profile_id de tous les utilisateurs
+        assignés à ce profil pour éviter les erreurs de clé étrangère.
+        
+        Args:
+            db: Session SQLAlchemy
+            obj_id: ID du profil à supprimer
+            
+        Returns:
+            Profil supprimé ou None si non trouvé
+        """
+        obj = self.get_by_id(db, obj_id)
+        if not obj:
+            return None
+        
+        # Empêcher la suppression du profil Super Admin
+        if obj.name == "Super Admin":
+            raise ValueError("Le profil Super Admin ne peut pas être supprimé.")
+        
+        # Mettre à NULL le profile_id de tous les utilisateurs assignés
+        from app.models.app_user import AppUser
+        db.query(AppUser).filter(AppUser.profile_id == obj_id).update({"profile_id": None})
+        
+        db.delete(obj)
+        db.flush()
+        return obj
+    
     def get_with_menu_items(self, db: Session, profile_id: int) -> Optional[Profile]:
         """
         Récupère un profil avec ses associations de menus.

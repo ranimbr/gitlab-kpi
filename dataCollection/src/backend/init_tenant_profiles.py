@@ -37,6 +37,7 @@ if not TENANT_DB_URL:
 
 # Profils par défaut à créer
 DEFAULT_PROFILES = [
+    {"name": "Super Admin", "description": "Accès complet à tous les menus et fonctionnalités système"},
     {"name": "Site Manager", "description": "Accès limité à son site"},
     {"name": "Team Lead", "description": "Accès limité à son équipe"},
     {"name": "Project Manager", "description": "Accès limité à ses projets"},
