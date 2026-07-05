@@ -1593,19 +1593,31 @@ export default function ComparativeAnalyticsPage() {
     if (currentData.length === 0) return null;
 
     const bestVelocity = [...currentData].sort((a, b) => b.metrics.velocity - a.metrics.velocity)[0];
-    const slowReviews = currentData.filter(t => t.metrics.review_time > 48);
-    const avgQuality = currentData.reduce((acc, c) => acc + (c.metrics.quality_score || 0), 0) / currentData.length;
+    
+    // Filtrer les valeurs 0 pour le temps de revue (pas de données)
+    const validReviews = currentData.filter(t => t.metrics.review_time > 0);
+    const slowReviews = validReviews.filter(t => t.metrics.review_time > 48);
+    
+    // Filtrer les valeurs 0 pour la qualité (pas de données)
+    const validQuality = currentData.filter(t => t.metrics.quality_score > 0);
+    const avgQuality = validQuality.length > 0 
+      ? validQuality.reduce((acc, c) => acc + c.metrics.quality_score, 0) / validQuality.length 
+      : 0;
     const avgQualityPct = avgQuality <= 1 ? avgQuality * 100 : avgQuality;
 
     let text = `Pour la période de ${lastPeriod}, l'analyse comparative montre que la dynamique est principalement tirée par ${bestVelocity?.entity_name || 'une entité'} qui se distingue avec la meilleure vélocité (${fmt(bestVelocity?.metrics?.velocity)} commits/dev). `;
 
-    if (avgQualityPct > 85) {
+    if (validQuality.length === 0) {
+      text += `Aucune donnée de qualité disponible pour cette période. `;
+    } else if (avgQualityPct > 85) {
       text += `La qualité globale du code est à un excellent niveau (${fmt(avgQualityPct, 0)}% d'approbation). `;
     } else {
       text += `La qualité globale du code nécessite une attention particulière (${fmt(avgQualityPct, 0)}% d'approbation). `;
     }
 
-    if (slowReviews.length > 0) {
+    if (validReviews.length === 0) {
+      text += `Aucune donnée de temps de revue disponible pour cette période.`;
+    } else if (slowReviews.length > 0) {
       text += `⚠️ Attention cependant au goulot d'étranglement identifié sur ${slowReviews.length} entité(s) (${slowReviews.map(s => s.entity_name).join(', ')}) où le temps de revue dépasse les 48 heures.`;
     } else {
       text += `Le flux de revue est fluide sur l'ensemble du périmètre (aucun site critique > 48h).`;
