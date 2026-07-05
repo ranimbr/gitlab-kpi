@@ -807,6 +807,8 @@ export default function DevelopersImportPage() {
                   </div>
                 </div>
 
+                {/* Commenté pour simplifier l'UX - options avancées cachées */}
+                {/*
                 <div className="mb-3">
                   <button
                     type="button"
@@ -915,6 +917,7 @@ export default function DevelopersImportPage() {
                     )}
                   </>
                 )}
+                */}
               </div>
             </div>
 
