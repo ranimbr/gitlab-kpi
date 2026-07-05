@@ -183,6 +183,11 @@ class Developer(Base):
         """[SCD TYPE 2] Retourne les sites actifs pour la période sélectionnée."""
         ref_date = getattr(self, "_context_period_date", None)
         if ref_date:
+            # Convert ref_date to date if it's a datetime for proper comparison
+            from datetime import datetime
+            if isinstance(ref_date, datetime):
+                ref_date = ref_date.date()
+            
             if self.onboarding_date and ref_date < self.onboarding_date:
                 return []
             
