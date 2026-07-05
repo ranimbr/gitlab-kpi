@@ -664,17 +664,23 @@ export default function DeveloperProfilePage() {
     if (!id) return;
     setLoading(true);
     setError(null);
-    console.log("loadData called with selectedPeriodId:", selectedPeriodId);
+    
+    // Capture current values to avoid stale closure issues
+    const currentPeriodId = selectedPeriodId;
+    const currentPid = selectedPid;
+    const currentLotId = selectedLotId;
+    
+    console.log("loadData called with selectedPeriodId:", currentPeriodId);
     try {
       // 1. Fetch Core Developer Data
-      const devData = await developerService.getById(id, selectedPeriodId);
+      const devData = await developerService.getById(id, currentPeriodId);
       if (!devData) throw new Error("Développeur introuvable");
       setDeveloper(devData);
 
       // 2. Fetch Secondary Data (Non-blocking)
       const [heatData, timelineData, allPeriodsData] = await Promise.all([
         developerService.getHeatmap(id, heatmapMonths).catch(() => null),
-        developerService.getTimeline(id, selectedPeriodId).catch((err) => {
+        developerService.getTimeline(id, currentPeriodId).catch((err) => {
           console.error("Timeline fetch error:", err);
           // Return basic timeline with onboarding event if complex timeline fails
           return [{
@@ -708,7 +714,7 @@ export default function DeveloperProfilePage() {
       }
 
       // 3. Project-specific KPIs (always project-specific, no global mode)
-      const p_id = selectedPid ? parseInt(selectedPid) : null;
+      const p_id = currentPid ? parseInt(currentPid) : null;
 
       // Validate that selected project exists in the projects list
       if (p_id && projects.length > 0) {
@@ -722,8 +728,8 @@ export default function DeveloperProfilePage() {
 
       if (p_id) {
         // Mode Projet Spécifique - Use global periods like DevelopersHubPage
-        console.log("Fetching history with periodId:", selectedPeriodId, "projectId:", p_id);
-        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: selectedPeriodId }).catch(() => null);
+        console.log("Fetching history with periodId:", currentPeriodId, "projectId:", p_id);
+        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: currentPeriodId }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
         console.log("History snapshots:", snaps, "length:", snaps.length);
 
@@ -738,12 +744,12 @@ export default function DeveloperProfilePage() {
           setPeriods(projectPeriods);
         }
 
-        let targetPeriodId = selectedPeriodId;
-        console.log("Before snapshot logic - targetPeriodId:", targetPeriodId, "selectedPeriodId:", selectedPeriodId);
+        let targetPeriodId = currentPeriodId;
+        console.log("Before snapshot logic - targetPeriodId:", targetPeriodId, "currentPeriodId:", currentPeriodId);
         
         // Find snapshot for selected period
         let snap = null;
-        if (targetPeriodId && !selectedLotId && snaps && snaps.length > 0) {
+        if (targetPeriodId && !currentLotId && snaps && snaps.length > 0) {
           snap = snaps.find(s => s.period_id === targetPeriodId);
           console.log("Found snapshot in history:", snap);
         }
@@ -751,15 +757,15 @@ export default function DeveloperProfilePage() {
         // If no snapshot found in history, try getLatest with period_id
         if (!snap) {
           console.log("No snapshot found, calling getLatest with periodId:", targetPeriodId);
-          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: targetPeriodId }).catch(() => null);
+          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: currentLotId, periodId: targetPeriodId }).catch(() => null);
           console.log("getLatest returned:", snap);
         }
         
         console.log("Snapshot for period", targetPeriodId, ":", snap);
         setSnapshot(snap);
 
-        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
-        console.log("Summary for period", selectedPeriodId, ":", summ);
+        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: currentLotId, periodId: currentPeriodId }).catch(() => null);
+        console.log("Summary for period", currentPeriodId, ":", summ);
         setSummary(summ);
 
         const currentIndex = snaps.findIndex(s => s.period_id === targetPeriodId);
@@ -773,11 +779,11 @@ export default function DeveloperProfilePage() {
       // 4. Load History Trend (Independent)
       setLoadingHistory(true);
       try {
-        const histData = await analyticsService.getTrend(selectedPid, {
+        const histData = await analyticsService.getTrend(currentPid, {
           developerId: parseInt(id),
           kpiField: 'developer_score',
           months: 12,
-          periodId: selectedPeriodId
+          periodId: currentPeriodId
         });
         // Convert decimal scores (0-1) to percentage (0-100)
         const historyData = histData.datasets?.[0]?.data || [];
