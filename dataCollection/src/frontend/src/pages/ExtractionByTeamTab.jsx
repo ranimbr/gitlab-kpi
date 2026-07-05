@@ -399,11 +399,11 @@ export default function ExtractionByTeamTab({
           <div className="card-header d-flex align-items-center justify-content-between py-2">
             <div className="d-flex align-items-center gap-2">
               <h5 className="card-title mb-0"><i className="ri-building-2-fill me-2 text-primary"></i>Ciblage des Business Units</h5>
-              {isSmartSync && (
+              {/* {isSmartSync && (
                 <span className="badge bg-success-subtle text-success fs-10 animate__animated animate__pulse animate__infinite">
                   <i className="ri-shield-check-line me-1"></i>SMART-SYNC
                 </span>
-              )}
+              )} */}
             </div>
             <button 
               className={`btn btn-sm btn-soft-secondary ${loading ? 'disabled' : ''}`} 
@@ -446,14 +446,14 @@ export default function ExtractionByTeamTab({
 
             <div className="mb-3">
               <label className="form-label fs-12 text-muted fw-semibold text-uppercase d-flex justify-content-between">
-                <span className={isSmartSync ? "text-success fw-bold" : ""}>
-                  <i className={`ri-user-star-line me-1 ${isSmartSync ? "text-success" : ""}`}></i>
-                  Développeurs {isSmartSync ? "(Smart-Sync RH)" : "(Option 3)"}
+                <span>
+                  <i className="ri-user-star-line me-1"></i>
+                  Développeurs (Option 3)
                 </span>
                 
                 <div className="d-flex align-items-center gap-2">
                    {/* ✅ AJOUT SENIOR : Toggle Smart-Sync */}
-                   <div className="form-check form-switch mb-0 bg-success-subtle px-2 py-1 rounded-2 d-flex align-items-center gap-2 border border-success border-opacity-10 me-2">
+                   {/* <div className="form-check form-switch mb-0 bg-success-subtle px-2 py-1 rounded-2 d-flex align-items-center gap-2 border border-success border-opacity-10 me-2">
                      <label className="form-check-label fs-10 text-success fw-bold mb-0" htmlFor="team-smart-sync-toggle" style={{cursor:"pointer"}}>
                         Smart-Sync
                      </label>
@@ -468,15 +468,11 @@ export default function ExtractionByTeamTab({
                        }}
                        style={{cursor:"pointer", width: "1.6em", height: "0.8em"}}
                      />
-                   </div>
+                   </div> */}
 
-                   {!isSmartSync && (
-                     <>
-                        <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.map(d => String(d.id)))}>Tout cocher</button>
-                        <span className="text-muted">|</span>
-                        <button className="btn btn-link p-0 fs-10 text-danger" onClick={() => setSelectedDeveloperIds([])}>Reset</button>
-                     </>
-                   )}
+                   <button className="btn btn-link p-0 fs-10" onClick={() => setSelectedDeveloperIds(searchedDevelopers.map(d => String(d.id)))}>Tout cocher</button>
+                   <span className="text-muted">|</span>
+                   <button className="btn btn-link p-0 fs-10 text-danger" onClick={() => setSelectedDeveloperIds([])}>Reset</button>
                 </div>
               </label>
               
