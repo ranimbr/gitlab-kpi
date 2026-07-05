@@ -722,10 +722,10 @@ export default function DeveloperProfilePage() {
 
       if (p_id) {
         // Mode Projet Spécifique - Use global periods like DevelopersHubPage
-        console.log("Fetching history with periodId:", selectedPeriodId);
+        console.log("Fetching history with periodId:", selectedPeriodId, "projectId:", p_id);
         const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: selectedPeriodId }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
-        console.log("History snapshots:", snaps);
+        console.log("History snapshots:", snaps, "length:", snaps.length);
 
         // Keep global periods (don't replace with project-specific snapshots)
         // This ensures consistency with DevelopersHubPage behavior
@@ -739,16 +739,20 @@ export default function DeveloperProfilePage() {
         }
 
         let targetPeriodId = selectedPeriodId;
+        console.log("Before snapshot logic - targetPeriodId:", targetPeriodId, "selectedPeriodId:", selectedPeriodId);
         
         // Find snapshot for selected period
         let snap = null;
         if (targetPeriodId && !selectedLotId && snaps && snaps.length > 0) {
           snap = snaps.find(s => s.period_id === targetPeriodId);
+          console.log("Found snapshot in history:", snap);
         }
         
         // If no snapshot found in history, try getLatest with period_id
         if (!snap) {
+          console.log("No snapshot found, calling getLatest with periodId:", targetPeriodId);
           snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: targetPeriodId }).catch(() => null);
+          console.log("getLatest returned:", snap);
         }
         
         console.log("Snapshot for period", targetPeriodId, ":", snap);
