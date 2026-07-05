@@ -216,6 +216,8 @@ function ImportResultBanners({ result }) {
 }
 
 // ─── Bandeau info : email unique / multi-affectation ──────────────────────────
+// Commenté pour simplifier l'UX - section cachée par défaut
+/*
 function CsvFormatInfo() {
   const [open, setOpen] = useState(false);
   return (
@@ -285,6 +287,7 @@ function CsvFormatInfo() {
     </div>
   );
 }
+*/
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PAGE PRINCIPALE
@@ -539,7 +542,8 @@ export default function DevelopersImportPage() {
           {/* Colonne principale */}
           <div className="col-xl-8">
 
-            <CsvFormatInfo />
+            {/* CsvFormatInfo commenté pour simplifier l'UX */}
+            {/* <CsvFormatInfo /> */}
 
             {/* Format du fichier */}
             <div className="card border-0 mb-4"
