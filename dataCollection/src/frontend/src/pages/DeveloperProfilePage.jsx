@@ -747,7 +747,7 @@ export default function DeveloperProfilePage() {
         }
         
         // If no snapshot found in history, try getLatest with period_id
-        if (!snap && targetPeriodId) {
+        if (!snap) {
           snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: targetPeriodId }).catch(() => null);
         }
         
