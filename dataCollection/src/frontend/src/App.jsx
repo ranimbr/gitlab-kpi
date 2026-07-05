@@ -161,7 +161,7 @@ function ManagerRoute() {
 
 /**
  * Guard : super_admin, site_manager, team_lead, project_manager OU viewer
- * Gestion des développeurs (création, validation, import) et analyse stratégique.
+ * Gestion des développeurs (création, validation, import) et tableau de bord.
  */
 function TeamLeadRoute() {
   const { user } = useAuth();

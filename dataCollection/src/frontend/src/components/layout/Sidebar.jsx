@@ -619,7 +619,7 @@ export default function Sidebar() {
 
           <Section title="Administration" accessible={isAdmin || isLead || isProjectManager || isViewer} isCollapsed={isCollapsed}>
             <NavItem icon="ri-settings-3-line" label="Configuration" accessible={isMenuAccessible("/admin/sites")} isCollapsed={isCollapsed} children={[
-              { to: "/admin/sites",          label: "Sites Telnet" },
+              { to: "/admin/sites",          label: "Sites" },
               { to: "/admin/projects",       label: "Projets GitLab" },
               { to: "/admin/gitlab-configs", label: "Configs GitLab" },
               { to: "/admin/users",          label: "Utilisateurs" },
@@ -634,13 +634,7 @@ export default function Sidebar() {
           </Section>
         </div>
       </div>
-
-      {/* Footer System Status */}
-      <div className="sb-footer">
-        <span className="sb-footer-dot" />
-        <span className="sb-footer-txt">Système opérationnel</span>
-        <span className="sb-footer-ver">v5.2</span>
-      </div>
+      
     </aside>
   );
 }

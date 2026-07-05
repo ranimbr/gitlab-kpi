@@ -358,7 +358,7 @@ const LABELS = {
   "/extraction": { label: "Moteur d'Extraction", icon: "ri-rocket-2-line" },
   "/periods": { label: "Périodes", icon: "ri-calendar-2-line" },
   "/profile": { label: "Mon Profil", icon: "ri-user-settings-line" },
-  "/admin/sites": { label: "Sites Telnet", icon: "ri-building-2-line" },
+  "/admin/sites": { label: "Sites", icon: "ri-building-2-line" },
   "/admin/projects": { label: "Projets GitLab", icon: "ri-folder-2-line" },
   "/admin/gitlab-configs": { label: "Configs GitLab", icon: "ri-settings-3-line" },
   "/admin/users": { label: "Utilisateurs", icon: "ri-group-line" },

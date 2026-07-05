@@ -47,13 +47,13 @@ DEFAULT_PROFILES = [
 
 # Menus de base à créer
 DEFAULT_MENU_ITEMS = [
-    {"route": "/analytics/comparison", "label": "Analyse Stratégique", "icon": "ri-pie-chart-2-line", "parent_id": None, "order_index": 1},
+    {"route": "/analytics/comparison", "label": "Tableau de bord", "icon": "ri-pie-chart-2-line", "parent_id": None, "order_index": 1},
     {"route": "/developers", "label": "Hub Développeurs", "icon": "ri-code-s-slash-line", "parent_id": None, "order_index": 2},
     {"route": "/merge", "label": "Merge Requests", "icon": "ri-git-merge-line", "parent_id": None, "order_index": 3},
     {"route": "/commits", "label": "Commits GitLab", "icon": "ri-git-commit-line", "parent_id": None, "order_index": 4},
     {"route": "/extraction-lots", "label": "Registre des Lots", "icon": "ri-database-2-line", "parent_id": None, "order_index": 5},
     {"route": "/extraction", "label": "Moteur d'Extraction", "icon": "ri-rocket-2-line", "parent_id": None, "order_index": 6},
-    {"route": "/admin/sites", "label": "Sites Telnet", "icon": "ri-building-2-line", "parent_id": None, "order_index": 7},
+    {"route": "/admin/sites", "label": "Sites", "icon": "ri-building-2-line", "parent_id": None, "order_index": 7},
     {"route": "/admin/projects", "label": "Projets GitLab", "icon": "ri-folder-2-line", "parent_id": None, "order_index": 8},
     {"route": "/admin/gitlab-configs", "label": "Configs GitLab", "icon": "ri-settings-3-line", "parent_id": None, "order_index": 9},
     {"route": "/admin/users", "label": "Utilisateurs", "icon": "ri-group-line", "parent_id": None, "order_index": 10},
