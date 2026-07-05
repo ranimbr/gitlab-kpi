@@ -533,30 +533,6 @@ const EntityDetailsModal = ({ entity, entityType, onClose }) => {
               </div>
             </div>
 
-            {/* Sélecteur de projet au-dessus des Métriques */}
-            <div className="d-inline-flex align-items-center gap-3 bg-white p-2 rounded-4 shadow-sm border px-3 mb-4">
-              <div className="text-start me-2 border-end pe-3">
-                <div className="text-muted fs-11 fw-bold text-uppercase">Extraction</div>
-              </div>
-              <select
-                className="form-select form-select-sm border-0 fw-bold text-primary fs-14"
-                style={{ minWidth: 220, boxShadow: 'none', cursor: 'pointer', background: 'transparent' }}
-                value={projectId}
-                onChange={handleProjectChange}
-              >
-                {projects.map(p => {
-                  const displayName = p.namespace 
-                    ? `${p.namespace.split('/').slice(-1)[0]} / ${p.name}` 
-                    : p.name;
-                  return (
-                    <option key={p.id || p.project_id} value={p.id || p.project_id}>
-                      {displayName}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
             <h6 className="fw-bold mb-4 text-white" style={{ fontSize: 15, letterSpacing: '-0.3px' }}>
               <i className="ri-bar-chart-2-line me-2 text-primary"></i>
               Métriques Détaillées & Tendances
@@ -1310,8 +1286,8 @@ const IntelligenceDrawer = ({ isOpen, onClose, intelligenceView, setIntelligence
 };
 
 const METRICS_OPTIONS = [
-  { id: "velocity", label: "Vélocité (Commits/Dev)", icon: "ri-flashlight-line", color: "#4f46e5" },
-  { id: "mr_rate", label: "Livraison (MRs/Dev)", icon: "ri-git-merge-line", color: "#0ab39c" },
+  { id: "velocity", label: "Vélocité commits (Commits/Dev)", icon: "ri-flashlight-line", color: "#4f46e5" },
+  { id: "mr_rate", label: "Vélocité Mrs (MRs/Dev)", icon: "ri-git-merge-line", color: "#0ab39c" },
   { id: "quality_score", label: "Taux d'Approbation (%)", icon: "ri-shield-check-line", color: "#299cdb" },
   { id: "merged_rate", label: "Taux de Fusion (%)", icon: "ri-git-pull-request-line", color: "#f06548" },
   { id: "review_time", label: "Temps de Revue (h)", icon: "ri-timer-flash-line", color: "#f7b84b" },
@@ -2345,6 +2321,28 @@ export default function ComparativeAnalyticsPage() {
                     <p className="text-muted mb-0 fs-12">Comparaison matricielle · Formatage conditionnel par seuils métier</p>
                   </div>
                   <div className="d-flex align-items-center gap-3">
+                    <div className="d-inline-flex align-items-center gap-2 bg-white p-2 rounded-4 shadow-sm border px-3">
+                      <div className="text-start me-2 border-end pe-3">
+                        <div className="text-muted fs-10 fw-bold text-uppercase">Extraction</div>
+                      </div>
+                      <select
+                        className="form-select form-select-sm border-0 fw-bold text-primary fs-12"
+                        style={{ minWidth: 180, boxShadow: 'none', cursor: 'pointer', background: 'transparent' }}
+                        value={projectId}
+                        onChange={handleProjectChange}
+                      >
+                        {projects.map(p => {
+                          const displayName = p.namespace 
+                            ? `${p.namespace.split('/').slice(-1)[0]} / ${p.name}` 
+                            : p.name;
+                          return (
+                            <option key={p.id || p.project_id} value={p.id || p.project_id}>
+                              {displayName}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
                     
                     <span className="d-flex align-items-center gap-2 px-3 py-2 rounded-3 fw-bold" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontSize: 12 }}>
                       <i className="ri-calendar-2-line" style={{ color: '#4f46e5', fontSize: 14 }}></i>
