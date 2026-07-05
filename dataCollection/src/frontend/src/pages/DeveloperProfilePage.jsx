@@ -742,11 +742,15 @@ export default function DeveloperProfilePage() {
         
         // Find snapshot for selected period
         let snap = null;
-        if (targetPeriodId && !selectedLotId) {
+        if (targetPeriodId && !selectedLotId && snaps && snaps.length > 0) {
           snap = snaps.find(s => s.period_id === targetPeriodId);
-        } else {
-          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         }
+        
+        // If no snapshot found in history, try getLatest with period_id
+        if (!snap && targetPeriodId) {
+          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: targetPeriodId }).catch(() => null);
+        }
+        
         console.log("Snapshot for period", targetPeriodId, ":", snap);
         setSnapshot(snap);
 
