@@ -452,9 +452,13 @@ def list_developers(
             from app.repositories.period_repository import PeriodRepository
             period = PeriodRepository().get_by_id(db, period_id)
             if period:
-                start_period = date(period.year, period.month, 1)
-                last_day = calendar.monthrange(period.year, period.month)[1]
-                end_period = date(period.year, period.month, last_day)
+                # Use period.start_date and end_date which are now datetime objects
+                # Convert to date for comparisons with developer dates
+                from datetime import datetime
+                start_date = period.start_date.date() if isinstance(period.start_date, datetime) else period.start_date
+                end_date = period.end_date.date() if isinstance(period.end_date, datetime) else period.end_date
+                start_period = start_date
+                end_period = end_date
         except Exception as e:
             logger.error(f"Error resolving period dates: {e}")
 
@@ -875,6 +879,10 @@ def get_developer(
         period = db.query(Period).filter(Period.id == period_id).first()
         if period:
             from app.models.developer import DeveloperContext
+            # Convert period.start_date to date for comparison with developer.onboarding_date
+            from datetime import datetime
+            period_date = period.start_date.date() if isinstance(period.start_date, datetime) else period.start_date
+            
             # 1. Tentative de snapshot à la période demandée
             with DeveloperContext(db, period.start_date):
                 response = _build_developer_response(db, developer)
@@ -882,7 +890,7 @@ def get_developer(
             # 2. Logique de repli (Fallback) pour les Future Joiners
             # Si aucune affectation n'est trouvée ET que le dev commence plus tard
             has_assignments = (len(response.group_ids) > 0 or len(response.projects) > 0)
-            is_future_joiner = (developer.onboarding_date and developer.onboarding_date > period.start_date)
+            is_future_joiner = (developer.onboarding_date and developer.onboarding_date > period_date)
             
             if not has_assignments and is_future_joiner:
                 # Retourne la Master View (données futures)
