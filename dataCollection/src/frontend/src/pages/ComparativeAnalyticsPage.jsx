@@ -2406,38 +2406,27 @@ export default function ComparativeAnalyticsPage() {
                                         style={{
                                           background: health.bg,
                                           color: health.color,
-                                          borderRadius: 12,
-                                          minWidth: 110,
-                                          border: `2px solid ${health.border}`,
+                                          borderRadius: 10,
+                                          minWidth: 100,
+                                          border: `1.5px solid ${health.border}`,
                                           transition: "all 0.2s",
-                                          boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
+                                          boxShadow: "0 1px 3px rgba(0,0,0,0.08)"
                                         }}
                                       >
-                                        {/* Icône de statut en haut à droite */}
-                                        <i className={`${health.icon} position-absolute`} style={{ 
-                                          top: 6, 
-                                          right: 6, 
-                                          fontSize: 12, 
-                                          opacity: 0.6 
-                                        }}></i>
-                                        
-                                        <span className="fw-800 fs-16" style={{ lineHeight: 1 }}>
+                                        {/* Valeur principale */}
+                                        <span className="fw-800 fs-14" style={{ lineHeight: 1.2 }}>
                                           {val != null ? ((activeMetricId === 'quality_score' || activeMetricId === 'merged_rate') ? ((val <= 1 ? val * 100 : val).toFixed(0) + '%') : val.toFixed(1)) : "—"}
                                         </span>
                                         
-                                        {/* Label de statut */}
-                                        <span className="fw-bold" style={{ fontSize: 9, opacity: 0.8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                          {health.label}
-                                        </span>
-                                        
+                                        {/* Delta et devs sur une ligne */}
                                         <div className="d-flex align-items-center gap-2 mt-1">
-                                          <small className={`fw-bold ${delta.color}`} style={{ fontSize: 9, opacity: 0.9 }}>
-                                            {val != null ? delta.text : "N/A"}
+                                          <small className={`fw-bold ${delta.color}`} style={{ fontSize: 8, opacity: 0.85 }}>
+                                            {val != null ? delta.text : "—"}
                                           </small>
                                           {currentDevCount > 0 && (
-                                            <span className="d-flex align-items-center gap-1" style={{ opacity: 0.7 }}>
-                                              <i className="ri-user-3-line" style={{ fontSize: 9 }}></i>
-                                              <span style={{ fontSize: 9, fontWeight: 700 }}>{currentDevCount}</span>
+                                            <span className="d-flex align-items-center gap-1" style={{ opacity: 0.6 }}>
+                                              <i className="ri-user-3-line" style={{ fontSize: 8 }}></i>
+                                              <span style={{ fontSize: 8, fontWeight: 700 }}>{currentDevCount}</span>
                                             </span>
                                           )}
                                         </div>
