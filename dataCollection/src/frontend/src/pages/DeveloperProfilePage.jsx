@@ -779,7 +779,6 @@ export default function DeveloperProfilePage() {
         setSnapshot(snap);
 
         const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: currentLotId, periodId: currentPeriodId }).catch(() => null);
-        console.log("Summary for period", currentPeriodId, ":", summ);
         setSummary(summ);
 
         const currentIndex = snaps.findIndex(s => s.period_id === targetPeriodId);
@@ -808,7 +807,7 @@ export default function DeveloperProfilePage() {
         setLoadingHistory(false);
       }
     }
-  }, [id, selectedPid, heatmapMonths, selectedLotId]); // Remove selectedPeriodId from dependencies
+  }, [id, selectedPid, heatmapMonths, selectedLotId, selectedPeriodId]);
 
   useEffect(() => { 
     // Pass current selectedPeriodId directly to avoid closure issues
