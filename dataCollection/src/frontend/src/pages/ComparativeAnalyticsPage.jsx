@@ -1312,6 +1312,7 @@ export default function ComparativeAnalyticsPage() {
   const [selectedEntityForDetails, setSelectedEntityForDetails] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showIntelligenceDrawer, setShowIntelligenceDrawer] = useState(false);
+  const [showMatrixHelpModal, setShowMatrixHelpModal] = useState(false);
 
   // ✅ État séparé pour les assignations multi-tenant (pour éviter de modifier l'objet user en lecture seule)
   const [userAssignments, setUserAssignments] = useState({ site_ids: [], group_ids: [], project_ids: [] });
@@ -1672,6 +1673,13 @@ export default function ComparativeAnalyticsPage() {
 
   const getMetricHealth = (metricId, value) => {
     if (value == null) return { color: "#64748b", bg: "#f1f5f9", border: "#cbd5e1", label: "N/A", icon: "ri-question-line" };
+    
+    // Pour les métriques d'activité où 0 signifie "pas d'activité", traiter comme N/A
+    // Mais pour quality_score et merged_rate, 0% est une vraie métrique (très mauvaise)
+    const activityMetrics = ['velocity', 'mr_rate', 'review_time', 'avg_commits'];
+    if (activityMetrics.includes(metricId) && value === 0) {
+      return { color: "#64748b", bg: "#f1f5f9", border: "#cbd5e1", label: "N/A", icon: "ri-question-line" };
+    }
 
     const thresholds = {
       velocity: { low: 3.0, high: 5.0, reverse: false },
@@ -2317,6 +2325,13 @@ export default function ComparativeAnalyticsPage() {
                         <i className={`${activeMetric.icon} text-primary fs-5`}></i>
                       </div>
                       <h5 className="mb-0 fw-bold">Performance Matrix — {activeMetric.label}</h5>
+                      <button
+                        className="btn btn-link p-0 ms-2"
+                        onClick={() => setShowMatrixHelpModal(true)}
+                        title="Comprendre la matrice"
+                      >
+                        <i className="ri-question-line text-muted fs-5"></i>
+                      </button>
                     </div>
                     <p className="text-muted mb-0 fs-12">Comparaison matricielle · Formatage conditionnel par seuils métier</p>
                   </div>
@@ -2645,6 +2660,115 @@ export default function ComparativeAnalyticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal explicatif Performance Matrix */}
+      {showMatrixHelpModal && (
+        <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content" style={{ borderRadius: 16 }}>
+              <div className="modal-header border-0 pb-3">
+                <h5 className="modal-title fw-bold">
+                  <i className="ri-information-line text-primary me-2"></i>
+                  Comprendre la Performance Matrix
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowMatrixHelpModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <p className="text-muted mb-4">La matrice utilise un formatage conditionnel basé sur des seuils métier pour identifier rapidement les performances.</p>
+                
+                <h6 className="fw-bold mb-3">Légende des couleurs</h6>
+                <div className="d-flex flex-column gap-3 mb-4">
+                  <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: '#ecfdf5', border: '1px solid #10b981' }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, background: '#047857' }}></div>
+                    <div>
+                      <div className="fw-bold text-success">Objectif Atteint</div>
+                      <small className="text-muted">Performance excellente selon les seuils</small>
+                    </div>
+                  </div>
+                  <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: '#fffbeb', border: '1px solid #f59e0b' }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, background: '#b45309' }}></div>
+                    <div>
+                      <div className="fw-bold text-warning">À Surveiller</div>
+                      <small className="text-muted">Performance dans la moyenne</small>
+                    </div>
+                  </div>
+                  <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: '#fef2f2', border: '1px solid #ef4444' }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, background: '#b91c1c' }}></div>
+                    <div>
+                      <div className="fw-bold text-danger">Action Requise</div>
+                      <small className="text-muted">Performance critique, intervention nécessaire</small>
+                    </div>
+                  </div>
+                  <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: '#f1f5f9', border: '1px solid #cbd5e1' }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 4, background: '#64748b' }}></div>
+                    <div>
+                      <div className="fw-bold text-secondary">N/A</div>
+                      <small className="text-muted">Pas de données ou pas d'activité</small>
+                    </div>
+                  </div>
+                </div>
+
+                <h6 className="fw-bold mb-3">Seuils métier par métrique</h6>
+                <div className="table-responsive">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Métrique</th>
+                        <th>Objectif Atteint</th>
+                        <th>À Surveiller</th>
+                        <th>Action Requise</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Vélocité (Commits/Dev)</td>
+                        <td className="text-success">≥ 5.0</td>
+                        <td className="text-warning">3.0 - 5.0</td>
+                        <td className="text-danger">&lt; 3.0</td>
+                      </tr>
+                      <tr>
+                        <td>MRs/Dev</td>
+                        <td className="text-success">≥ 2.0</td>
+                        <td className="text-warning">1.0 - 2.0</td>
+                        <td className="text-danger">&lt; 1.0</td>
+                      </tr>
+                      <tr>
+                        <td>Taux d'Approbation (%)</td>
+                        <td className="text-success">≥ 90%</td>
+                        <td className="text-warning">70% - 90%</td>
+                        <td className="text-danger">&lt; 70%</td>
+                      </tr>
+                      <tr>
+                        <td>Taux de Fusion (%)</td>
+                        <td className="text-success">≥ 90%</td>
+                        <td className="text-warning">70% - 90%</td>
+                        <td className="text-danger">&lt; 70%</td>
+                      </tr>
+                      <tr>
+                        <td>Temps de Revue (h)</td>
+                        <td className="text-success">≤ 24h</td>
+                        <td className="text-warning">24h - 48h</td>
+                        <td className="text-danger">&gt; 48h</td>
+                      </tr>
+                      <tr>
+                        <td>Commits Moyens</td>
+                        <td className="text-success">≤ 3.0</td>
+                        <td className="text-warning">3.0 - 6.0</td>
+                        <td className="text-danger">&gt; 6.0</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="modal-footer border-0">
+                <button type="button" className="btn btn-primary" onClick={() => setShowMatrixHelpModal(false)}>
+                  Compris
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
