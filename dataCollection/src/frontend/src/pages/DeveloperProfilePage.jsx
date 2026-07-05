@@ -776,6 +776,13 @@ export default function DeveloperProfilePage() {
     }
   }, [id, selectedPid, selectedPeriodId, heatmapMonths, selectedLotId]);
 
+  // Reload data when period changes (similar to DevelopersHubPage)
+  useEffect(() => {
+    if (selectedPeriodId !== null) {
+      loadData();
+    }
+  }, [selectedPeriodId]);
+
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) return <LoadingSpinner fullPage text="Chargement du profil..." />;
