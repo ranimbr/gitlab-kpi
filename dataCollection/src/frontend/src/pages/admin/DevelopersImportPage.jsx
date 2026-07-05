@@ -297,7 +297,7 @@ export default function DevelopersImportPage() {
   const [groups,                setGroups]                = useState([]);
   const [siteId,                setSiteId]                = useState("");
   const [groupId,               setGroupId]              = useState("");
-  const [dryRun,                setDryRun]                = useState(true);
+  const [dryRun,                setDryRun]                = useState(false);
   const [createMissingSites,    setCreateMissingSites]    = useState(false);
   const [createMissingProjects, setCreateMissingProjects] = useState(false);
   const [createMissingGroups,  setCreateMissingGroups]   = useState(false);
@@ -314,6 +314,9 @@ export default function DevelopersImportPage() {
   const [activeTab,             setActiveTab]            = useState("success");
   const [resolutions,           setResolutions]          = useState(null);
   const [showResolutionStep,    setShowResolutionStep]   = useState(false);
+  const [showDefaultSite,       setShowDefaultSite]      = useState(false);
+  const [showDefaultGroup,      setShowDefaultGroup]     = useState(false);
+  const [showAdvancedOptions,   setShowAdvancedOptions]   = useState(false);
   const fileInputRef = useRef();
   const resultsRef   = useRef(null);
   const actionRef    = useRef(null);
@@ -653,15 +656,36 @@ export default function DevelopersImportPage() {
               </div>
               <div className="card-body">
                 <div className="row g-3 mb-4">
-                  <div className="col-md-6">
-                    <label className="form-label fw-medium fs-13">
-                      Site par défaut{" "}
-                      <span className="text-muted fw-normal">(si colonne "sites" absente)</span>
-                    </label>
-                    <select className="form-select" value={siteId} onChange={e => setSiteId(e.target.value)}>
-                      <option value="">-- Aucun --</option>
-                    </select>
-                  </div>
+                  {!showDefaultSite ? (
+                    <div className="col-md-6">
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-soft-secondary w-100 py-2"
+                        onClick={() => setShowDefaultSite(true)}
+                        style={{ borderRadius: 8 }}
+                      >
+                        <i className="ri-add-line me-1"></i>
+                        Ajouter un site par défaut (si colonne "sites" absente)
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="col-md-6">
+                      <label className="form-label fw-medium fs-13">
+                        Site par défaut{" "}
+                        <span className="text-muted fw-normal">(si colonne "sites" absente)</span>
+                      </label>
+                      <select className="form-select" value={siteId} onChange={e => setSiteId(e.target.value)}>
+                        <option value="">-- Aucun --</option>
+                      </select>
+                      <button 
+                        type="button"
+                        className="btn btn-xs btn-link text-muted mt-1 p-0 fs-11"
+                        onClick={() => setShowDefaultSite(false)}
+                      >
+                        <i className="ri-close-line me-1"></i>Masquer
+                      </button>
+                    </div>
+                  )}
 
                   <div className="col-md-12">
                     <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
@@ -693,20 +717,41 @@ export default function DevelopersImportPage() {
                     </div>
                   </div>
 
-                  <div className="col-md-6">
-                    <label className="form-label fw-medium fs-13">
-                      Groupe par défaut{" "}
-                      <span className="text-muted fw-normal">(si colonne "group" absente)</span>
-                    </label>
-                    <select className="form-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
-                      <option value="">-- Aucun --</option>
-                      {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                  </div>
+                  {!showDefaultGroup ? (
+                    <div className="col-md-6">
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-soft-secondary w-100 py-2"
+                        onClick={() => setShowDefaultGroup(true)}
+                        style={{ borderRadius: 8 }}
+                      >
+                        <i className="ri-add-line me-1"></i>
+                        Ajouter un groupe par défaut (si colonne "group" absente)
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="col-md-6">
+                      <label className="form-label fw-medium fs-13">
+                        Groupe par défaut{" "}
+                        <span className="text-muted fw-normal">(si colonne "group" absente)</span>
+                      </label>
+                      <select className="form-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
+                        <option value="">-- Aucun --</option>
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                      <button 
+                        type="button"
+                        className="btn btn-xs btn-link text-muted mt-1 p-0 fs-11"
+                        onClick={() => setShowDefaultGroup(false)}
+                      >
+                        <i className="ri-close-line me-1"></i>Masquer
+                      </button>
+                    </div>
+                  )}
 
                   <div className="col-md-12">
                     <label className="form-label fw-medium fs-13">
-                      Instance GitLab par défaut{" "}
+                      Instance GitLab {" "}
                       <span className="text-muted fw-normal">(recommandé si vous créez de nouveaux projets)</span>
                     </label>
                     <div className="input-group">
@@ -733,96 +778,119 @@ export default function DevelopersImportPage() {
                 </div>
 
                 <div className="mb-3">
-                  <EnterpriseToggle
-                    checked={dryRun}
-                    onChange={() => { setDryRun(v => !v); setShowResolutionStep(false); }}
-                    labelOn="Mode prévisualisation (dry run) — recommandé"
-                    labelOff="Mode création réelle"
-                    descOn="Détecte les conflits (sites/projets inconnus) sans créer de données — étape de résolution disponible"
-                    descOff="Crée réellement les développeurs en base de données"
-                    colorOn="#1D4ED8"
-                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-soft-secondary w-100 py-2"
+                    onClick={() => setShowAdvancedOptions(v => !v)}
+                    style={{ borderRadius: 8 }}
+                  >
+                    <i className={`ri-${showAdvancedOptions ? 'arrow-up' : 'settings-3'}-line me-1`}></i>
+                    {showAdvancedOptions ? 'Masquer' : 'Afficher'} les options avancées
+                  </button>
                 </div>
 
-                {!dryRun && (
+                {showAdvancedOptions && (
                   <>
-                    <div className="d-flex align-items-center gap-2 my-3">
-                      <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
-                      <span className="text-muted fs-11 fw-semibold text-uppercase px-2"
-                        style={{ letterSpacing: ".06em", whiteSpace: "nowrap" }}>
-                        Options avancées
-                      </span>
-                      <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
-                    </div>
-
                     <div className="p-3 rounded-3 mb-3"
-                      style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                      <p className="fs-12 mb-0" style={{ color: "#1E40AF" }}>
+                      style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                      <p className="fs-12 mb-0" style={{ color: "#475569" }}>
                         <i className="ri-information-line me-1"></i>
-                        <strong>Recommandation :</strong> utilisez d'abord le dry-run pour détecter
-                        les entités inconnues et les résoudre via l'étape de résolution.
-                        Ces options sont pour les imports de confiance où vous êtes sûr que les
-                        noms correspondent exactement aux entités en base.
+                        <strong>Mode prévisualisation (dry run) :</strong> détecte les conflits (sites/projets inconnus) sans créer de données.
+                        Utilisez-le pour résoudre les conflits via l'étape de résolution avant l'import réel.
                       </p>
                     </div>
 
                     <div className="mb-3">
                       <EnterpriseToggle
-                        checked={createMissingSites}
-                        onChange={() => setCreateMissingSites(v => !v)}
-                        labelOn="Créer automatiquement les sites manquants"
-                        labelOff="Sites manquants ignorés (listés dans le rapport)"
-                        descOn="Les sites du CSV absents en base seront créés (country='À définir')"
-                        descOff="Les développeurs seront créés sans site — réassignez manuellement"
-                        colorOn="#059669"
+                        checked={dryRun}
+                        onChange={() => { setDryRun(v => !v); setShowResolutionStep(false); }}
+                        labelOn="Mode prévisualisation (dry run)"
+                        labelOff="Mode création réelle"
+                        descOn="Détecte les conflits sans créer de données — étape de résolution disponible"
+                        descOff="Crée réellement les développeurs en base de données"
+                        colorOn="#1D4ED8"
                       />
                     </div>
-                    <div className="mb-0">
-                      <EnterpriseToggle
-                        checked={createMissingProjects}
-                        onChange={() => setCreateMissingProjects(v => !v)}
-                        labelOn="Créer automatiquement les projets manquants"
-                        labelOff="Projets manquants ignorés (listés dans le rapport)"
-                        descOn="Les projets du CSV absents en base seront créés automatiquement"
-                        descOff="Les développeurs seront créés sans projet — réassignez manuellement"
-                        colorOn="#059669"
-                      />
-                    </div>
-                    <div className="mb-0">
-                      <EnterpriseToggle
-                        checked={createMissingGroups}
-                        onChange={() => setCreateMissingGroups(v => !v)}
-                        labelOn="Créer automatiquement les groupes manquants"
-                        labelOff="Groupes manquants ignorés (listés dans le rapport)"
-                        descOn="Les groupes du CSV absents en base seront créés automatiquement"
-                        descOff="Les développeurs seront créés sans groupe — réassignez manuellement"
-                        colorOn="#059669"
-                      />
-                    </div>
-                    <div className="mb-0 mt-3">
-                      <EnterpriseToggle
-                        checked={fullSync}
-                        onChange={() => setFullSync(v => !v)}
-                        labelOn="Mode Synchronisation Totale (Full Sync) — ACTIF"
-                        labelOff="Mode Mise à jour simple (Append/Update)"
-                        descOn="Désactive les développeurs absents du CSV pour synchroniser avec l'effectif actuel."
-                        descOff="Ajoute les nouveaux et met à jour les existants sans toucher aux autres."
-                        colorOn="#DC2626"
-                      />
-                    </div>
-                    {(createMissingSites || createMissingProjects || createMissingGroups) && (
-                      <div className="mt-3 d-flex align-items-start gap-2 p-3 rounded-3"
-                        style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
-                        <i className="ri-shield-check-line text-warning flex-shrink-0 fs-16 mt-1"></i>
-                        <p className="fs-12 text-muted mb-0">
-                          <strong style={{ color: "#92400E" }}>Vérifiez votre fichier source.</strong>{" "}
-                          L'auto-création génère des entités avec des données minimales.
-                          Complétez-les après l'import dans{" "}
-                          <Link to="/admin/sites" className="text-warning fw-medium">Sites</Link>{" "},{" "}
-                          <Link to="/admin/projects" className="text-warning fw-medium">Projets</Link>{" "}et{" "}
-                          <Link to="/admin/developers" className="text-warning fw-medium">Groupes</Link>.
-                        </p>
-                      </div>
+
+                    {!dryRun && (
+                      <>
+                        <div className="d-flex align-items-center gap-2 my-3">
+                          <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
+                          <span className="text-muted fs-11 fw-semibold text-uppercase px-2"
+                            style={{ letterSpacing: ".06em", whiteSpace: "nowrap" }}>
+                            Auto-création d'entités
+                          </span>
+                          <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
+                        </div>
+
+                        <div className="p-3 rounded-3 mb-3"
+                          style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                          <p className="fs-12 mb-0" style={{ color: "#1E40AF" }}>
+                            <i className="ri-information-line me-1"></i>
+                            <strong>Recommandation :</strong> ces options sont pour les imports de confiance où vous êtes sûr que les
+                            noms correspondent exactement aux entités en base.
+                          </p>
+                        </div>
+
+                        <div className="mb-3">
+                          <EnterpriseToggle
+                            checked={createMissingSites}
+                            onChange={() => setCreateMissingSites(v => !v)}
+                            labelOn="Créer automatiquement les sites manquants"
+                            labelOff="Sites manquants ignorés (listés dans le rapport)"
+                            descOn="Les sites du CSV absents en base seront créés (country='À définir')"
+                            descOff="Les développeurs seront créés sans site — réassignez manuellement"
+                            colorOn="#059669"
+                          />
+                        </div>
+                        <div className="mb-0">
+                          <EnterpriseToggle
+                            checked={createMissingProjects}
+                            onChange={() => setCreateMissingProjects(v => !v)}
+                            labelOn="Créer automatiquement les projets manquants"
+                            labelOff="Projets manquants ignorés (listés dans le rapport)"
+                            descOn="Les projets du CSV absents en base seront créés automatiquement"
+                            descOff="Les développeurs seront créés sans projet — réassignez manuellement"
+                            colorOn="#059669"
+                          />
+                        </div>
+                        <div className="mb-0">
+                          <EnterpriseToggle
+                            checked={createMissingGroups}
+                            onChange={() => setCreateMissingGroups(v => !v)}
+                            labelOn="Créer automatiquement les groupes manquants"
+                            labelOff="Groupes manquants ignorés (listés dans le rapport)"
+                            descOn="Les groupes du CSV absents en base seront créés automatiquement"
+                            descOff="Les développeurs seront créés sans groupe — réassignez manuellement"
+                            colorOn="#059669"
+                          />
+                        </div>
+                        <div className="mb-0 mt-3">
+                          <EnterpriseToggle
+                            checked={fullSync}
+                            onChange={() => setFullSync(v => !v)}
+                            labelOn="Mode Synchronisation Totale (Full Sync) — ACTIF"
+                            labelOff="Mode Mise à jour simple (Append/Update)"
+                            descOn="Désactive les développeurs absents du CSV pour synchroniser avec l'effectif actuel."
+                            descOff="Ajoute les nouveaux et met à jour les existants sans toucher aux autres."
+                            colorOn="#DC2626"
+                          />
+                        </div>
+                        {(createMissingSites || createMissingProjects || createMissingGroups) && (
+                          <div className="mt-3 d-flex align-items-start gap-2 p-3 rounded-3"
+                            style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
+                            <i className="ri-shield-check-line text-warning flex-shrink-0 fs-16 mt-1"></i>
+                            <p className="fs-12 text-muted mb-0">
+                              <strong style={{ color: "#92400E" }}>Vérifiez votre fichier source.</strong>{" "}
+                              L'auto-création génère des entités avec des données minimales.
+                              Complétez-les après l'import dans{" "}
+                              <Link to="/admin/sites" className="text-warning fw-medium">Sites</Link>{" "},{" "}
+                              <Link to="/admin/projects" className="text-warning fw-medium">Projets</Link>{" "}et{" "}
+                              <Link to="/admin/developers" className="text-warning fw-medium">Groupes</Link>.
+                            </p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 )}
