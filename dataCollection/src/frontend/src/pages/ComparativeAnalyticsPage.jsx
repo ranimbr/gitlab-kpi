@@ -533,6 +533,30 @@ const EntityDetailsModal = ({ entity, entityType, onClose }) => {
               </div>
             </div>
 
+            {/* Sélecteur de projet au-dessus des Métriques */}
+            <div className="d-inline-flex align-items-center gap-3 bg-white p-2 rounded-4 shadow-sm border px-3 mb-4">
+              <div className="text-start me-2 border-end pe-3">
+                <div className="text-muted fs-11 fw-bold text-uppercase">Extraction</div>
+              </div>
+              <select
+                className="form-select form-select-sm border-0 fw-bold text-primary fs-14"
+                style={{ minWidth: 220, boxShadow: 'none', cursor: 'pointer', background: 'transparent' }}
+                value={projectId}
+                onChange={handleProjectChange}
+              >
+                {projects.map(p => {
+                  const displayName = p.namespace 
+                    ? `${p.namespace.split('/').slice(-1)[0]} / ${p.name}` 
+                    : p.name;
+                  return (
+                    <option key={p.id || p.project_id} value={p.id || p.project_id}>
+                      {displayName}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
             <h6 className="fw-bold mb-4 text-white" style={{ fontSize: 15, letterSpacing: '-0.3px' }}>
               <i className="ri-bar-chart-2-line me-2 text-primary"></i>
               Métriques Détaillées & Tendances
@@ -1671,7 +1695,7 @@ export default function ComparativeAnalyticsPage() {
   }, [trends]);
 
   const getMetricHealth = (metricId, value) => {
-    if (value == null) return { color: "#9ca3af", bg: "#f3f4f6", border: "#e5e7eb", label: "N/A" };
+    if (value == null) return { color: "#64748b", bg: "#f1f5f9", border: "#cbd5e1", label: "N/A", icon: "ri-question-line" };
 
     const thresholds = {
       velocity: { low: 3.0, high: 5.0, reverse: false },
@@ -1697,9 +1721,9 @@ export default function ComparativeAnalyticsPage() {
     }
 
     const map = {
-      good: { color: "#065f46", bg: "#d1fae5", border: "#10b981", icon: "ri-checkbox-circle-fill" },
-      medium: { color: "#92400e", bg: "#fef3c7", border: "#f59e0b", icon: "ri-error-warning-fill" },
-      bad: { color: "#991b1b", bg: "#fee2e2", border: "#ef4444", icon: "ri-close-circle-fill" }
+      good: { color: "#047857", bg: "#ecfdf5", border: "#10b981", icon: "ri-checkbox-circle-fill", label: "Excellent" },
+      medium: { color: "#b45309", bg: "#fffbeb", border: "#f59e0b", icon: "ri-error-warning-fill", label: "Moyen" },
+      bad: { color: "#b91c1c", bg: "#fef2f2", border: "#ef4444", icon: "ri-close-circle-fill", label: "Critique" }
     };
 
     return map[status];
@@ -1983,27 +2007,6 @@ export default function ComparativeAnalyticsPage() {
           </div>
           <div className="col-lg-5 mt-3 mt-lg-0 text-lg-end">
             <div className="d-inline-flex align-items-center gap-3 bg-white p-2 rounded-4 shadow-sm border px-3">
-              <div className="text-start me-2 border-end pe-3">
-                <div className="text-muted fs-11 fw-bold text-uppercase">Extraction</div>
-                
-              </div>
-              <select
-                className="form-select form-select-sm border-0 fw-bold text-primary fs-14"
-                style={{ minWidth: 220, boxShadow: 'none', cursor: 'pointer', background: 'transparent' }}
-                value={projectId}
-                onChange={handleProjectChange}
-              >
-                {projects.map(p => {
-                  const displayName = p.namespace 
-                    ? `${p.namespace.split('/').slice(-1)[0]} / ${p.name}` 
-                    : p.name;
-                  return (
-                    <option key={p.id || p.project_id} value={p.id || p.project_id}>
-                      {displayName}
-                    </option>
-                  );
-                })}
-              </select>
               <div className="position-relative">
                 <button
                   className="btn btn-primary btn-sm rounded-3 px-3 fw-bold d-flex align-items-center gap-2 shadow-sm"
@@ -2168,38 +2171,38 @@ export default function ComparativeAnalyticsPage() {
                       return (
                         <>
                           <div className="col-md-4 border-end">
-                            <div className="p-4 d-flex align-items-center gap-3">
-                              <div className="p-3 bg-primary-subtle rounded-3 text-primary fs-4 d-flex align-items-center justify-content-center" style={{ width: 54, height: 54 }}>
+                            <div className="p-3 d-flex align-items-center gap-2">
+                              <div className="p-2 bg-primary-subtle rounded-3 text-primary fs-4 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44 }}>
                                 <i className="ri-medal-2-line"></i>
                               </div>
                               <div>
-                                <div className="text-muted text-uppercase fs-11 fw-bold letter-spacing-1">Top Performer</div>
-                                <h4 className="mb-0 fw-800 text-primary">{best.name}</h4>
-                                <small className={`fw-bold ${deltaBest.color}`}>{deltaBest.text} vs mois préc.</small>
+                                <div className="text-muted text-uppercase fs-10 fw-bold letter-spacing-1">Top Performer</div>
+                                <h5 className="mb-0 fw-800 text-primary fs-14">{best.name}</h5>
+                                <small className={`fw-bold ${deltaBest.color} fs-10`}>{deltaBest.text} vs mois préc.</small>
                               </div>
                             </div>
                           </div>
                           <div className="col-md-4 border-end">
-                            <div className="p-4 d-flex align-items-center gap-3">
-                              <div className="p-3 bg-warning-subtle rounded-3 text-warning fs-4 d-flex align-items-center justify-content-center" style={{ width: 54, height: 54 }}>
+                            <div className="p-3 d-flex align-items-center gap-2">
+                              <div className="p-2 bg-warning-subtle rounded-3 text-warning fs-4 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44 }}>
                                 <i className="ri-pulse-line"></i>
                               </div>
                               <div>
-                                <div className="text-muted text-uppercase fs-11 fw-bold letter-spacing-1">Moyenne Globale</div>
-                                <h4 className="mb-0 fw-800 text-dark">{fmt(avgNow)}</h4>
-                                <small className={`fw-bold ${deltaAvg.color}`}>{deltaAvg.text === "→ stable" ? "→ Stable" : `${deltaAvg.text} tendance`}</small>
+                                <div className="text-muted text-uppercase fs-10 fw-bold letter-spacing-1">Moyenne Globale</div>
+                                <h5 className="mb-0 fw-800 text-dark fs-14">{fmt(avgNow)}</h5>
+                                <small className={`fw-bold ${deltaAvg.color} fs-10`}>{deltaAvg.text === "→ stable" ? "→ Stable" : `${deltaAvg.text} tendance`}</small>
                               </div>
                             </div>
                           </div>
                           <div className="col-md-4">
-                            <div className="p-4 d-flex align-items-center gap-3">
-                              <div className="p-3 bg-danger-subtle rounded-3 text-danger fs-4 d-flex align-items-center justify-content-center" style={{ width: 54, height: 54 }}>
+                            <div className="p-3 d-flex align-items-center gap-2">
+                              <div className="p-2 bg-danger-subtle rounded-3 text-danger fs-4 d-flex align-items-center justify-content-center" style={{ width: 44, height: 44 }}>
                                 <i className="ri-alarm-warning-line"></i>
                               </div>
                               <div>
-                                <div className="text-muted text-uppercase fs-11 fw-bold letter-spacing-1">Sites en Alerte</div>
-                                <h4 className="mb-0 fw-800 text-danger">{atRisk.length}</h4>
-                                <small className="text-muted fw-medium">{atRisk.length > 0 ? atRisk.map(s => s.name).join(', ') : 'Aucun site critique'}</small>
+                                <div className="text-muted text-uppercase fs-10 fw-bold letter-spacing-1">Sites en Alerte</div>
+                                <h5 className="mb-0 fw-800 text-danger fs-14">{atRisk.length}</h5>
+                                <small className="text-muted fw-medium fs-10">{atRisk.length > 0 ? atRisk.map(s => s.name).join(', ') : 'Aucun site critique'}</small>
                               </div>
                             </div>
                           </div>
@@ -2386,19 +2389,34 @@ export default function ComparativeAnalyticsPage() {
                                   return (
                                     <td key={col} className="text-center py-3">
                                       <div
-                                        className="d-inline-flex flex-column align-items-center justify-content-center px-3 py-2"
+                                        className="d-inline-flex flex-column align-items-center justify-content-center px-3 py-2 position-relative"
                                         style={{
                                           background: health.bg,
                                           color: health.color,
                                           borderRadius: 12,
-                                          minWidth: 95,
-                                          border: `1.5px solid ${health.border}`,
-                                          transition: "all 0.2s"
+                                          minWidth: 110,
+                                          border: `2px solid ${health.border}`,
+                                          transition: "all 0.2s",
+                                          boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
                                         }}
                                       >
+                                        {/* Icône de statut en haut à droite */}
+                                        <i className={`${health.icon} position-absolute`} style={{ 
+                                          top: 6, 
+                                          right: 6, 
+                                          fontSize: 12, 
+                                          opacity: 0.6 
+                                        }}></i>
+                                        
                                         <span className="fw-800 fs-16" style={{ lineHeight: 1 }}>
                                           {val != null ? ((activeMetricId === 'quality_score' || activeMetricId === 'merged_rate') ? ((val <= 1 ? val * 100 : val).toFixed(0) + '%') : val.toFixed(1)) : "—"}
                                         </span>
+                                        
+                                        {/* Label de statut */}
+                                        <span className="fw-bold" style={{ fontSize: 9, opacity: 0.8, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                                          {health.label}
+                                        </span>
+                                        
                                         <div className="d-flex align-items-center gap-2 mt-1">
                                           <small className={`fw-bold ${delta.color}`} style={{ fontSize: 9, opacity: 0.9 }}>
                                             {val != null ? delta.text : "N/A"}
