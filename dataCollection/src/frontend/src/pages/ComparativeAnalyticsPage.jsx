@@ -7,6 +7,8 @@
  *  - Visualiser l'évolution historique des KPIs de vélocité et qualité
  *
  * Route : /analytics/comparison?project_id=X
+ * 
+ * Dernière mise à jour: Restauration après suppression du filtre de période
  */
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, Link } from "react-router-dom";
