@@ -722,8 +722,10 @@ export default function DeveloperProfilePage() {
 
       if (p_id) {
         // Mode Projet Spécifique - Use global periods like DevelopersHubPage
+        console.log("Fetching history with periodId:", selectedPeriodId);
         const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: selectedPeriodId }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
+        console.log("History snapshots:", snaps);
 
         // Keep global periods (don't replace with project-specific snapshots)
         // This ensures consistency with DevelopersHubPage behavior
