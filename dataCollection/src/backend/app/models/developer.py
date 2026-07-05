@@ -217,6 +217,11 @@ class Developer(Base):
         """
         ref_date = getattr(self, "_context_period_date", None)
         
+        # Convert ref_date to date if it's a datetime for proper comparison
+        from datetime import datetime
+        if ref_date and isinstance(ref_date, datetime):
+            ref_date = ref_date.date()
+        
         # 1. Recherche par date de contexte
         if ref_date:
             # 🛡️ [ENTERPRISE GUARD] : Si on regarde AVANT l'arrivée, le site n'existe pas encore
@@ -244,6 +249,11 @@ class Developer(Base):
         Fallback 'Last Known State' intelligent.
         """
         ref_date = getattr(self, "_context_period_date", None)
+        
+        # Convert ref_date to date if it's a datetime for proper comparison
+        from datetime import datetime
+        if ref_date and isinstance(ref_date, datetime):
+            ref_date = ref_date.date()
         
         if ref_date:
             # 🛡️ [ENTERPRISE GUARD]
@@ -299,6 +309,15 @@ class Developer(Base):
         """
         ref_date = getattr(self, "_context_period_date", None)
         target_date = ref_date if ref_date else date.today()
+        
+        # Convert target_date to date if it's a datetime for proper comparison
+        from datetime import datetime
+        if isinstance(target_date, datetime):
+            target_date = target_date.date()
+        
+        # Convert ref_date to date if it's a datetime for proper comparison
+        if ref_date and isinstance(ref_date, datetime):
+            ref_date = ref_date.date()
         
         # 1. Sortie / Offboarding (Départ définitif)
         if self.offboarding_date and self.offboarding_date < target_date:
