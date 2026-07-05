@@ -76,7 +76,7 @@ const analyticsService = {
    */
   getHistory: async (
     projectId,
-    { siteId, groupId, developerId, startDate, endDate } = {}
+    { siteId, groupId, developerId, startDate, endDate, periodId } = {}
   ) => {
     const params = buildParams({
       site_id:      siteId,
@@ -84,6 +84,7 @@ const analyticsService = {
       developer_id: developerId,
       start_date:   startDate,
       end_date:     endDate,
+      period_id:    periodId,
     });
     const { data } = await api.get(`/analytics/${projectId}/history`, { params }).catch(err => {
       console.error("Analytics history fetch error:", err);
