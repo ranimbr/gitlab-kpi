@@ -64,8 +64,16 @@ class AnalyticsService:
 
     def get_kpi_history(
         self, project_id, site_id=None, group_id=None, developer_id=None,
-        start_date=None, end_date=None,
+        start_date=None, end_date=None, period_id=None,
     ) -> List[KpiSnapshot]:
+        # If period_id is provided, filter history by that period
+        if period_id:
+            from app.models.period import Period
+            period = self.db.query(Period).filter(Period.id == period_id).first()
+            if period:
+                start_date = period.start_date
+                end_date = period.end_date
+        
         return self.snapshot_repo.get_project_history(
             db=self.db, project_id=project_id, site_id=site_id,
             group_id=group_id, developer_id=developer_id,

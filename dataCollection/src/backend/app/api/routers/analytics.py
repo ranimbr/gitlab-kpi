@@ -112,6 +112,7 @@ def get_kpi_history(
     developer_id: Optional[int]  = Query(default=None),
     start_date:   Optional[date] = Query(default=None),
     end_date:     Optional[date] = Query(default=None),
+    period_id:    Optional[int] = Query(default=None),
     db:           Session        = Depends(get_db),
     current_user: AppUser        = Depends(get_current_user),
 ):
@@ -161,7 +162,7 @@ def get_kpi_history(
     service   = AnalyticsService(db)
     p_id = None if project_id == "all" else int(project_id)
     snapshots = service.get_kpi_history(
-        p_id, site_id, group_id, developer_id, start_date, end_date
+        p_id, site_id, group_id, developer_id, start_date, end_date, period_id
     )
 
     return KpiHistoryResponse.from_snapshots(
@@ -399,6 +400,7 @@ def get_comparison(
     group_ids:    List[int]      = Query(default=[]),
     start_date:   Optional[date] = Query(default=None),
     end_date:     Optional[date] = Query(default=None),
+    period_id:    Optional[int] = Query(default=None),
     db:           Session        = Depends(get_db),
     current_user: AppUser        = Depends(get_current_user),
 ):
@@ -510,6 +512,7 @@ def get_comparative_trends(
     group_ids:    List[int]      = Query(default=[]),
     start_date:   Optional[date] = Query(default=None),
     end_date:     Optional[date] = Query(default=None),
+    period_id:    Optional[int] = Query(default=None),
     db:           Session        = Depends(get_db),
     current_user: AppUser        = Depends(get_current_user),
 ):
