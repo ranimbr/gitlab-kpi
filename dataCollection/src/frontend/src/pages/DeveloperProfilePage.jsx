@@ -808,7 +808,7 @@ export default function DeveloperProfilePage() {
         setLoadingHistory(false);
       }
     }
-  }, [id, selectedPid, selectedPeriodId, heatmapMonths, selectedLotId]);
+  }, [id, selectedPid, heatmapMonths, selectedLotId]); // Remove selectedPeriodId from dependencies
 
   useEffect(() => { 
     // Pass current selectedPeriodId directly to avoid closure issues
