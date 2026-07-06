@@ -940,21 +940,23 @@ class ExtractionService:
             if not target_usernames:
                 logger.warning(f"[lot={lot.id}] Targeted developers have NO gitlab_username in DB. Fetching might yield 0 results.")
 
-        updated_after = updated_before = None
+        created_after = created_before = None
         lot_start = lot_end = None
         try:
-            updated_after, updated_before, lot_start, lot_end = build_period_window(lot.period)
+            created_after, created_before, lot_start, lot_end = build_period_window(lot.period)
         except Exception as e:
             logger.warning(f"Calcul période MR échoué: {e}")
 
         # [SENIOR FIX] Fetches ALL MRs for the period globally to avoid 403 errors 
         # on certain restricted query parameters (author_username, etc.)
         # and then filters them LOCALLY.
+        # [BUG FIX] Use created_after/created_before instead of updated_after/updated_before
+        # to ensure MRs created in the period are extracted, even if updated later.
         try:
             mrs = await client.get_project_merge_requests(
                 project.gitlab_project_id, 
-                updated_after=updated_after,
-                updated_before=updated_before
+                created_after=created_after,
+                created_before=created_before
             )
             logger.info(f"[lot={lot.id}] Global MR fetch: found {len(mrs)} MRs to filter locally.")
         except Exception as e:
