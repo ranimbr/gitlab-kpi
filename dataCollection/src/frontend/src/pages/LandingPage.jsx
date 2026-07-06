@@ -1219,8 +1219,8 @@ const CSS = `
     position: relative;
     z-index: 10;
     overflow: visible;
-    /* add padding to prevent image cutoff */
-    padding-right: 40px;
+    /* add more padding to prevent image cutoff */
+    padding-right: 60px;
     /* stretch to full hero height so the image fills vertically */
     align-self: stretch;
     padding-top: 60px;
@@ -1230,8 +1230,8 @@ const CSS = `
   /* ── Hero custom image ── */
   .hero-img-scene {
     position: relative;
-    /* smaller size to prevent cutoff on right side */
-    width: 55%;
+    /* much smaller size to prevent cutoff on right side */
+    width: 45%;
     display: flex;
     align-items: center;
     justify-content: flex-start;
