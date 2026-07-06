@@ -1231,12 +1231,11 @@ const CSS = `
   /* ── Hero custom image ── */
   .hero-img-scene {
     position: relative;
-    /* professional size for enterprise landing page */
-    width: 70%;
+    /* smaller size to prevent cutoff on right side */
+    width: 65%;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    margin-right: 20px;
+    justify-content: center;
     /* Rich float: vertical + subtle rotation + slight scale breathe */
     animation: dash-float 6s cubic-bezier(0.37, 0, 0.63, 1) infinite;
     /* 3D context for the perspective tilt */
