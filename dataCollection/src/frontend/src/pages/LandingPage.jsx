@@ -1219,8 +1219,8 @@ const CSS = `
     position: relative;
     z-index: 10;
     overflow: visible;
-    /* remove negative margin to prevent image cutoff */
-    margin-right: 0;
+    /* add padding to prevent image cutoff */
+    padding-right: 40px;
     /* stretch to full hero height so the image fills vertically */
     align-self: stretch;
     padding-top: 60px;
