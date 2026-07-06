@@ -1231,7 +1231,7 @@ const CSS = `
   .hero-img-scene {
     position: relative;
     /* slightly larger size for better visibility */
-    width: 65%;
+    width: 70%;
     display: flex;
     align-items: center;
     justify-content: flex-start;
