@@ -1166,9 +1166,9 @@ const CSS = `
     margin: 0 auto;
     padding: 100px 0 80px 80px;
     display: grid;
-    /* image gets slightly more space */
-    grid-template-columns: 46% 54%;
-    gap: 0;
+    /* balanced grid for professional enterprise look */
+    grid-template-columns: 50% 50%;
+    gap: 40px;
     align-items: center;
     min-height: 100vh;
   }
