@@ -1232,7 +1232,7 @@ const CSS = `
   .hero-img-scene {
     position: relative;
     /* smaller — fits better in the right column */
-    width: 100%;
+    width: 80%;
     display: flex;
     align-items: center;
     justify-content: flex-end;
