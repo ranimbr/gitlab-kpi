@@ -1235,7 +1235,7 @@ const CSS = `
     width: 80%;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
     /* Rich float: vertical + subtle rotation + slight scale breathe */
     animation: dash-float 6s cubic-bezier(0.37, 0, 0.63, 1) infinite;
     /* 3D context for the perspective tilt */
