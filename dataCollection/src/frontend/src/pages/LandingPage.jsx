@@ -1251,21 +1251,7 @@ const CSS = `
     position: relative;
     z-index: 1;
     width: 100%;
-    /* mask: more generous — most of the image sharp, only outer edges fade */
-    -webkit-mask-image: radial-gradient(
-      ellipse 92% 86% at 52% 48%,
-      black 45%,
-      rgba(0,0,0,0.9) 65%,
-      rgba(0,0,0,0.4) 82%,
-      transparent 100%
-    );
-    mask-image: radial-gradient(
-      ellipse 92% 86% at 52% 48%,
-      black 45%,
-      rgba(0,0,0,0.9) 65%,
-      rgba(0,0,0,0.4) 82%,
-      transparent 100%
-    );
+    /* Remove mask to prevent background blending issues */
   }
 
   .hero-img {
