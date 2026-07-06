@@ -1231,7 +1231,7 @@ const CSS = `
   .hero-img-scene {
     position: relative;
     /* slightly larger size for better visibility */
-    width: 52%;
+    width: 55%;
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -1277,7 +1277,7 @@ const CSS = `
   .hero-title {
     font-family: var(--fb); /* Plus Jakarta Sans — premium B2B sans-serif */
     font-weight: 800;
-    font-size: clamp(2.4rem, 4.5vw, 3.8rem);
+    font-size: clamp(2rem, 3.8vw, 3.2rem);
     line-height: 1.1;
     letter-spacing: -0.04em;
     color: #020710;
