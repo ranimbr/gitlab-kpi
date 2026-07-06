@@ -1232,10 +1232,11 @@ const CSS = `
   .hero-img-scene {
     position: relative;
     /* smaller — fits better in the right column */
-    width: 80%;
+    width: 100%;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
+    margin-left: -50px;
     /* Rich float: vertical + subtle rotation + slight scale breathe */
     animation: dash-float 6s cubic-bezier(0.37, 0, 0.63, 1) infinite;
     /* 3D context for the perspective tilt */
