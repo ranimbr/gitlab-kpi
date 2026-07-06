@@ -818,7 +818,6 @@ export default function LandingPage() {
         <div className="lp-container">
           <div className="foot-inner">
             <div className="foot-left">
-              <ImageWithLoading src="/assets/images/telnet.png" alt="Telnet" className="foot-logo" />
               <p className="foot-copy">Dashboard KPI GitLab</p>
             </div>
             <div className="foot-right">
@@ -1232,10 +1231,10 @@ const CSS = `
   .hero-img-scene {
     position: relative;
     /* smaller size to prevent cutoff on right side */
-    width: 65%;
+    width: 55%;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     /* Rich float: vertical + subtle rotation + slight scale breathe */
     animation: dash-float 6s cubic-bezier(0.37, 0, 0.63, 1) infinite;
     /* 3D context for the perspective tilt */
