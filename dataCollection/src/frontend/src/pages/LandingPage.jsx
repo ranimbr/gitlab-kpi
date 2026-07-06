@@ -1215,12 +1215,12 @@ const CSS = `
   .hero-right {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
     position: relative;
     z-index: 10;
     overflow: visible;
-    /* bleed aggressively to the right edge */
-    margin-right: -80px;
+    /* remove negative margin to prevent image cutoff */
+    margin-right: 0;
     /* stretch to full hero height so the image fills vertically */
     align-self: stretch;
     padding-top: 60px;
