@@ -1230,8 +1230,8 @@ const CSS = `
   /* ── Hero custom image ── */
   .hero-img-scene {
     position: relative;
-    /* much smaller size to prevent cutoff on right side */
-    width: 45%;
+    /* slightly larger size for better visibility */
+    width: 52%;
     display: flex;
     align-items: center;
     justify-content: flex-start;
