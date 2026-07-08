@@ -216,8 +216,6 @@ function ImportResultBanners({ result }) {
 }
 
 // ─── Bandeau info : email unique / multi-affectation ──────────────────────────
-// Commenté pour simplifier l'UX - section cachée par défaut
-/*
 function CsvFormatInfo() {
   const [open, setOpen] = useState(false);
   return (
@@ -287,7 +285,6 @@ function CsvFormatInfo() {
     </div>
   );
 }
-*/
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PAGE PRINCIPALE
@@ -300,7 +297,7 @@ export default function DevelopersImportPage() {
   const [groups,                setGroups]                = useState([]);
   const [siteId,                setSiteId]                = useState("");
   const [groupId,               setGroupId]              = useState("");
-  const [dryRun,                setDryRun]                = useState(false);
+  const [dryRun,                setDryRun]                = useState(true);
   const [createMissingSites,    setCreateMissingSites]    = useState(false);
   const [createMissingProjects, setCreateMissingProjects] = useState(false);
   const [createMissingGroups,  setCreateMissingGroups]   = useState(false);
@@ -317,10 +314,6 @@ export default function DevelopersImportPage() {
   const [activeTab,             setActiveTab]            = useState("success");
   const [resolutions,           setResolutions]          = useState(null);
   const [showResolutionStep,    setShowResolutionStep]   = useState(false);
-  const [showDefaultSite,       setShowDefaultSite]      = useState(false);
-  const [showDefaultGroup,      setShowDefaultGroup]     = useState(false);
-  const [showPeriod,            setShowPeriod]            = useState(false);
-  const [showAdvancedOptions,   setShowAdvancedOptions]   = useState(false);
   const fileInputRef = useRef();
   const resultsRef   = useRef(null);
   const actionRef    = useRef(null);
@@ -542,8 +535,7 @@ export default function DevelopersImportPage() {
           {/* Colonne principale */}
           <div className="col-xl-8">
 
-            {/* CsvFormatInfo commenté pour simplifier l'UX */}
-            {/* <CsvFormatInfo /> */}
+            <CsvFormatInfo />
 
             {/* Format du fichier */}
             <div className="card border-0 mb-4"
@@ -660,129 +652,62 @@ export default function DevelopersImportPage() {
                 </h6>
               </div>
               <div className="card-body">
-                {/* Commenté pour simplifier l'UX - champs cachés par défaut */}
-                {/*
                 <div className="row g-3 mb-4">
-                  {!showDefaultSite ? (
-                    <div className="col-md-6">
-                      <button 
-                        type="button"
-                        className="btn btn-sm btn-soft-secondary w-100 py-2"
-                        onClick={() => setShowDefaultSite(true)}
-                        style={{ borderRadius: 8 }}
-                      >
-                        <i className="ri-add-line me-1"></i>
-                        Ajouter un site par défaut (si colonne "sites" absente)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="col-md-6">
-                      <label className="form-label fw-medium fs-13">
-                        Site par défaut{" "}
-                        <span className="text-muted fw-normal">(si colonne "sites" absente)</span>
-                      </label>
-                      <select className="form-select" value={siteId} onChange={e => setSiteId(e.target.value)}>
-                        <option value="">-- Aucun --</option>
-                      </select>
-                      <button 
-                        type="button"
-                        className="btn btn-xs btn-link text-muted mt-1 p-0 fs-11"
-                        onClick={() => setShowDefaultSite(false)}
-                      >
-                        <i className="ri-close-line me-1"></i>Masquer
-                      </button>
-                    </div>
-                  )}
+                  <div className="col-md-6">
+                    <label className="form-label fw-medium fs-13">
+                      Site par défaut{" "}
+                      <span className="text-muted fw-normal">(si colonne "sites" absente)</span>
+                    </label>
+                    <select className="form-select" value={siteId} onChange={e => setSiteId(e.target.value)}>
+                      <option value="">-- Aucun --</option>
+                    </select>
+                  </div>
 
-                  {!showPeriod ? (
-                    <div className="col-md-12">
-                      <button 
-                        type="button"
-                        className="btn btn-sm btn-soft-secondary w-100 py-2"
-                        onClick={() => setShowPeriod(true)}
-                        style={{ borderRadius: 8 }}
-                      >
-                        <i className="ri-add-line me-1"></i>
-                        Ajouter une période de mission (Optionnel - pour Full Sync)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="col-md-12">
-                      <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                        <label className="form-label fw-bold fs-13 mb-2">
-                          <i className="ri-calendar-event-line me-1"></i> Période de Mission (Optionnel)
-                        </label>
-                        <div className="d-flex align-items-center gap-3">
-                          <select 
-                            className="form-select flex-grow-1" 
-                            value={periodId} 
-                            onChange={e => setPeriodId(e.target.value)}
-                          >
-                            <option value="">-- Optionnel (pour Full Sync uniquement) --</option>
-                            {periods.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="flex-shrink-0">
-                            <span className="badge bg-secondary px-3 py-2">Scope Temporel</span>
-                          </div>
-                        </div>
-                        <p className="text-muted fs-11 mt-2 mb-0">
-                          <i className="ri-information-line me-1"></i>
-                          <strong>Optionnel</strong> : Laissez vide pour l'import initial ou les corrections. 
-                          Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
-                        </p>
-                        <button 
-                          type="button"
-                          className="btn btn-xs btn-link text-muted mt-1 p-0 fs-11"
-                          onClick={() => setShowPeriod(false)}
+                  <div className="col-md-12">
+                    <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                      <label className="form-label fw-bold fs-13 mb-2">
+                        <i className="ri-calendar-event-line me-1"></i> Période de Mission (Optionnel)
+                      </label>
+                      <div className="d-flex align-items-center gap-3">
+                        <select 
+                          className="form-select flex-grow-1" 
+                          value={periodId} 
+                          onChange={e => setPeriodId(e.target.value)}
                         >
-                          <i className="ri-close-line me-1"></i>Masquer
-                        </button>
+                          <option value="">-- Optionnel (pour Full Sync uniquement) --</option>
+                          {periods.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex-shrink-0">
+                          <span className="badge bg-secondary px-3 py-2">Scope Temporel</span>
+                        </div>
                       </div>
+                      <p className="text-muted fs-11 mt-2 mb-0">
+                        <i className="ri-information-line me-1"></i>
+                        <strong>Optionnel</strong> : Laissez vide pour l'import initial ou les corrections. 
+                        Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
+                      </p>
                     </div>
-                  )}
+                  </div>
 
-                  {!showDefaultGroup ? (
-                    <div className="col-md-6">
-                      <button 
-                        type="button"
-                        className="btn btn-sm btn-soft-secondary w-100 py-2"
-                        onClick={() => setShowDefaultGroup(true)}
-                        style={{ borderRadius: 8 }}
-                      >
-                        <i className="ri-add-line me-1"></i>
-                        Ajouter un groupe par défaut (si colonne "group" absente)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="col-md-6">
-                      <label className="form-label fw-medium fs-13">
-                        Groupe par défaut{" "}
-                        <span className="text-muted fw-normal">(si colonne "group" absente)</span>
-                      </label>
-                      <select className="form-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
-                        <option value="">-- Aucun --</option>
-                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                      <button 
-                        type="button"
-                        className="btn btn-xs btn-link text-muted mt-1 p-0 fs-11"
-                        onClick={() => setShowDefaultGroup(false)}
-                      >
-                        <i className="ri-close-line me-1"></i>Masquer
-                      </button>
-                    </div>
-                  )}
-                */}
-                <div className="row g-3 mb-4">
+                  <div className="col-md-6">
+                    <label className="form-label fw-medium fs-13">
+                      Groupe par défaut{" "}
+                      <span className="text-muted fw-normal">(si colonne "group" absente)</span>
+                    </label>
+                    <select className="form-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
+                      <option value="">-- Aucun --</option>
+                      {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </div>
 
                   <div className="col-md-12">
                     <label className="form-label fw-medium fs-13">
-                      Instance GitLab {" "}
-                      
+                      Instance GitLab par défaut{" "}
+                      <span className="text-muted fw-normal">(recommandé si vous créez de nouveaux projets)</span>
                     </label>
                     <div className="input-group">
                       <span className="input-group-text bg-light"><i className="ri-git-merge-line"></i></span>
@@ -807,39 +732,25 @@ export default function DevelopersImportPage() {
                   </div>
                 </div>
 
-                {/* Toggle Dry-run / Mode création réelle */}
                 <div className="mb-3">
                   <EnterpriseToggle
-                    checked={!dryRun}
-                    onChange={() => setDryRun(v => !v)}
-                    labelOn="Mode création réelle — ACTIF"
-                    labelOff="Mode prévisualisation (Dry-run)"
-                    descOn="Les développeurs seront créés directement en base de données."
-                    descOff="Aucune donnée ne sera créée. Permet de vérifier le fichier avant import."
-                    colorOn="#059669"
+                    checked={dryRun}
+                    onChange={() => { setDryRun(v => !v); setShowResolutionStep(false); }}
+                    labelOn="Mode prévisualisation (dry run) — recommandé"
+                    labelOff="Mode création réelle"
+                    descOn="Détecte les conflits (sites/projets inconnus) sans créer de données — étape de résolution disponible"
+                    descOff="Crée réellement les développeurs en base de données"
+                    colorOn="#1D4ED8"
                   />
                 </div>
 
-                {/* Options avancées */}
-                <div className="mb-3">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-soft-secondary w-100 py-2"
-                    onClick={() => setShowAdvancedOptions(v => !v)}
-                    style={{ borderRadius: 8 }}
-                  >
-                    <i className={`ri-${showAdvancedOptions ? 'arrow-up' : 'settings-3'}-line me-1`}></i>
-                    {showAdvancedOptions ? 'Masquer' : 'Afficher'} les options avancées
-                  </button>
-                </div>
-
-                {showAdvancedOptions && (
+                {!dryRun && (
                   <>
                     <div className="d-flex align-items-center gap-2 my-3">
                       <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
                       <span className="text-muted fs-11 fw-semibold text-uppercase px-2"
                         style={{ letterSpacing: ".06em", whiteSpace: "nowrap" }}>
-                        Auto-création d'entités
+                        Options avancées
                       </span>
                       <hr className="flex-grow-1 m-0" style={{ borderColor: "#E2E8F0" }} />
                     </div>
@@ -848,7 +759,9 @@ export default function DevelopersImportPage() {
                       style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
                       <p className="fs-12 mb-0" style={{ color: "#1E40AF" }}>
                         <i className="ri-information-line me-1"></i>
-                        <strong>Recommandation :</strong> ces options sont pour les imports de confiance où vous êtes sûr que les
+                        <strong>Recommandation :</strong> utilisez d'abord le dry-run pour détecter
+                        les entités inconnues et les résoudre via l'étape de résolution.
+                        Ces options sont pour les imports de confiance où vous êtes sûr que les
                         noms correspondent exactement aux entités en base.
                       </p>
                     </div>
