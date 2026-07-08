@@ -4,7 +4,7 @@
  * SENIOR REFACTOR: Harmonized with Corporate/Velzon style.
  * Using standard card-animate, page-title-box, and brand colors.
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom";
 import developerService from "../services/developerService";
 import analyticsService from "../services/analyticsService";
@@ -552,25 +552,6 @@ export default function DeveloperProfilePage() {
   const [selectedLotId, setSelectedLotId] = useState(lotIdParam || "");
   const [periods, setPeriods] = useState([]);
   
-  // Use refs to avoid stale closure issues
-  const selectedPeriodIdRef = useRef(selectedPeriodId);
-  const selectedPidRef = useRef(selectedPid);
-  const selectedLotIdRef = useRef(selectedLotId);
-  
-  // Update refs when state changes
-  useEffect(() => {
-    selectedPeriodIdRef.current = selectedPeriodId;
-    console.log("selectedPeriodId changed:", selectedPeriodId);
-  }, [selectedPeriodId]);
-  
-  useEffect(() => {
-    selectedPidRef.current = selectedPid;
-  }, [selectedPid]);
-  
-  useEffect(() => {
-    selectedLotIdRef.current = selectedLotId;
-  }, [selectedLotId]);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [loadingHeatmap, setLoadingHeatmap] = useState(false);
@@ -674,27 +655,21 @@ export default function DeveloperProfilePage() {
     }
   }, [loading]);
 
-  const loadData = useCallback(async (periodIdOverride = null) => {
+  const loadData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
     
-    // Use override if provided, otherwise use ref
-    const currentPeriodId = periodIdOverride !== null ? periodIdOverride : selectedPeriodIdRef.current;
-    const currentPid = selectedPidRef.current;
-    const currentLotId = selectedLotIdRef.current;
-    
-    console.log("loadData called with periodIdOverride:", periodIdOverride, "currentPeriodId:", currentPeriodId);
     try {
       // 1. Fetch Core Developer Data
-      const devData = await developerService.getById(id, currentPeriodId);
+      const devData = await developerService.getById(id, selectedPeriodId);
       if (!devData) throw new Error("Développeur introuvable");
       setDeveloper(devData);
 
       // 2. Fetch Secondary Data (Non-blocking)
       const [heatData, timelineData, allPeriodsData] = await Promise.all([
         developerService.getHeatmap(id, heatmapMonths).catch(() => null),
-        developerService.getTimeline(id, currentPeriodId).catch((err) => {
+        developerService.getTimeline(id, selectedPeriodId).catch((err) => {
           console.error("Timeline fetch error:", err);
           // Return basic timeline with onboarding event if complex timeline fails
           return [{
@@ -742,10 +717,8 @@ export default function DeveloperProfilePage() {
 
       if (p_id) {
         // Mode Projet Spécifique - Use global periods like DevelopersHubPage
-        console.log("Fetching history with periodId:", currentPeriodId, "projectId:", p_id);
-        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: currentPeriodId }).catch(() => null);
+        const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: selectedPeriodId }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
-        console.log("History snapshots:", snaps, "length:", snaps.length);
 
         // Keep global periods (don't replace with project-specific snapshots)
         // This ensures consistency with DevelopersHubPage behavior
@@ -758,30 +731,25 @@ export default function DeveloperProfilePage() {
           setPeriods(projectPeriods);
         }
 
-        let targetPeriodId = currentPeriodId;
-        console.log("Before snapshot logic - targetPeriodId:", targetPeriodId, "currentPeriodId:", currentPeriodId);
+        let targetPeriodId = selectedPeriodId;
         
         // Find snapshot for selected period
         let snap = null;
-        if (targetPeriodId && !currentLotId && snaps && snaps.length > 0) {
+        if (targetPeriodId && !selectedLotId && snaps && snaps.length > 0) {
           snap = snaps.find(s => s.period_id === targetPeriodId);
-          console.log("Found snapshot in history:", snap);
         }
         
         // If no snapshot found in history, try getLatest with period_id
         if (!snap) {
-          console.log("No snapshot found, calling getLatest with periodId:", targetPeriodId);
-          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: currentLotId, periodId: targetPeriodId }).catch(() => null);
-          console.log("getLatest returned:", snap);
+          snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         }
         
-        console.log("Snapshot for period", targetPeriodId, ":", snap);
         setSnapshot(snap);
 
-        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: currentLotId, periodId: currentPeriodId }).catch(() => null);
+        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         setSummary(summ);
 
-        const currentIndex = snaps.findIndex(s => s.period_id === targetPeriodId);
+        const currentIndex = snaps.findIndex(s => s.period_id === selectedPeriodId);
         setPrevSnap(currentIndex > 0 ? snaps[currentIndex - 1] : null);
       }
     } catch (err) {
@@ -807,11 +775,10 @@ export default function DeveloperProfilePage() {
         setLoadingHistory(false);
       }
     }
-  }, [id, selectedPid, heatmapMonths, selectedLotId, selectedPeriodId]);
+  }, [id, selectedPid, selectedPeriodId, heatmapMonths, selectedLotId]);
 
   useEffect(() => { 
-    // Pass current selectedPeriodId directly to avoid closure issues
-    loadData(selectedPeriodId); 
+    loadData(); 
   }, [loadData, selectedPeriodId]);
 
   if (loading) return <LoadingSpinner fullPage text="Chargement du profil..." />;
