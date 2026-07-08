@@ -807,24 +807,20 @@ export default function DevelopersImportPage() {
                   </div>
                 </div>
 
-                {/* Toggle mode création réelle - toujours activé par défaut */}
+                {/* Toggle Dry-run / Mode création réelle */}
                 <div className="mb-3">
-                  <div className="p-3 rounded-3"
-                    style={{ background: "#DCFCE7", border: "1px solid #86EFAC" }}>
-                    <div className="d-flex align-items-center gap-2">
-                      <i className="ri-checkbox-circle-fill text-success fs-18"></i>
-                      <span className="fw-semibold fs-13" style={{ color: "#15803d" }}>
-                        Mode création réelle activé
-                      </span>
-                    </div>
-                    <p className="text-muted fs-12 mb-0 mt-1">
-                      Les développeurs seront créés directement en base de données.
-                    </p>
-                  </div>
+                  <EnterpriseToggle
+                    checked={!dryRun}
+                    onChange={() => setDryRun(v => !v)}
+                    labelOn="Mode création réelle — ACTIF"
+                    labelOff="Mode prévisualisation (Dry-run)"
+                    descOn="Les développeurs seront créés directement en base de données."
+                    descOff="Aucune donnée ne sera créée. Permet de vérifier le fichier avant import."
+                    colorOn="#059669"
+                  />
                 </div>
 
-                {/* Commenté pour simplifier l'UX - options avancées cachées */}
-                {/*
+                {/* Options avancées */}
                 <div className="mb-3">
                   <button
                     type="button"
@@ -917,7 +913,6 @@ export default function DevelopersImportPage() {
                     )}
                   </>
                 )}
-                */}
               </div>
             </div>
 
