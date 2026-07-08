@@ -884,7 +884,7 @@ def get_developer(
             period_date = period.start_date.date() if isinstance(period.start_date, datetime) else period.start_date
             
             # 1. Tentative de snapshot à la période demandée
-            with DeveloperContext(db, period.start_date):
+            with DeveloperContext(db, period_date):
                 response = _build_developer_response(db, developer)
             
             # 2. Logique de repli (Fallback) pour les Future Joiners
