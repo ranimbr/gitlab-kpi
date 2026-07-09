@@ -49,17 +49,17 @@ class Period(Base):
 
     @property
     def start_date(self):
-        """Retourne le premier jour du mois de la période avec heure 00:00:00."""
-        from datetime import datetime
-        return datetime(self.year, self.month, 1, 0, 0, 0)
+        """Retourne le premier jour du mois de la période."""
+        from datetime import date
+        return date(self.year, self.month, 1)
 
     @property
     def end_date(self):
-        """Retourne le dernier jour du mois de la période avec heure 23:59:59."""
-        from datetime import datetime
+        """Retourne le dernier jour du mois de la période."""
+        from datetime import date
         import calendar
         last_day = calendar.monthrange(self.year, self.month)[1]
-        return datetime(self.year, self.month, last_day, 23, 59, 59)
+        return date(self.year, self.month, last_day)
     # ──────────────────────────────────────────────────────────────────────────
 
     extraction_lots = relationship("ExtractionLot", back_populates="period", cascade="all, delete-orphan")
