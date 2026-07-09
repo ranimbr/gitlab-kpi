@@ -445,15 +445,16 @@ def list_developers(
             # même si le dev est OFFBOARDED aujourd'hui.
             dev._rh_status_override = "ACTIVE"
 
-    # ✅ FIX : Résolution de la période pour le calcul du statut RH
-    # Utilise resolve_period_dates_from_db pour garantir la cohérence des types datetime
+    # AJOUT SENIOR : Résolution de la période pour le calcul du statut RH
     start_period, end_period = None, None
     if period_id:
         try:
-            from app.utils.date_utils import resolve_period_dates_from_db
-            date_range = resolve_period_dates_from_db(db, period_id)
-            if date_range:
-                start_period, end_period = date_range
+            from app.repositories.period_repository import PeriodRepository
+            period = PeriodRepository().get_by_id(db, period_id)
+            if period:
+                start_period = date(period.year, period.month, 1)
+                last_day = calendar.monthrange(period.year, period.month)[1]
+                end_period = date(period.year, period.month, last_day)
         except Exception as e:
             logger.error(f"Error resolving period dates: {e}")
 
