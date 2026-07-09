@@ -661,8 +661,8 @@ export default function DeveloperProfilePage() {
     setError(null);
     
     try {
-      // 1. Fetch Core Developer Data (using profile endpoint without DeveloperContext)
-      const devData = await developerService.getProfile(id);
+      // 1. Fetch Core Developer Data
+      const devData = await developerService.getById(id, selectedPeriodId);
       if (!devData) throw new Error("Développeur introuvable");
       setDeveloper(devData);
 

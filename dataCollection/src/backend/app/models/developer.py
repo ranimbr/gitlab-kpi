@@ -183,13 +183,15 @@ class Developer(Base):
         """[SCD TYPE 2] Retourne les sites actifs pour la période sélectionnée."""
         ref_date = getattr(self, "_context_period_date", None)
         if ref_date:
-            if self.onboarding_date and ref_date < self.onboarding_date:
+            # Convertir ref_date en date pour comparaison avec onboarding_date (datetime.date)
+            ref_date_only = ref_date.date() if hasattr(ref_date, 'date') else ref_date
+            if self.onboarding_date and ref_date_only < self.onboarding_date:
                 return []
             
             return [
                 assoc for assoc in self.site_associations
-                if (assoc.start_date is None or assoc.start_date <= ref_date) and 
-                   (assoc.end_date is None or assoc.end_date >= ref_date)
+                if (assoc.start_date is None or assoc.start_date <= ref_date_only) and 
+                   (assoc.end_date is None or assoc.end_date >= ref_date_only)
             ]
 
         return [assoc for assoc in self.site_associations if assoc.is_active]
@@ -204,12 +206,14 @@ class Developer(Base):
         
         # 1. Recherche par date de contexte
         if ref_date:
+            # Convertir ref_date en date pour comparaison
+            ref_date_only = ref_date.date() if hasattr(ref_date, 'date') else ref_date
             # 🛡️ [ENTERPRISE GUARD] : Si on regarde AVANT l'arrivée, le site n'existe pas encore
-            if self.onboarding_date and ref_date < self.onboarding_date:
+            if self.onboarding_date and ref_date_only < self.onboarding_date:
                 return None
                 
             for assoc in self.site_associations:
-                if assoc.start_date and assoc.start_date <= ref_date and (assoc.end_date is None or assoc.end_date >= ref_date):
+                if assoc.start_date and assoc.start_date <= ref_date_only and (assoc.end_date is None or assoc.end_date >= ref_date_only):
                     return assoc.site_id
             
             return None
@@ -231,17 +235,19 @@ class Developer(Base):
         ref_date = getattr(self, "_context_period_date", None)
         
         if ref_date:
+            # Convertir ref_date en date pour comparaison
+            ref_date_only = ref_date.date() if hasattr(ref_date, 'date') else ref_date
             # 🛡️ [ENTERPRISE GUARD]
-            if self.onboarding_date and ref_date < self.onboarding_date:
+            if self.onboarding_date and ref_date_only < self.onboarding_date:
                 return None
 
             for assoc in self.site_associations:
-                if assoc.start_date and assoc.start_date <= ref_date and (assoc.end_date is None or assoc.end_date >= ref_date):
+                if assoc.start_date and assoc.start_date <= ref_date_only and (assoc.end_date is None or assoc.end_date >= ref_date_only):
                     if assoc.site:
                         return assoc.site.name
             
             # Fallback Enterprise : Dernier site connu après départ
-            if self.offboarding_date and ref_date > self.offboarding_date:
+            if self.offboarding_date and ref_date_only > self.offboarding_date:
                 for assoc in self.site_associations:
                     if assoc.start_date and assoc.start_date <= self.offboarding_date and (assoc.end_date is None or assoc.end_date >= self.offboarding_date):
                         if assoc.site:
@@ -283,7 +289,8 @@ class Developer(Base):
         Logique de cohérence temporelle (Sabbatical aware).
         """
         ref_date = getattr(self, "_context_period_date", None)
-        target_date = ref_date if ref_date else date.today()
+        # Convertir ref_date en date pour comparaison avec onboarding_date (datetime.date)
+        target_date = ref_date.date() if ref_date and hasattr(ref_date, 'date') else (ref_date if ref_date else date.today())
         
         # 1. Sortie / Offboarding (Départ définitif)
         if self.offboarding_date and self.offboarding_date < target_date:
@@ -300,12 +307,14 @@ class Developer(Base):
         # 4. Détection dynamique d'Inactivité (Sabbat / Sans affectation)
         # Un dev est actif s'il a une mission SITE + GROUPE à cette date
         if ref_date:
+            # Convertir ref_date en date pour comparaison
+            ref_date_only = ref_date.date() if hasattr(ref_date, 'date') else ref_date
             has_site = any(
-                s.start_date and s.start_date <= ref_date and (s.end_date is None or s.end_date >= ref_date)
+                s.start_date and s.start_date <= ref_date_only and (s.end_date is None or s.end_date >= ref_date_only)
                 for s in self.site_associations
             )
             has_group = any(
-                g.start_date and g.start_date <= ref_date and (g.end_date is None or g.end_date >= ref_date)
+                g.start_date and g.start_date <= ref_date_only and (g.end_date is None or g.end_date >= ref_date_only)
                 for g in self.group_links
             )
             
