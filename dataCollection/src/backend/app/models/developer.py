@@ -285,8 +285,13 @@ class Developer(Base):
         ref_date = getattr(self, "_context_period_date", None)
         target_date = ref_date if ref_date else date.today()
         
+        import logging
+        logger = logging.getLogger("app.models.developer")
+        logger.info(f"[RH_STATUS DEBUG] Developer {self.id} ({self.name}): ref_date={ref_date}, target_date={target_date}, onboarding={self.onboarding_date}, offboarding={self.offboarding_date}")
+        
         # 1. Sortie / Offboarding (Départ définitif)
         if self.offboarding_date and self.offboarding_date < target_date:
+            logger.info(f"[RH_STATUS DEBUG] Developer {self.id}: returning OUT (offboarding {self.offboarding_date} < target_date {target_date})")
             return "OUT"
 
         # 2. Futur / Onboarding (Non encore arrivé)

@@ -460,8 +460,12 @@ def list_developers(
 
     # ✅ [FIX] Apply context period date directly to each developer
     if period_id and start_period:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[PERIOD DEBUG] Applying context date {start_period} to {len(devs)} developers for period_id={period_id}")
         for d in devs:
             d._context_period_date = start_period
+            logger.info(f"[PERIOD DEBUG] Developer {d.id} ({d.name}): _context_period_date={getattr(d, '_context_period_date', None)}")
 
     # ✅ [SENIOR] FIX 2 : Batch pre-fetching ultra-sécurisé
     site_ids = set()
