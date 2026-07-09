@@ -885,19 +885,18 @@ def get_developer(
         raise HTTPException(status_code=404, detail="Développeur introuvable.")
 
     if period_id:
-        from app.utils.date_utils import resolve_period_dates_from_db
-        date_range = resolve_period_dates_from_db(db, period_id)
-        if date_range:
+        from app.models.period import Period
+        period = db.query(Period).filter(Period.id == period_id).first()
+        if period:
             from app.models.developer import DeveloperContext
-            start_dt, _ = date_range
             # 1. Tentative de snapshot à la période demandée
-            with DeveloperContext(db, start_dt):
+            with DeveloperContext(db, period.start_date):
                 response = _build_developer_response(db, developer)
             
             # 2. Logique de repli (Fallback) pour les Future Joiners
             # Si aucune affectation n'est trouvée ET que le dev commence plus tard
             has_assignments = (len(response.group_ids) > 0 or len(response.projects) > 0)
-            is_future_joiner = (developer.onboarding_date and developer.onboarding_date > start_dt)
+            is_future_joiner = (developer.onboarding_date and developer.onboarding_date > period.start_date)
             
             if not has_assignments and is_future_joiner:
                 # Retourne la Master View (données futures)
