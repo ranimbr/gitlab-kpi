@@ -452,17 +452,11 @@ def list_developers(
             from app.repositories.period_repository import PeriodRepository
             period = PeriodRepository().get_by_id(db, period_id)
             if period:
-                start_period = period.start_date
-                end_period = period.end_date
+                start_period = date(period.year, period.month, 1)
+                last_day = calendar.monthrange(period.year, period.month)[1]
+                end_period = date(period.year, period.month, last_day)
         except Exception as e:
             logger.error(f"Error resolving period dates: {e}")
-
-    # ✅ [FIX] Apply DeveloperContext for proper historical RH status calculation
-    context_manager = None
-    if period_id and start_period:
-        from app.models.developer import DeveloperContext
-        context_manager = DeveloperContext(db, start_period)
-        context_manager.__enter__()
 
     # ✅ [SENIOR] FIX 2 : Batch pre-fetching ultra-sécurisé
     site_ids = set()
@@ -499,14 +493,9 @@ def list_developers(
         for sa in d.site_associations:
             is_visible = True
             if start_period and end_period:
-                # Convert datetime to date for comparison
-                from datetime import datetime
-                sa_end_date = sa.end_date.date() if isinstance(sa.end_date, datetime) else sa.end_date
-                sa_start_date = sa.start_date.date() if isinstance(sa.start_date, datetime) else sa.start_date
-                
-                if sa_end_date and sa_end_date < start_period:
+                if sa.end_date and sa.end_date < start_period:
                     is_visible = False
-                if sa_start_date and sa_start_date > end_period:
+                if sa.start_date and sa.start_date > end_period:
                     is_visible = False
             
             if is_visible:
@@ -530,14 +519,9 @@ def list_developers(
         for gl in d.group_links:
             is_visible = True
             if start_period and end_period:
-                # Convert datetime to date for comparison
-                from datetime import datetime
-                gl_end_date = gl.end_date.date() if isinstance(gl.end_date, datetime) else gl.end_date
-                gl_start_date = gl.start_date.date() if isinstance(gl.start_date, datetime) else gl.start_date
-                
-                if gl_end_date and gl_end_date < start_period:
+                if gl.end_date and gl.end_date < start_period:
                     is_visible = False
-                if gl_start_date and gl_start_date > end_period:
+                if gl.start_date and gl.start_date > end_period:
                     is_visible = False
             
             if is_visible:
@@ -554,14 +538,9 @@ def list_developers(
                         continue
                     
                     # SCD Type 2 (period_id is None) : vérifier le chevauchement des dates
-                    # Convert datetime to date for comparison
-                    from datetime import datetime
-                    pa_start_date = pa.start_date.date() if isinstance(pa.start_date, datetime) else pa.start_date
-                    pa_end_date = pa.end_date.date() if isinstance(pa.end_date, datetime) else pa.end_date
-                    
-                    if end_period and pa_start_date and pa_start_date > end_period:
+                    if end_period and pa.start_date and pa.start_date > end_period:
                         continue # Projet commencé APRES la fin de cette période
-                    if start_period and pa_end_date and pa_end_date < start_period:
+                    if start_period and pa.end_date and pa.end_date < start_period:
                         continue # Projet terminé AVANT le début de cette période
             
             # Dé-duplication post-filtrage
@@ -600,16 +579,12 @@ def list_developers(
                 current_status = "OUT"
             else:
                 # Vérifier s'ils ont une mission site + groupe active durant cette période
-                # Convert datetime to date for comparison
-                from datetime import datetime
                 has_site = any(
-                    (sa.start_date.date() if isinstance(sa.start_date, datetime) else sa.start_date) <= end_period and 
-                    (sa.end_date is None or (sa.end_date.date() if isinstance(sa.end_date, datetime) else sa.end_date) >= start_period)
+                    sa.start_date and sa.start_date <= end_period and (sa.end_date is None or sa.end_date >= start_period)
                     for sa in d.site_associations
                 )
                 has_group = any(
-                    (gl.start_date.date() if isinstance(gl.start_date, datetime) else gl.start_date) <= end_period and 
-                    (gl.end_date is None or (gl.end_date.date() if isinstance(gl.end_date, datetime) else gl.end_date) >= start_period)
+                    gl.start_date and gl.start_date <= end_period and (gl.end_date is None or gl.end_date >= start_period)
                     for gl in d.group_links
                 )
                 
@@ -641,11 +616,6 @@ def list_developers(
         ))
 
     import math
-    
-    # ✅ [FIX] Cleanup DeveloperContext
-    if context_manager:
-        context_manager.__exit__(None, None, None)
-    
     return {
         "items": results,
         "total": total,
@@ -905,7 +875,6 @@ def get_developer(
         period = db.query(Period).filter(Period.id == period_id).first()
         if period:
             from app.models.developer import DeveloperContext
-            
             # 1. Tentative de snapshot à la période demandée
             with DeveloperContext(db, period.start_date):
                 response = _build_developer_response(db, developer)
@@ -962,7 +931,7 @@ def get_developer_timeline(
         # Use onboarding_date if available, otherwise created_at
         onboarding_date = developer.onboarding_date or developer.created_at.date()
         # Convert date to datetime if necessary for proper sorting
-        from datetime import datetime, time, date, timedelta
+        from datetime import datetime, time
         import pytz
         
         if isinstance(onboarding_date, datetime):
@@ -977,25 +946,6 @@ def get_developer_timeline(
             icon="ri-user-add-line",
             color="success"
         ))
-        
-        # ✅ [FIX] Ajouter un événement explicite pour la création de développeur
-        # Vérifier s'il y a un log de création dans AuditLog
-        from app.models.audit_log import AuditLog
-        create_log = db.query(AuditLog).filter(
-            AuditLog.entity_type == "Developer",
-            AuditLog.entity_id == developer_id,
-            AuditLog.action == "CREATE_DEVELOPER"
-        ).first()
-        
-        if create_log:
-            events.append(TimelineEvent(
-                date=create_log.created_at,
-                title="Ajout nouveau développeur",
-                description="Profil créé via l'interface d'administration",
-                icon="ri-user-add-line",
-                color="success",
-                details={"created_by": create_log.user_id}
-            ))
 
         # 2. Fetch Mission Assignments (RH Presence - Focus on Mission Presence)
         # ─────────────────────────────────────────────────────────────────────────
@@ -1011,13 +961,14 @@ def get_developer_timeline(
         
         # Get all mission assignments for this developer
         try:
-            # Get ALL project assignments regardless of current active status
+            # Get ALL active project assignments regardless of period
             project_assignments = db.query(
                 DeveloperProject,
                 Project.name
             ).join(Project, Project.id == DeveloperProject.project_id)\
              .filter(
-                 DeveloperProject.developer_id == developer_id
+                 DeveloperProject.developer_id == developer_id,
+                 DeveloperProject.is_active == True
              ).all()
             
             # Build projects_map: (year, month) -> list of project names
@@ -1030,9 +981,7 @@ def get_developer_timeline(
                 # Get all periods this assignment covers
                 period_query = db.query(Period).filter(
                     Period.year >= start_date.year,
-                    Period.year <= end_date.year,
-                    (Period.year > start_date.year) | (Period.month >= start_date.month),
-                    (Period.year < end_date.year) | (Period.month <= end_date.month)
+                    (Period.year < end_date.year) | ((Period.year == end_date.year) & (Period.month <= end_date.month))
                 )
                 
                 periods = period_query.all()
@@ -1116,11 +1065,6 @@ def get_developer_timeline(
                     # Reload developer with context date
                     db.refresh(developer)
                     status = developer.rh_status
-                    site_name = developer.primary_site_name
-                    active_groups = [
-                        link.group.name for link in developer.group_links 
-                        if link.group and link.start_date and link.start_date <= month_date and (link.end_date is None or link.end_date >= month_date)
-                    ]
                 
                 # Restore original context state to avoid affecting KPI queries
                 developer._context_period_date = original_context
@@ -1132,74 +1076,33 @@ def get_developer_timeline(
                     month_name = f"{MOIS_FR.get(m, 'Mois')} {y}"
                     proj_list = ", ".join(project_names)
                     
-                    desc_parts = [f"Affectation RH : {proj_list}"]
-                    meta_parts = []
-                    if site_name:
-                        meta_parts.append(site_name)
-                    if active_groups:
-                        meta_parts.append(", ".join(active_groups))
-                    
-                    if meta_parts:
-                        desc_parts.append(f" ({' · '.join(meta_parts)})")
-                        
                     events.append(TimelineEvent(
                         date=dt,
                         title=f"Mission : {month_name}",
-                        description="".join(desc_parts),
+                        description=f"Affectation RH : {proj_list}",
                         icon="ri-briefcase-line",
-                        color="success",
+                        color="primary",
                         is_mission=True
                     ))
-                elif status in ("INACTIVE", "OUT", "FUTURE"):
-                    # Developer was inactive/offboarded/future during this month
+                elif status == "INACTIVE":
+                    # Developer was inactive (suspended/sabbatical) during this month
                     dt = datetime(y, m, 1, tzinfo=pytz.UTC)
                     month_name = f"{MOIS_FR.get(m, 'Mois')} {y}"
                     
-                    if status == "OUT":
-                        title_prefix = "Archivage"
-                        desc = "Développeur hors effectif (Départ définitif / Archivé)"
-                        icon = "ri-archive-line"
-                        color = "danger"
-                        badge_name = "ARCHIVAGE"
-                    elif status == "FUTURE":
-                        title_prefix = "Recrutement"
-                        desc = "Profil créé mais date d'intégration future"
-                        icon = "ri-time-line"
-                        color = "info"
-                        badge_name = "PLANIFIÉ"
-                    else:
-                        title_prefix = "Inactivité"
-                        desc = "Développeur sans affectation active (Sabbat/Suspension)"
-                        icon = "ri-user-unfollow-line"
-                        color = "warning"
-                        badge_name = "INACTIVITÉ"
-                        
                     events.append(TimelineEvent(
                         date=dt,
-                        title=f"{title_prefix} : {month_name}",
-                        description=desc,
-                        icon=icon,
-                        color=color,
-                        is_mission=True,
-                        badge=badge_name
+                        title=f"Inactivité : {month_name}",
+                        description="Développeur sans affectation active (Sabbat/Suspension)",
+                        icon="ri-user-unfollow-line",
+                        color="warning"
                     ))
 
         # 3. Process AuditLog for other events (mutations, corrections, etc.)
         # Note: logs already fetched above for suspension detection
-        
-        # ✅ [DEBUG] Log pour comprendre pourquoi les mutations ne s'affichent pas
-        print(f"[TIMELINE DEBUG] Processing {len(logs)} audit logs for developer {developer_id}")
-        if period_id:
-            print(f"[TIMELINE DEBUG] Filtered by period_id: {period_id}")
 
         for log in logs:
             old_val = log.old_value or {}
             new_val = log.new_value or {}
-            
-            # ✅ [DEBUG] Log chaque action pour voir ce qui est traité
-            print(f"[TIMELINE DEBUG] Processing log action={log.action}, created_at={log.created_at}")
-            print(f"[TIMELINE DEBUG]   old_val keys: {list(old_val.keys())}")
-            print(f"[TIMELINE DEBUG]   new_val keys: {list(new_val.keys())}")
             
             # Determine human readable titles based on Senior Enterprise patterns
             if log.action == "DEV_DEACTIVATED_VIA_SYNC":
@@ -1213,34 +1116,14 @@ def get_developer_timeline(
                     details=new_val
                 ))
             elif log.action == "UPDATE_DEVELOPER":
-                mutation_date = new_val.get("mutation_date")
-                
                 # ✅ [INTELLIGENT] Détecte mutations (Case B) vs corrections (Case A)
-                site_changes = _detect_changes(old_val, new_val, "sites", "site_id")
-                group_changes = _detect_changes(old_val, new_val, "group_ids", "group_id")
-                project_changes = _detect_changes(old_val, new_val, "projects", "project_id")
-                
-                # ✅ [FALLBACK] Pour les anciens logs n'ayant pas les listes détaillées sites/groups/projects
-                changed_associations = new_val.get("_changed_associations", [])
-                if not site_changes and "sites" in changed_associations:
-                    site_changes = ["Modification des affectations de site"]
-                if not group_changes and "groups" in changed_associations:
-                    group_changes = ["Modification des affectations d'équipe"]
-                if not project_changes and "projects" in changed_associations:
-                    project_changes = ["Modification des affectations de projet"]
-                
-                is_mutation = mutation_date is not None or bool(site_changes or group_changes or project_changes)
+                mutation_date = new_val.get("mutation_date")
+                is_mutation = mutation_date is not None
                 
                 # Reactivation
                 if old_val.get("is_active") is False and new_val.get("is_active") is True:
-                    eff_date = log.created_at
-                    if mutation_date:
-                        try:
-                            eff_date = datetime.combine(date.fromisoformat(mutation_date), time.min).replace(tzinfo=pytz.UTC) if isinstance(mutation_date, str) else mutation_date
-                        except Exception:
-                            pass
                     events.append(TimelineEvent(
-                        date=eff_date,
+                        date=log.created_at,
                         title="Réactivation du profil",
                         description="Retour dans l'effectif actif détecté (Synchronisation).",
                         icon="ri-user-follow-line",
@@ -1251,14 +1134,8 @@ def get_developer_timeline(
                 # Deactivation
                 elif old_val.get("is_active") is True and new_val.get("is_active") is False:
                     reason = new_val.get("reason") or "Désactivation manuelle ou administrative"
-                    eff_date = log.created_at
-                    if mutation_date:
-                        try:
-                            eff_date = datetime.combine(date.fromisoformat(mutation_date), time.min).replace(tzinfo=pytz.UTC) if isinstance(mutation_date, str) else mutation_date
-                        except Exception:
-                            pass
                     events.append(TimelineEvent(
-                        date=eff_date,
+                        date=log.created_at,
                         title="Désactivation (Offboarding)",
                         description=f"Profil désactivé : {reason}",
                         icon="ri-user-unfollow-line",
@@ -1266,135 +1143,65 @@ def get_developer_timeline(
                         details=new_val
                     ))
                 
-                # Mutation
-                elif is_mutation and (mutation_date is not None or (site_changes or group_changes or project_changes)):
-                    # Determine effective date of the mutation dynamically
-                    eff_date = None
-                    if mutation_date:
-                        try:
-                            eff_date = date.fromisoformat(mutation_date) if isinstance(mutation_date, str) else mutation_date
-                        except Exception:
-                            pass
-                            
-                    # Find matched associations created at the same time to get precise start_date and sites/groups names
-                    matched_sites = []
-                    matched_groups = []
-                    matched_projects = []
+                # ✅ [INTELLIGENT] Détecte mutations historiques (Case B)
+                elif is_mutation:
+                    site_changes = _detect_changes(old_val, new_val, "sites", "site_id")
+                    group_changes = _detect_changes(old_val, new_val, "group_ids", "group_id")
+                    project_changes = _detect_changes(old_val, new_val, "projects", "project_id")
                     
-                    for assoc in developer.site_associations:
-                        if assoc.created_at and abs((assoc.created_at - log.created_at).total_seconds()) < 10:
-                            matched_sites.append(assoc)
-                            if not eff_date:
-                                eff_date = assoc.start_date
-                                
-                    for link in developer.group_links:
-                        if link.created_at and abs((link.created_at - log.created_at).total_seconds()) < 10:
-                            matched_groups.append(link)
-                            if not eff_date:
-                                eff_date = link.start_date
-                                
-                    for assoc in developer.project_associations:
-                        if assoc.created_at and abs((assoc.created_at - log.created_at).total_seconds()) < 10:
-                            matched_projects.append(assoc)
-                            if not eff_date:
-                                eff_date = assoc.start_date
-                                
-                    # Construct description parts dynamically based on matched database records
-                    desc_parts = []
-                    if matched_sites:
-                        for ms in matched_sites:
-                            prev_site_name = None
-                            if ms.start_date:
-                                for prev in developer.site_associations:
-                                    if prev.end_date and prev.end_date == ms.start_date - timedelta(days=1):
-                                        if prev.site:
-                                            prev_site_name = prev.site.name
-                                            break
-                            site_name_new = ms.site.name if ms.site else "Nouveau site"
-                            if prev_site_name:
-                                desc_parts.append(f"Mutation de site : {prev_site_name} ➔ {site_name_new}")
-                            else:
-                                desc_parts.append(f"Mutation de site : {site_name_new}")
-                    elif site_changes:
-                        desc_parts.append(f"Mutation de site : {', '.join(site_changes)}")
+                    if site_changes or group_changes or project_changes:
+                        desc_parts = []
+                        if site_changes:
+                            desc_parts.append(f"Mutation de site : {', '.join(site_changes)}")
+                        if group_changes:
+                            desc_parts.append(f"Mutation d'équipe : {', '.join(group_changes)}")
+                        if project_changes:
+                            desc_parts.append(f"Mutation de projet : {', '.join(project_changes)}")
                         
-                    if matched_groups:
-                        for mg in matched_groups:
-                            prev_group_name = None
-                            if mg.start_date:
-                                for prev in developer.group_links:
-                                    if prev.end_date and prev.end_date == mg.start_date - timedelta(days=1):
-                                        if prev.group:
-                                            prev_group_name = prev.group.name
-                                            break
-                            group_name_new = mg.group.name if mg.group else "Nouvelle équipe"
-                            if prev_group_name:
-                                desc_parts.append(f"Mutation d'équipe : {prev_group_name} ➔ {group_name_new}")
-                            else:
-                                desc_parts.append(f"Mutation d'équipe : {group_name_new}")
-                    elif group_changes:
-                        desc_parts.append(f"Mutation d'équipe : {', '.join(group_changes)}")
-                        
-                    if matched_projects:
-                        for mp in matched_projects:
-                            proj_name_new = mp.project.name if mp.project else "Nouveau projet"
-                            desc_parts.append(f"Mutation de projet : Affectation au projet {proj_name_new}")
-                    elif project_changes:
-                        desc_parts.append(f"Mutation de projet : {', '.join(project_changes)}")
-                        
-                    # Set the event date to the effective date if resolved
-                    if eff_date:
-                        if isinstance(eff_date, datetime):
-                            event_dt = eff_date
-                        else:
-                            event_dt = datetime.combine(eff_date, time.min).replace(tzinfo=pytz.UTC)
+                        events.append(TimelineEvent(
+                            date=log.created_at,
+                            title="Mutation historique (SCD Type 2)",
+                            description=f"Changement d'affectation à date d'effet : {mutation_date}. {' '.join(desc_parts)}",
+                            icon="ri-arrow-right-line",
+                            color="primary",
+                            details=new_val
+                        ))
                     else:
-                        event_dt = log.created_at
-                        
-                    events.append(TimelineEvent(
-                        date=event_dt,
-                        title="Mutation d'affectation",
-                        description=" / ".join(desc_parts) if desc_parts else "Changement d'affectation détecté.",
-                        icon="ri-arrow-right-line",
-                        color="primary",
-                        details=new_val
-                    ))
+                        # Mutation sans changement d'affectation
+                        events.append(TimelineEvent(
+                            date=log.created_at,
+                            title="Mutation historique (SCD Type 2)",
+                            description=f"Mutation à date d'effet : {mutation_date} (sans changement d'affectation)",
+                            icon="ri-arrow-right-line",
+                            color="primary",
+                            details=new_val
+                        ))
                 
-                # Correction
-                elif not is_mutation and (site_changes or group_changes or project_changes):
-                    desc_parts = []
-                    if site_changes:
-                        desc_parts.append(f"Correction de site : {', '.join(site_changes)}")
-                    if group_changes:
-                        desc_parts.append(f"Correction d'équipe : {', '.join(group_changes)}")
-                    if project_changes:
-                        desc_parts.append(f"Correction de projet : {', '.join(project_changes)}")
+                # ✅ [INTELLIGENT] Détecte corrections rétroactives (Case A)
+                elif not is_mutation:
+                    site_changes = _detect_changes(old_val, new_val, "sites", "site_id")
+                    group_changes = _detect_changes(old_val, new_val, "group_ids", "group_id")
+                    project_changes = _detect_changes(old_val, new_val, "projects", "project_id")
                     
-                    events.append(TimelineEvent(
-                        date=log.created_at,
-                        title="Correction rétroactive",
-                        description=f"{' '.join(desc_parts)} (Correction sans date d'effet)",
-                        icon="ri-edit-line",
-                        color="warning",
-                        details=new_val
-                    ))
+                    if site_changes or group_changes or project_changes:
+                        desc_parts = []
+                        if site_changes:
+                            desc_parts.append(f"Correction de site : {', '.join(site_changes)}")
+                        if group_changes:
+                            desc_parts.append(f"Correction d'équipe : {', '.join(group_changes)}")
+                        if project_changes:
+                            desc_parts.append(f"Correction de projet : {', '.join(project_changes)}")
+                        
+                        # Skip retroactive corrections - they are not useful in the timeline
+                        continue
                 
-                # Mise à jour administrative / Autre
+                # Mobility / Data Change
                 else:
-                    changes_desc = []
-                    if "onboarding_date" in new_val and old_val.get("onboarding_date") != new_val["onboarding_date"]:
-                        changes_desc.append(f"Date d'entrée modifiée : {new_val['onboarding_date']}")
-                    if "offboarding_date" in new_val and old_val.get("offboarding_date") != new_val["offboarding_date"]:
-                        changes_desc.append(f"Date de départ modifiée : {new_val['offboarding_date']}")
-                    
-                    description = "Modification des métadonnées RH (Site, Groupe ou Identité)."
-                    if changes_desc:
-                        description = " · ".join(changes_desc)
-                        
+                    # Check for specific changes like Site/Group if possible, or just generic update
                     events.append(TimelineEvent(
                         date=log.created_at,
                         title="Mise à jour administrative",
-                        description=description,
+                        description="Modification des métadonnées RH (Site, Groupe ou Identité).",
                         icon="ri-edit-line",
                         color="info",
                         details=new_val
@@ -1407,58 +1214,6 @@ def get_developer_timeline(
                     icon="ri-merge-cells-horizontal-line",
                     color="warning"
                 ))
-
-        # 4. Post-processing to assign badges and override monthly mission badges/colors
-        # First assign badges to specific audit events
-        for ev in events:
-            if ev.is_mission:
-                continue
-            if ev.title == "Mutation d'affectation":
-                ev.badge = "MUTATION"
-            elif ev.title in ("Désactivation automatique (Sync)", "Désactivation (Offboarding)"):
-                ev.badge = "DÉSACTIVATION"
-            elif ev.title == "Réactivation du profil":
-                ev.badge = "RÉACTIVATION"
-            elif ev.title == "Correction rétroactive":
-                ev.badge = "CORRECTION"
-            elif ev.title == "Onboarding":
-                ev.badge = "ACTIVATION"
-            elif ev.title == "Ajout nouveau développeur":
-                ev.badge = "CREATION"
-            elif ev.title == "Fusion de profil (Dédoublonnage)":
-                ev.badge = "FUSION"
-
-        # Now override monthly missions
-        month_overrides = {}
-        PRIORITIES = {
-            "DÉSACTIVATION": 5,
-            "MUTATION": 4,
-            "RÉACTIVATION": 3,
-            "CORRECTION": 2,
-            "ACTIVATION": 1
-        }
-        for ev in events:
-            if ev.is_mission or not ev.badge:
-                continue
-            badge_name = ev.badge
-            if badge_name in PRIORITIES:
-                y, m = ev.date.year, ev.date.month
-                key = (y, m)
-                existing = month_overrides.get(key)
-                if not existing or PRIORITIES[badge_name] > PRIORITIES[existing[0]]:
-                    month_overrides[key] = (badge_name, ev.color)
-
-        for ev in events:
-            if ev.is_mission:
-                y, m = ev.date.year, ev.date.month
-                override = month_overrides.get((y, m))
-                if override:
-                    ev.badge = override[0]
-                    ev.color = override[1]
-                else:
-                    if not ev.badge:
-                        ev.badge = "AFFECTATION RH"
-                        ev.color = "success"
 
         # Sort descending
         events.sort(key=lambda x: x.date, reverse=True)

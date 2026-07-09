@@ -149,11 +149,6 @@ class Developer(Base):
         """
         ref_date = getattr(self, "_context_period_date", None)
         
-        # Convert ref_date to date if it's a datetime for proper comparison
-        from datetime import datetime
-        if ref_date and isinstance(ref_date, datetime):
-            ref_date = ref_date.date()
-        
         # 1. Recherche à une date précise (Historique exact)
         if ref_date:
             return [
@@ -207,11 +202,6 @@ class Developer(Base):
         """
         ref_date = getattr(self, "_context_period_date", None)
         
-        # Convert ref_date to date if it's a datetime for proper comparison
-        from datetime import datetime
-        if ref_date and isinstance(ref_date, datetime):
-            ref_date = ref_date.date()
-        
         # 1. Recherche par date de contexte
         if ref_date:
             # 🛡️ [ENTERPRISE GUARD] : Si on regarde AVANT l'arrivée, le site n'existe pas encore
@@ -239,11 +229,6 @@ class Developer(Base):
         Fallback 'Last Known State' intelligent.
         """
         ref_date = getattr(self, "_context_period_date", None)
-        
-        # Convert ref_date to date if it's a datetime for proper comparison
-        from datetime import datetime
-        if ref_date and isinstance(ref_date, datetime):
-            ref_date = ref_date.date()
         
         if ref_date:
             # 🛡️ [ENTERPRISE GUARD]
