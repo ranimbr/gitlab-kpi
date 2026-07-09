@@ -76,7 +76,7 @@ const analyticsService = {
    */
   getHistory: async (
     projectId,
-    { siteId, groupId, developerId, startDate, endDate, periodId } = {}
+    { siteId, groupId, developerId, startDate, endDate } = {}
   ) => {
     const params = buildParams({
       site_id:      siteId,
@@ -84,7 +84,6 @@ const analyticsService = {
       developer_id: developerId,
       start_date:   startDate,
       end_date:     endDate,
-      period_id:    periodId,
     });
     const { data } = await api.get(`/analytics/${projectId}/history`, { params }).catch(err => {
       console.error("Analytics history fetch error:", err);
@@ -351,9 +350,9 @@ const analyticsService = {
    * ]
    */
   getDoraMetrics: async (projectId, periodId = null) => {
-    // DISABLED: DORA Metrics removed from backend
-    console.warn("getDoraMetrics is disabled - DORA Metrics removed from backend");
-    return [];
+    const params = buildParams({ project_id: projectId, period_id: periodId });
+    const { data } = await api.get("/kpis/dora", { params });
+    return data;
   },
 
   /**
