@@ -458,12 +458,10 @@ def list_developers(
         except Exception as e:
             logger.error(f"Error resolving period dates: {e}")
 
-    # ✅ [FIX] Apply DeveloperContext for proper historical RH status calculation
-    context_manager = None
+    # ✅ [FIX] Apply context period date directly to each developer
     if period_id and start_period:
-        from app.models.developer import DeveloperContext
-        context_manager = DeveloperContext(db, start_period)
-        context_manager.__enter__()
+        for d in devs:
+            d._context_period_date = start_period
 
     # ✅ [SENIOR] FIX 2 : Batch pre-fetching ultra-sécurisé
     site_ids = set()
@@ -600,10 +598,6 @@ def list_developers(
             sites=visible_sites,
             projects=official_projects
         ))
-
-    # ✅ [FIX] Cleanup DeveloperContext
-    if context_manager:
-        context_manager.__exit__(None, None, None)
 
     import math
     return {
