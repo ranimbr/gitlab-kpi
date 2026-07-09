@@ -37,6 +37,10 @@ const developerService = {
     return api.get(`/developers/${id}`, { params }).then(r => r.data);
   },
 
+  getProfile: (id) => {
+    return api.get(`/developers/${id}/profile`).then(r => r.data);
+  },
+
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
   create:   (data) => api.post("/developers",      data).then(r => r.data),
