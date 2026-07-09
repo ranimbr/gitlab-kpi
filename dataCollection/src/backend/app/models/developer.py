@@ -169,11 +169,6 @@ class Developer(Base):
         """[SCD TYPE 2] Retourne les projets actifs pour la période sélectionnée."""
         ref_date = getattr(self, "_context_period_date", None)
         if ref_date:
-            # Convert ref_date to date if it's a datetime for proper comparison
-            from datetime import datetime
-            if isinstance(ref_date, datetime):
-                ref_date = ref_date.date()
-            
             # 1. Si on regarde AVANT l'arrivée, on ne renvoie rien
             if self.onboarding_date and ref_date < self.onboarding_date:
                 return []
@@ -193,11 +188,6 @@ class Developer(Base):
         """[SCD TYPE 2] Retourne les sites actifs pour la période sélectionnée."""
         ref_date = getattr(self, "_context_period_date", None)
         if ref_date:
-            # Convert ref_date to date if it's a datetime for proper comparison
-            from datetime import datetime
-            if isinstance(ref_date, datetime):
-                ref_date = ref_date.date()
-            
             if self.onboarding_date and ref_date < self.onboarding_date:
                 return []
             
@@ -309,15 +299,6 @@ class Developer(Base):
         """
         ref_date = getattr(self, "_context_period_date", None)
         target_date = ref_date if ref_date else date.today()
-        
-        # Convert target_date to date if it's a datetime for proper comparison
-        from datetime import datetime
-        if isinstance(target_date, datetime):
-            target_date = target_date.date()
-        
-        # Convert ref_date to date if it's a datetime for proper comparison
-        if ref_date and isinstance(ref_date, datetime):
-            ref_date = ref_date.date()
         
         # 1. Sortie / Offboarding (Départ définitif)
         if self.offboarding_date and self.offboarding_date < target_date:
