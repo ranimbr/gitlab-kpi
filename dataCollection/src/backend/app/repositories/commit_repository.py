@@ -77,14 +77,18 @@ class CommitRepository(BaseRepository[Commit]):
         ✅ SENIOR : Récupération fédérée par période.
         Permet de voir tous les commits d'un mois (ou d'un projet spécifique ce mois-là)
         en filtrant par authored_date pour cohérence avec les KPIs.
-        """
-        from app.models.period import Period
-        from app.models.extraction_lot import ExtractionLot
         
-        # Get period dates
-        period = db.query(Period).filter(Period.id == period_id).first()
-        if not period:
+        ✅ FIX : Utilise resolve_period_dates_from_db pour garantir la cohérence
+        des types datetime (DateTime vs date) et éviter les problèmes de timezone.
+        """
+        from app.utils.date_utils import resolve_period_dates_from_db
+        
+        # Get period dates with proper datetime types
+        date_range = resolve_period_dates_from_db(db, period_id)
+        if not date_range:
             return []
+        
+        start_dt, end_dt = date_range
         
         query = (
             db.query(Commit)
@@ -95,8 +99,8 @@ class CommitRepository(BaseRepository[Commit]):
                 .joinedload(DeveloperSite.site)
             )
             .filter(
-                Commit.authored_date >= period.start_date,
-                Commit.authored_date <= period.end_date,
+                Commit.authored_date >= start_dt,
+                Commit.authored_date <= end_dt,
                 Developer.is_validated == True,
                 Developer.is_bot == False
             )
