@@ -499,9 +499,14 @@ def list_developers(
         for sa in d.site_associations:
             is_visible = True
             if start_period and end_period:
-                if sa.end_date and sa.end_date < start_period:
+                # Convert datetime to date for comparison
+                from datetime import datetime
+                sa_end_date = sa.end_date.date() if isinstance(sa.end_date, datetime) else sa.end_date
+                sa_start_date = sa.start_date.date() if isinstance(sa.start_date, datetime) else sa.start_date
+                
+                if sa_end_date and sa_end_date < start_period:
                     is_visible = False
-                if sa.start_date and sa.start_date > end_period:
+                if sa_start_date and sa_start_date > end_period:
                     is_visible = False
             
             if is_visible:
@@ -525,9 +530,14 @@ def list_developers(
         for gl in d.group_links:
             is_visible = True
             if start_period and end_period:
-                if gl.end_date and gl.end_date < start_period:
+                # Convert datetime to date for comparison
+                from datetime import datetime
+                gl_end_date = gl.end_date.date() if isinstance(gl.end_date, datetime) else gl.end_date
+                gl_start_date = gl.start_date.date() if isinstance(gl.start_date, datetime) else gl.start_date
+                
+                if gl_end_date and gl_end_date < start_period:
                     is_visible = False
-                if gl.start_date and gl.start_date > end_period:
+                if gl_start_date and gl_start_date > end_period:
                     is_visible = False
             
             if is_visible:
@@ -544,9 +554,14 @@ def list_developers(
                         continue
                     
                     # SCD Type 2 (period_id is None) : vérifier le chevauchement des dates
-                    if end_period and pa.start_date and pa.start_date > end_period:
+                    # Convert datetime to date for comparison
+                    from datetime import datetime
+                    pa_start_date = pa.start_date.date() if isinstance(pa.start_date, datetime) else pa.start_date
+                    pa_end_date = pa.end_date.date() if isinstance(pa.end_date, datetime) else pa.end_date
+                    
+                    if end_period and pa_start_date and pa_start_date > end_period:
                         continue # Projet commencé APRES la fin de cette période
-                    if start_period and pa.end_date and pa.end_date < start_period:
+                    if start_period and pa_end_date and pa_end_date < start_period:
                         continue # Projet terminé AVANT le début de cette période
             
             # Dé-duplication post-filtrage
@@ -585,12 +600,16 @@ def list_developers(
                 current_status = "OUT"
             else:
                 # Vérifier s'ils ont une mission site + groupe active durant cette période
+                # Convert datetime to date for comparison
+                from datetime import datetime
                 has_site = any(
-                    sa.start_date and sa.start_date <= end_period and (sa.end_date is None or sa.end_date >= start_period)
+                    (sa.start_date.date() if isinstance(sa.start_date, datetime) else sa.start_date) <= end_period and 
+                    (sa.end_date is None or (sa.end_date.date() if isinstance(sa.end_date, datetime) else sa.end_date) >= start_period)
                     for sa in d.site_associations
                 )
                 has_group = any(
-                    gl.start_date and gl.start_date <= end_period and (gl.end_date is None or gl.end_date >= start_period)
+                    (gl.start_date.date() if isinstance(gl.start_date, datetime) else gl.start_date) <= end_period and 
+                    (gl.end_date is None or (gl.end_date.date() if isinstance(gl.end_date, datetime) else gl.end_date) >= start_period)
                     for gl in d.group_links
                 )
                 
