@@ -458,14 +458,14 @@ def list_developers(
         except Exception as e:
             logger.error(f"Error resolving period dates: {e}")
 
-    # ✅ [FIX] Apply context period date directly to each developer
-    if period_id and start_period:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"[PERIOD DEBUG] Applying context date {start_period} to {len(devs)} developers for period_id={period_id}")
-        for d in devs:
-            d._context_period_date = start_period
-            logger.info(f"[PERIOD DEBUG] Developer {d.id} ({d.name}): _context_period_date={getattr(d, '_context_period_date', None)}")
+        # ✅ [FIX] Apply context period date directly to each developer
+        if period_id and start_period:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[PERIOD DEBUG] Applying context date {start_period} to {len(devs)} developers for period_id={period_id}")
+            for d in devs:
+                d._context_period_date = start_period
+                logger.info(f"[PERIOD DEBUG] Developer {d.id} ({d.name}): _context_period_date={getattr(d, '_context_period_date', None)}")
 
     # ✅ [SENIOR] FIX 2 : Batch pre-fetching ultra-sécurisé
     site_ids = set()
@@ -579,6 +579,10 @@ def list_developers(
         # ✅ [ENTERPRISE] Statut RH contextuel selon la période sélectionnée
         # FUTURE : le dev n'a pas encore commencé pendant cette période (onboarding > fin_période)
         # ✅ [FIX] Use DeveloperContext-calculated rh_status directly
+        # Re-apply context date to ensure it's not lost during lazy loading
+        if period_id and start_period:
+            d._context_period_date = start_period
+        
         current_status = d.rh_status
         
         # ✅ [SENIOR] Override rh_status si explicitement défini (ex: pour l'onglet d'extraction)
