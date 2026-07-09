@@ -1001,18 +1001,6 @@ class DeveloperService:
                 })
                 continue
 
-            # ── Validation format email ────────────────────────────────────────
-            import re
-            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-            if not re.match(email_pattern, email):
-                logger.warning("Import Ligne %d: Format email invalide (%s)", row_num, email)
-                error_list.append({
-                    "row": row_num, "status": "error",
-                    "name": name or None, "email": email or None,
-                    "reason": f"Format d'email invalide: {email}",
-                })
-                continue
-
             logger.info("Import Ligne %d: Analyse dev %s (%s) | Groupe CSV: '%s'", row_num, name, username, group_csv_raw)
 
             # ── Détection Existant (UPSERT) ───────────────────────────────────

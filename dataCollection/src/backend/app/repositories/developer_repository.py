@@ -110,9 +110,9 @@ class DeveloperRepository(BaseRepository[Developer]):
                     or_(Developer.offboarding_date.is_(None), Developer.offboarding_date >= start_p),
                 )
                 
-                # ✅ [FIX] Pour tab="extraction" uniquement, vérifier que Site + Groupe sont actifs pendant la période
-                # pour exclure correctement les développeurs sans affectation temporelle
-                # Pour les autres tabs, on laisse le calcul rh_status gérer cette logique
+                # ✅ [FIX SUSPENSION] Pour tab="extraction", appliquer la même vérification TRIPLE
+                # que mission_utils.py : Site + Groupe doivent être actifs pendant la période
+                # pour exclure correctement les développeurs suspendus
                 if tab == "extraction":
                     # Join DeveloperSite temporel (SCD Type 2)
                     q = q.join(

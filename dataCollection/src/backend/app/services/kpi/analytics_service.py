@@ -1004,7 +1004,7 @@ class AnalyticsService:
 
     def get_comparative_trends(
         self,
-        project_id: int,
+        project_id: Optional[int],
         site_ids:   Optional[List[int]] = None,
         group_ids:  Optional[List[int]] = None,
         start_date: Optional[date]      = None,
@@ -1013,11 +1013,17 @@ class AnalyticsService:
         """
         [SENIOR] Récupère les tendances historiques pour plusieurs entités (Sites ou Groupes).
         Permet la comparaison multi-courbes demandée par le management.
+        Si project_id est None, retourne les données de tous les projets.
         """
         from app.models.site import Site
         from app.models.developer_group import DeveloperGroup
+        from app.models.project import Project
 
-        query = self.db.query(KpiSnapshot).filter(KpiSnapshot.project_id == project_id)
+        # Si project_id est None (tous les projets), on ne filtre pas par project_id
+        if project_id is None:
+            query = self.db.query(KpiSnapshot)
+        else:
+            query = self.db.query(KpiSnapshot).filter(KpiSnapshot.project_id == project_id)
 
         # Filtre sur les entités (On compare soit des sites, soit des groupes)
         if site_ids:
@@ -1025,9 +1031,13 @@ class AnalyticsService:
         elif group_ids:
             query = query.filter(KpiSnapshot.group_id.in_(group_ids), KpiSnapshot.developer_id.is_(None))
         else:
-            # Par défaut, tous les sites associés au projet
-            project_site_ids = self._get_project_site_ids(project_id)
-            query = query.filter(KpiSnapshot.site_id.in_(project_site_ids), KpiSnapshot.group_id.is_(None), KpiSnapshot.developer_id.is_(None))
+            # Par défaut, tous les sites associés au projet (ou tous les sites si project_id est None)
+            if project_id is not None:
+                project_site_ids = self._get_project_site_ids(project_id)
+                query = query.filter(KpiSnapshot.site_id.in_(project_site_ids), KpiSnapshot.group_id.is_(None), KpiSnapshot.developer_id.is_(None))
+            else:
+                # Pour tous les projets, on prend tous les sites sans filtre
+                query = query.filter(KpiSnapshot.group_id.is_(None), KpiSnapshot.developer_id.is_(None))
 
         if start_date:
             query = query.filter(KpiSnapshot.snapshot_date >= start_date)

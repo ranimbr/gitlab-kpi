@@ -11,4 +11,4 @@ const periodService = {
   deleteLots:  async (id)           => (await api.delete(`/periods/${id}/lots`)).data,
 };
 export default periodService;
-
+

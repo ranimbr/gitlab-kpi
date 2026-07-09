@@ -30,6 +30,8 @@ def list_configs(db: Session = Depends(get_db), current_admin: AppUser = Depends
 
 @router.post("", response_model=GitLabConfigResponse, status_code=201)
 def create_config(request: GitLabConfigCreate, db: Session = Depends(get_db), current_admin: AppUser = Depends(get_current_admin)):
+    if repo.domain_exists(db, request.domain):
+        raise _http_error(409, "GITLAB_CONFIG_DOMAIN_EXISTS", f"GitLab config with domain '{request.domain}' already exists")
     try:
         encrypted = encrypt_token(request.token)
     except ValueError:

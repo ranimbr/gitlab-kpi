@@ -26,7 +26,7 @@ from app.repositories.site_repository import SiteRepository
 from app.repositories.project_site_repository import ProjectSiteRepository
 from app.schemas.developer import DeveloperSummary
 from app.schemas.kpi import (
-    # DashboardSummaryResponse,  # DISABLED: Dashboard functionality removed
+    DashboardSummaryResponse,
     DeveloperKpiSnapshotResponse,
     DeveloperLeaderboardResponse,
     KpiSnapshotResponse,
@@ -84,48 +84,48 @@ def _http_error(status_code: int, code: str, message: str) -> HTTPException:
 
 
 # ── Dashboard Principal ───────────────────────────────────────────────────────
-# DISABLED: Dashboard functionality removed
-# @router.get("/dashboard", response_model=DashboardSummaryResponse)
-# def get_dashboard_kpis(
-#     project_id:   str           = Query(..., description="ID du projet ou 'all'"),
-#     period_id:    Optional[int] = Query(default=None, description="Filtrer par période (Mois)"),
-#     site_id:      Optional[int] = Query(default=None),
-#     group_id:     Optional[int] = Query(default=None),
-#     developer_id: Optional[int] = Query(default=None),
-#     lot_id:       Optional[int] = Query(default=None),
-#     db:           Session       = Depends(get_db),
-#     current_user: AppUser       = Depends(get_current_user),
-# ):
-#     service = AnalyticsService(db)
-#     
-#     # Support global mode (project_id = "all" or 0).
-#     p_id = None if (project_id == "all" or project_id == "0") else int(project_id)
-#     
-#     # Enforce site-based access control for site_manager
-#     if current_user.is_site_manager:
-#         if site_id is None:
-#             # Default to the site manager's assigned site
-#             site_id = current_user.site_id
-#         elif site_id != current_user.site_id:
-#             # Reject access to other sites
-#             raise _http_error(
-#                 403, 
-#                 "FORBIDDEN", 
-#                 f"Accès au site {site_id} refusé. Vous gérez uniquement le site {current_user.site_id}."
-#             )
-#     
-#     result = service.get_dashboard_summary(
-#         project_id=p_id, 
-#         period_id=period_id,
-#         site_id=site_id, 
-#         group_id=group_id, 
-#         developer_id=developer_id, 
-#         lot_id=lot_id
-#     )
-#
-#     result["project_id"] = p_id
-#     result["site_id"]    = site_id
-#     return result
+
+@router.get("/dashboard", response_model=DashboardSummaryResponse)
+def get_dashboard_kpis(
+    project_id:   str           = Query(..., description="ID du projet ou 'all'"),
+    period_id:    Optional[int] = Query(default=None, description="Filtrer par période (Mois)"),
+    site_id:      Optional[int] = Query(default=None),
+    group_id:     Optional[int] = Query(default=None),
+    developer_id: Optional[int] = Query(default=None),
+    lot_id:       Optional[int] = Query(default=None),
+    db:           Session       = Depends(get_db),
+    current_user: AppUser       = Depends(get_current_user),
+):
+    service = AnalyticsService(db)
+    
+    # Support global mode (project_id = "all" or 0).
+    p_id = None if (project_id == "all" or project_id == "0") else int(project_id)
+    
+    # Enforce site-based access control for site_manager
+    if current_user.is_site_manager:
+        if site_id is None:
+            # Default to the site manager's assigned site
+            site_id = current_user.site_id
+        elif site_id != current_user.site_id:
+            # Reject access to other sites
+            raise _http_error(
+                403, 
+                "FORBIDDEN", 
+                f"Accès au site {site_id} refusé. Vous gérez uniquement le site {current_user.site_id}."
+            )
+    
+    result = service.get_dashboard_summary(
+        project_id=p_id, 
+        period_id=period_id,
+        site_id=site_id, 
+        group_id=group_id, 
+        developer_id=developer_id, 
+        lot_id=lot_id
+    )
+
+    result["project_id"] = p_id
+    result["site_id"]    = site_id
+    return result
 
 
 # ── Vue KPI Individuelle Développeur ─────────────────────────────────────────
@@ -1028,6 +1028,78 @@ def get_top_developers(
         dev_obj = db.query(Developer).filter(Developer.id == snap.developer_id).first()
         snap.developer_name = dev_obj.name if dev_obj else f"Dev {snap.developer_id}"
     return snapshots
+
+
+# ── DORA METRICS ───────────────────────────────────────────────────────────────
+
+@router.get("/dora", summary="DORA Metrics — Deployment Frequency & Lead Time")
+def get_dora_metrics(
+    project_id:   int            = Query(...),
+    period_id:    Optional[int]  = Query(None),
+    db:           Session        = Depends(get_db),
+    current_user: AppUser        = Depends(get_current_user),
+):
+    if period_id is not None:
+        period = period_repo.get_by_id(db, period_id)
+    else:
+        latest = db.query(KpiSnapshot).filter(KpiSnapshot.project_id == project_id).order_by(KpiSnapshot.snapshot_date.desc()).first()
+        if not latest: return []
+        period = period_repo.get_by_id(db, latest.period_id)
+
+    if not period: return []
+
+    start_date = datetime(period.year, period.month, 1)
+    end_date   = datetime(period.year + 1, 1, 1) if period.month == 12 else datetime(period.year, period.month + 1, 1)
+
+    ps_repo = ProjectSiteRepository()
+    all_site_ids = list(set(ps_repo.get_site_ids_for_project(db, project_id)) | set(ps_repo.get_discovered_site_ids(db, project_id)))
+    calculator = KpiCalculator(db)
+
+    def _df_level(c):
+        if c >= 30: return "Elite"
+        if c >= 4:  return "High"
+        if c >= 1:  return "Medium"
+        return "Low"
+
+    def _lt_level(h):
+        if h == 0: return "N/A"
+        if h < 1:  return "Elite"
+        if h < 24: return "High"
+        if h < 168: return "Medium"
+        return "Low"
+
+    try:
+        results = []
+        total_dep = calculator._count_deployments(project_id, start_date, end_date, None, None, None)
+        total_lead = calculator._avg_lead_time(project_id, start_date, end_date, None, None, None)
+        
+        sum_site_deps = 0
+        for sid in all_site_ids:
+            site_obj = db.query(Site).filter(Site.id == sid).first()
+            if not site_obj: continue
+            dep_count = calculator._count_deployments(project_id, start_date, end_date, sid, None, None)
+            lead_time = calculator._avg_lead_time(project_id, start_date, end_date, sid, None, None)
+            sum_site_deps += dep_count
+            results.append({
+                "site_id": sid, "site_name": site_obj.name, "deployment_count": dep_count,
+                "lead_time_hours": lead_time, "dora_df_level": _df_level(dep_count),
+                "dora_lt_level": _lt_level(lead_time),
+                "period_label": f"{MOIS_FR_LONG.get(period.month, '')} {period.year}"
+            })
+
+        unassigned = total_dep - sum_site_deps
+        if unassigned > 0:
+            results.append({
+                "site_id": -1, "site_name": "Autres", "deployment_count": unassigned,
+                "lead_time_hours": total_lead, "dora_df_level": _df_level(unassigned),
+                "dora_lt_level": _lt_level(total_lead), "is_unassigned": True,
+                "period_label": f"{MOIS_FR_LONG.get(period.month, '')} {period.year}"
+            })
+
+        return sorted(results, key=lambda x: x["deployment_count"], reverse=True)
+    except Exception as e:
+        logger.error(f"[DORA ERROR] project_id={project_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"DORA Error: {str(e)}")
 
 
 # ── RECALCUL DYNAMIQUE (SENIOR ADMIN) ──────────────────────────────────────────

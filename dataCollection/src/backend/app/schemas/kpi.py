@@ -215,24 +215,25 @@ class KpiHistoryResponse(BaseModel):
         )
 
 
-class DashboardSummaryResponse(BaseModel):
-    """
-    Résumé complet pour le Dashboard KPI frontend.
-    Retourné par GET /kpis/dashboard.
-    """
-    latest_metrics:  Optional[KpiSnapshotResponse]
-    history:         List[KpiSnapshotResponse]
-    total_snapshots: int
-
-    # Contexte de filtrage actif
-    project_id:   Optional[int] = None
-    site_id:      Optional[int] = None
-    group_id:     Optional[int] = None
-    developer_id: Optional[int] = None
-    period_label: Optional[str] = None     # ex: "Mars 2025"
-
-    # Leaderboard du site (si site_id fourni)
-    leaderboard: Optional[DeveloperLeaderboardResponse] = None
+# DISABLED: Dashboard functionality removed
+# class DashboardSummaryResponse(BaseModel):
+#     """
+#     Résumé complet pour le Dashboard KPI frontend.
+#     Retourné par GET /kpis/dashboard.
+#     """
+#     latest_metrics:  Optional[KpiSnapshotResponse]
+#     history:         List[KpiSnapshotResponse]
+#     total_snapshots: int
+#
+#     # Contexte de filtrage actif
+#     project_id:   Optional[int] = None
+#     site_id:      Optional[int] = None
+#     group_id:     Optional[int] = None
+#     developer_id: Optional[int] = None
+#     period_label: Optional[str] = None     # ex: "Mars 2025"
+#
+#     # Leaderboard du site (si site_id fourni)
+#     leaderboard: Optional[DeveloperLeaderboardResponse] = None
 
 
 class SnapshotGeneratedResponse(BaseModel):
