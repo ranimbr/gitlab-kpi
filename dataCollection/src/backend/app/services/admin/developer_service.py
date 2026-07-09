@@ -1168,7 +1168,7 @@ class DeveloperService:
                         # → On fait UNIQUEMENT la resynchronisation des groupes, rien d'autre.
                         logger.info(
                             "Import Ligne %d: DEV_OFFBOARDED_GROUP_SYNC — %s a une date de départ (%s), "
-                            "correction groupe uniquement (pas de réactivation).",
+                            "correction groupe/site/projet uniquement (pas de réactivation).",
                             row_num, name, existing_dev.offboarding_date
                         )
                         if resolved_group_ids:
@@ -1177,10 +1177,26 @@ class DeveloperService:
                                 p_start=effective_p_start,
                                 p_end=existing_dev.offboarding_date  # La fin = offboarding
                             )
+                        # ✅ FIX: Also sync sites for offboarded developers
+                        if resolved_sites:
+                            self.dev_site_repo.sync_smart(
+                                db, existing_dev.id,
+                                [{"site_id": rs["site"].id, "is_primary": rs["is_primary"]} for rs in resolved_sites],
+                                p_start=effective_p_start,
+                                p_end=existing_dev.offboarding_date
+                            )
+                        # ✅ FIX: Also sync projects for offboarded developers
+                        if resolved_projects:
+                            project_ids = [p.id for p in resolved_projects]
+                            self.dev_proj_repo.sync_smart(
+                                db, existing_dev.id, project_ids,
+                                p_start=effective_p_start,
+                                p_end=existing_dev.offboarding_date
+                            )
                         success_list.append({
                             "row": row_num, "status": "updated",
                             "name": name, "email": email,
-                            "reason": f"Groupe corrigé (dev offboardé le {existing_dev.offboarding_date}, statut RH conservé)."
+                            "reason": f"Affectations corrigées (dev offboardé le {existing_dev.offboarding_date}, statut RH conservé)."
                         })
                         processed_ids.add(existing_dev.id)
                         db.flush()
