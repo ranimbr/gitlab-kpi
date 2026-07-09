@@ -573,6 +573,17 @@ def list_developers(
         # ACTIVE : le dev était présent pendant cette période
         current_status = d.rh_status  # fallback = statut calculé aujourd'hui
         if start_period and end_period:
+            # Debug logging for Vaibhav Malik (id=3) and Igor Drozdov (id=6)
+            if d.id in (3, 6):
+                logger.info(f"[STATUS DEBUG] Developer {d.id} ({d.name}): start_period={start_period}, end_period={end_period}")
+                logger.info(f"[STATUS DEBUG]   onboarding={d.onboarding_date}, offboarding={d.offboarding_date}")
+                logger.info(f"[STATUS DEBUG]   site_associations count={len(d.site_associations)}")
+                for sa in d.site_associations:
+                    logger.info(f"[STATUS DEBUG]     site: {sa.site.name if sa.site else 'N/A'}, start_date={sa.start_date}, end_date={sa.end_date}")
+                logger.info(f"[STATUS DEBUG]   group_links count={len(d.group_links)}")
+                for gl in d.group_links:
+                    logger.info(f"[STATUS DEBUG]     group: {gl.group.name if gl.group else 'N/A'}, start_date={gl.start_date}, end_date={gl.end_date}")
+            
             if d.onboarding_date and d.onboarding_date > end_period:
                 current_status = "FUTURE"
             elif d.offboarding_date and d.offboarding_date < start_period:
@@ -587,6 +598,9 @@ def list_developers(
                     gl.start_date and gl.start_date <= end_period and (gl.end_date is None or gl.end_date >= start_period)
                     for gl in d.group_links
                 )
+                
+                if d.id in (3, 6):
+                    logger.info(f"[STATUS DEBUG] Developer {d.id}: has_site={has_site}, has_group={has_group}")
                 
                 if not has_site or not has_group:
                     current_status = "INACTIVE"
