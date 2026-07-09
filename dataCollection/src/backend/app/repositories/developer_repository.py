@@ -110,27 +110,25 @@ class DeveloperRepository(BaseRepository[Developer]):
                     or_(Developer.offboarding_date.is_(None), Developer.offboarding_date >= start_p),
                 )
                 
-                # ✅ [FIX SUSPENSION] Pour tab="extraction", appliquer la même vérification TRIPLE
-                # que mission_utils.py : Site + Groupe doivent être actifs pendant la période
-                # pour exclure correctement les développeurs suspendus
-                if tab == "extraction":
-                    # Join DeveloperSite temporel (SCD Type 2)
-                    q = q.join(
-                        DeveloperSite,
-                        (DeveloperSite.developer_id == Developer.id)
-                    )
-                    # Join DeveloperGroupLink temporel (SCD Type 2)
-                    q = q.join(
-                        DeveloperGroupLink,
-                        (DeveloperGroupLink.developer_id == Developer.id)
-                    )
-                    # Filtrage temporel strict pour Site et Groupe
-                    q = q.filter(
-                        or_(DeveloperSite.start_date.is_(None), DeveloperSite.start_date < end_p),
-                        or_(DeveloperSite.end_date.is_(None),   DeveloperSite.end_date >= start_p),
-                        or_(DeveloperGroupLink.start_date.is_(None), DeveloperGroupLink.start_date < end_p),
-                        or_(DeveloperGroupLink.end_date.is_(None),   DeveloperGroupLink.end_date >= start_p),
-                    )
+                # ✅ [FIX] Pour TOUS les tabs, vérifier que Site + Groupe sont actifs pendant la période
+                # pour exclure correctement les développeurs sans affectation temporelle
+                # Join DeveloperSite temporel (SCD Type 2)
+                q = q.join(
+                    DeveloperSite,
+                    (DeveloperSite.developer_id == Developer.id)
+                )
+                # Join DeveloperGroupLink temporel (SCD Type 2)
+                q = q.join(
+                    DeveloperGroupLink,
+                    (DeveloperGroupLink.developer_id == Developer.id)
+                )
+                # Filtrage temporel strict pour Site et Groupe
+                q = q.filter(
+                    or_(DeveloperSite.start_date.is_(None), DeveloperSite.start_date < end_p),
+                    or_(DeveloperSite.end_date.is_(None),   DeveloperSite.end_date >= start_p),
+                    or_(DeveloperGroupLink.start_date.is_(None), DeveloperGroupLink.start_date < end_p),
+                    or_(DeveloperGroupLink.end_date.is_(None),   DeveloperGroupLink.end_date >= start_p),
+                )
             else:
                 start_p, end_p = None, None
 
