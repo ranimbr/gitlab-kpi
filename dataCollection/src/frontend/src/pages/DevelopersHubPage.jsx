@@ -199,7 +199,7 @@ function DeveloperCard({ dev, sites, latestKpis, alertCount, index, loading, pro
   const scoreColor = score == null ? '#94a3b8' : score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444';
   const persona = getPersona(devKpis);
 
-  const isGhost = currentStatus === 'OFFBOARDED' || currentStatus === 'OUT' || !dev.is_active;
+  const isGhost = currentStatus === 'OFFBOARDED' || currentStatus === 'OUT';
 
   return (
     <div className="col-xl-4 col-sm-6">
