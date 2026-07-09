@@ -576,29 +576,8 @@ def list_developers(
 
         # ✅ [ENTERPRISE] Statut RH contextuel selon la période sélectionnée
         # FUTURE : le dev n'a pas encore commencé pendant cette période (onboarding > fin_période)
-        # OUT    : le dev était déjà parti avant le début de cette période (offboarding < début_période)
-        # ACTIVE : le dev était présent pendant cette période
-        current_status = d.rh_status  # fallback = statut calculé aujourd'hui
-        if start_period and end_period:
-            if d.onboarding_date and d.onboarding_date > end_period:
-                current_status = "FUTURE"
-            elif d.offboarding_date and d.offboarding_date < start_period:
-                current_status = "OUT"
-            else:
-                # Vérifier s'ils ont une mission site + groupe active durant cette période
-                has_site = any(
-                    sa.start_date and sa.start_date <= end_period and (sa.end_date is None or sa.end_date >= start_period)
-                    for sa in d.site_associations
-                )
-                has_group = any(
-                    gl.start_date and gl.start_date <= end_period and (gl.end_date is None or gl.end_date >= start_period)
-                    for gl in d.group_links
-                )
-                
-                if not has_site or not has_group:
-                    current_status = "INACTIVE"
-                else:
-                    current_status = "ACTIVE"
+        # ✅ [FIX] Use DeveloperContext-calculated rh_status directly
+        current_status = d.rh_status
         
         # ✅ [SENIOR] Override rh_status si explicitement défini (ex: pour l'onglet d'extraction)
         if hasattr(d, '_rh_status_override') and d._rh_status_override:
