@@ -18,7 +18,7 @@ const BASE_URL = import.meta.env.VITE_API_TARGET || "/api/v1";
 const api = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: 15_000,
+  timeout: 60_000, // Augmenté à 60s pour les cold starts et opérations multi-tenant complexes
 });
 
 const API_CODE_RE = /^([A-Z0-9_]+):\s*(.+)$/;
