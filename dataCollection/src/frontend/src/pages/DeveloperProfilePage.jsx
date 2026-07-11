@@ -659,10 +659,12 @@ export default function DeveloperProfilePage() {
     if (!id) return;
     setLoading(true);
     setError(null);
+    console.log("[DEBUG] loadData START - id:", id, "selectedPid:", selectedPid, "selectedPeriodId:", selectedPeriodId, "selectedLotId:", selectedLotId);
     
     try {
       // 1. Fetch Core Developer Data
       const devData = await developerService.getById(id, selectedPeriodId);
+      console.log("[DEBUG] devData received:", devData);
       if (!devData) throw new Error("Développeur introuvable");
       setDeveloper(devData);
 
@@ -703,7 +705,8 @@ export default function DeveloperProfilePage() {
       }
 
       // 3. Project-specific KPIs (always project-specific, no global mode)
-      const p_id = currentPid ? parseInt(currentPid) : null;
+      const p_id = selectedPid ? parseInt(selectedPid) : null;
+      console.log("[DEBUG] Project-specific KPIs - p_id:", p_id, "projects:", projects);
 
       // Validate that selected project exists in the projects list
       if (p_id && projects.length > 0) {
@@ -716,6 +719,7 @@ export default function DeveloperProfilePage() {
       }
 
       if (p_id) {
+        console.log("[DEBUG] Mode Projet Spécifique - p_id:", p_id);
         // Mode Projet Spécifique - Use global periods like DevelopersHubPage
         const hist = await analyticsService.getHistory(p_id, { developerId: parseInt(id), periodId: selectedPeriodId }).catch(() => null);
         const snaps = hist?.snapshots || (Array.isArray(hist) ? hist : []);
@@ -741,12 +745,16 @@ export default function DeveloperProfilePage() {
         
         // If no snapshot found in history, try getLatest with period_id
         if (!snap) {
+          console.log("[DEBUG] No snapshot found in history, trying getLatest");
           snap = await analyticsService.getLatest(p_id, { developerId: parseInt(id), lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
         }
         
+        console.log("[DEBUG] Snapshot received:", snap);
         setSnapshot(snap);
 
+        console.log("[DEBUG] Fetching summary - p_id:", p_id, "developerId:", parseInt(id), "lotId:", selectedLotId, "periodId:", selectedPeriodId);
         const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
+        console.log("[DEBUG] Summary received:", summ);
         setSummary(summ);
 
         const currentIndex = snaps.findIndex(s => s.period_id === selectedPeriodId);
