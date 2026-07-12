@@ -483,7 +483,7 @@ function KpiCard({ title, value, unit, icon, color, delta, subtitle, onClick }) 
                    accentColor === "#f7b84b" ? "247, 184, 75" : "64, 81, 137";
 
   return (
-    <div className="col-xl-3 col-sm-6">
+    <div className="col-xl-4 col-sm-6">
       <div className="kpi-card-wrapper">
         <div className="kpi-card-premium"
           style={{
