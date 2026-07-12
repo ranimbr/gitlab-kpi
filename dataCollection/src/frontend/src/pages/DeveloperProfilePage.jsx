@@ -801,11 +801,14 @@ export default function DeveloperProfilePage() {
 
   const kpis = [
     {
-      title: "MRs Créées",
-      value: summary?.total_mrs_created ?? 0,
-      icon: "ri-git-pull-request-line",
-      color: "success",
-      delta: summary?.latest_snapshot ? { value: `${summary?.latest_snapshot?.total_mrs_created ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null
+      title: "Score Global",
+      value: summary ? fmt((summary.developer_score || 0) * 100, 0) : "—",
+      unit: summary ? " pts" : "",
+      icon: "ri-medal-line",
+      color: "danger",
+      delta: summary?.latest_snapshot ? deltaInfo(summary.developer_score, prevSnap?.developer_score) : null,
+      subtitle: "Basé sur commits, MRs et approbation",
+      onClick: () => setShowScoreFormulaModal(true)
     },
     {
       title: "Total Commits",
@@ -815,14 +818,11 @@ export default function DeveloperProfilePage() {
       delta: summary?.latest_snapshot ? { value: `${summary?.latest_snapshot?.total_commits ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null
     },
     {
-      title: "Score Global",
-      value: summary ? fmt((summary.developer_score || 0) * 100, 0) : "—",
-      unit: summary ? " pts" : "",
-      icon: "ri-medal-line",
-      color: "danger",
-      delta: summary?.latest_snapshot ? deltaInfo(summary.developer_score, prevSnap?.developer_score) : null,
-      subtitle: "Basé sur commits, MRs et approbation",
-      onClick: () => setShowScoreFormulaModal(true)
+      title: "MRs Créées",
+      value: summary?.total_mrs_created ?? 0,
+      icon: "ri-git-pull-request-line",
+      color: "success",
+      delta: summary?.latest_snapshot ? { value: `${summary?.latest_snapshot?.total_mrs_created ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null
     }
   ];
 
