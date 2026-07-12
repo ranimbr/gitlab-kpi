@@ -163,7 +163,6 @@ def get_developer_global_summary(
     ✅ [FIX] Support period_id pour données historiques
     ✅ [FIX] Si développeur inactif pendant la période, retourne 0 pour tous les KPIs
     """
-    logger.info(f"[DEBUG SUMMARY] developer_id={developer_id}, project_id={project_id}, lot_id={lot_id}, period_id={period_id}")
     from app.models.developer import Developer
     from app.models.period import Period
     
@@ -172,7 +171,6 @@ def get_developer_global_summary(
     if period_id:
         period = db.query(Period).filter(Period.id == period_id).first()
         if period:
-            logger.info(f"[DEBUG SUMMARY] Period found: id={period.id}, year={period.year}, month={period.month}, start_date={period.start_date}, end_date={period.end_date}")
             developer = db.query(Developer).filter(Developer.id == developer_id).first()
             if developer:
                 # Use DeveloperContext to check RH status at mid-period
@@ -232,13 +230,11 @@ def get_developer_global_summary(
         from app.models.period import Period
         period = db.query(Period).filter(Period.id == period_id).first()
         if period:
-            logger.info(f"[DEBUG SUMMARY] Filtering commits by period: {period.start_date} to {period.end_date}")
             total_commits_query = total_commits_query.filter(
                 Commit.authored_date >= period.start_date,
                 Commit.authored_date <= period.end_date
             )
     total_commits = total_commits_query.scalar() or 0
-    logger.info(f"[DEBUG SUMMARY] total_commits result: {total_commits}")
 
     total_mrs_created_query = db.query(func.count(MergeRequest.id)).filter(MergeRequest.developer_id == developer_id)
     if p_id: total_mrs_created_query = total_mrs_created_query.filter(MergeRequest.project_id == p_id)
@@ -248,13 +244,11 @@ def get_developer_global_summary(
         from app.models.period import Period
         period = db.query(Period).filter(Period.id == period_id).first()
         if period:
-            logger.info(f"[DEBUG SUMMARY] Filtering MRs by period: {period.start_date} to {period.end_date}")
             total_mrs_created_query = total_mrs_created_query.filter(
                 MergeRequest.created_at_gitlab >= period.start_date,
                 MergeRequest.created_at_gitlab <= period.end_date
             )
     total_mrs_created = total_mrs_created_query.scalar() or 0
-    logger.info(f"[DEBUG SUMMARY] total_mrs_created result: {total_mrs_created}")
 
     total_comments_query = db.query(func.count(Comment.id)).join(MergeRequest, Comment.merge_request_id == MergeRequest.id).filter(Comment.developer_id == developer_id)
     if p_id: total_comments_query = total_comments_query.filter(MergeRequest.project_id == p_id)
@@ -365,7 +359,6 @@ def get_developer_global_summary(
         "score_rank_in_site": latest_snap.score_rank_in_site if latest_snap else None,
         "latest_snapshot": latest_snap
     }
-    logger.info(f"[DEBUG SUMMARY] Final result: {result}")
     return result
 
 
