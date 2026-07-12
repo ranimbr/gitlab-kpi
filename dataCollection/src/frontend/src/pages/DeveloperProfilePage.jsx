@@ -746,8 +746,23 @@ export default function DeveloperProfilePage() {
         
         setSnapshot(snap);
 
-        const summ = await analyticsService.getDeveloperSummary(p_id, parseInt(id), { lotId: selectedLotId, periodId: selectedPeriodId }).catch(() => null);
-        setSummary(summ);
+        // Use leaderboard data like DevelopersHubPage for consistency
+        const leaderboard = await developerService.getLeaderboard(p_id, { 
+          limit: 1, 
+          developerId: parseInt(id), 
+          periodId: selectedPeriodId 
+        }).catch(() => null);
+        
+        const lbEntry = leaderboard?.entries?.[0];
+        setSummary(lbEntry ? {
+          developer_score: lbEntry.developer_score,
+          total_commits: lbEntry.commit_count,
+          total_mrs_created: lbEntry.mr_count,
+          total_reviews: lbEntry.review_count || 0,
+          approved_mr_rate: lbEntry.approved_rate,
+          avg_review_time_hours: lbEntry.avg_review_hours,
+          latest_snapshot: snap
+        } : null);
 
         const currentIndex = snaps.findIndex(s => s.period_id === selectedPeriodId);
         setPrevSnap(currentIndex > 0 ? snaps[currentIndex - 1] : null);
