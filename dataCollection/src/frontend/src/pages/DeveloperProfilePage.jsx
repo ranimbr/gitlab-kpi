@@ -801,14 +801,6 @@ export default function DeveloperProfilePage() {
 
   const kpis = [
     {
-      title: "Revues de code",
-      value: summary?.total_reviews ?? 0,
-      icon: "ri-eye-line",
-      color: "info",
-      delta: summary?.latest_snapshot ? { value: `${summary?.latest_snapshot?.total_reviews ?? 0} ce mois`, color: "secondary", icon: "ri-calendar-event-line" } : null,
-      onClick: handleOpenReviewsModal
-    },
-    {
       title: "MRs Créées",
       value: summary?.total_mrs_created ?? 0,
       icon: "ri-git-pull-request-line",
@@ -829,7 +821,7 @@ export default function DeveloperProfilePage() {
       icon: "ri-medal-line",
       color: "danger",
       delta: summary?.latest_snapshot ? deltaInfo(summary.developer_score, prevSnap?.developer_score) : null,
-      subtitle: "Basé sur commits, MRs, approbation et revues",
+      subtitle: "Basé sur commits, MRs et approbation",
       onClick: () => setShowScoreFormulaModal(true)
     }
   ];
