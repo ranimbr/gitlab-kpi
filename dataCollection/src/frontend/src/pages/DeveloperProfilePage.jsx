@@ -686,13 +686,24 @@ export default function DeveloperProfilePage() {
       setAlerts([]); // Alerts endpoint désactivé - utiliser tableau vide
       setHeatmap(heatData?.activity || []);
       setHeatmapMeta(heatData || null);
-      // Sort timeline: Onboarding first, then chronological (oldest to newest)
+      // Sort timeline: Onboarding first, then mutation events before missions for same date, then chronological (oldest to newest)
       const sortedTimeline = (timelineData || []).sort((a, b) => {
         // Onboarding always first
         if (a.title === 'Onboarding' && b.title !== 'Onboarding') return -1;
         if (b.title === 'Onboarding' && a.title !== 'Onboarding') return 1;
+        
+        // For same date, mutation events before missions
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateA.getTime() === dateB.getTime()) {
+          const isMutationA = a.title.includes('Mutation') || a.badge === 'MUTATION';
+          const isMutationB = b.title.includes('Mutation') || b.badge === 'MUTATION';
+          if (isMutationA && !isMutationB) return -1;
+          if (!isMutationA && isMutationB) return 1;
+        }
+        
         // Then sort by date (oldest first)
-        return new Date(a.date) - new Date(b.date);
+        return dateA - dateB;
       });
       setTimeline(sortedTimeline);
 
