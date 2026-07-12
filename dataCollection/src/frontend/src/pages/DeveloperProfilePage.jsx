@@ -686,7 +686,15 @@ export default function DeveloperProfilePage() {
       setAlerts([]); // Alerts endpoint désactivé - utiliser tableau vide
       setHeatmap(heatData?.activity || []);
       setHeatmapMeta(heatData || null);
-      setTimeline(timelineData || []);
+      // Sort timeline: Onboarding first, then chronological (oldest to newest)
+      const sortedTimeline = (timelineData || []).sort((a, b) => {
+        // Onboarding always first
+        if (a.title === 'Onboarding' && b.title !== 'Onboarding') return -1;
+        if (b.title === 'Onboarding' && a.title !== 'Onboarding') return 1;
+        // Then sort by date (oldest first)
+        return new Date(a.date) - new Date(b.date);
+      });
+      setTimeline(sortedTimeline);
 
       // Load all periods globally (not project-specific)
       if (allPeriodsData && allPeriodsData.length > 0) {
