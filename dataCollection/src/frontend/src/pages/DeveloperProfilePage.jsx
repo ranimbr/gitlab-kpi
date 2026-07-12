@@ -692,14 +692,15 @@ export default function DeveloperProfilePage() {
         if (a.title === 'Onboarding' && b.title !== 'Onboarding') return -1;
         if (b.title === 'Onboarding' && a.title !== 'Onboarding') return 1;
         
-        // For same date, mutation events before missions
+        // For same date, mutation events (non-mission) before missions
         const dateA = new Date(a.date);
         const dateB = new Date(b.date);
         if (dateA.getTime() === dateB.getTime()) {
-          const isMutationA = a.title.includes('Mutation') || a.badge === 'MUTATION';
-          const isMutationB = b.title.includes('Mutation') || b.badge === 'MUTATION';
-          if (isMutationA && !isMutationB) return -1;
-          if (!isMutationA && isMutationB) return 1;
+          const isMissionA = a.title.startsWith('Mission :');
+          const isMissionB = b.title.startsWith('Mission :');
+          // Non-mission events (like "Mutation d'affectation") come before missions
+          if (!isMissionA && isMissionB) return -1;
+          if (isMissionA && !isMissionB) return 1;
         }
         
         // Then sort by date (oldest first)
