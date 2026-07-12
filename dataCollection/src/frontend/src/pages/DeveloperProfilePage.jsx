@@ -957,16 +957,6 @@ export default function DeveloperProfilePage() {
                   {/* Right side: Actions and filters */}
                   <div className="premium-identity-right">
                     <div className="premium-identity-actions">
-                      <Link to={`/commits?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`}
-                        className="premium-identity-action-btn premium-identity-action-primary">
-                        <i className="ri-history-line"></i>
-                        <span>Commits</span>
-                      </Link>
-                      <Link to={`/merge?developer_id=${id}&project_id=${selectedPid}${selectedLotId ? `&lot_id=${selectedLotId}` : ""}`}
-                        className="premium-identity-action-btn premium-identity-action-info">
-                        <i className="ri-git-merge-line"></i>
-                        <span>MRs</span>
-                      </Link>
                       <button className="premium-identity-action-btn premium-identity-action-danger" onClick={() => setExportingPdf(true)}>
                         <i className="ri-file-pdf-line"></i>
                         <span>PDF</span>
