@@ -1414,12 +1414,21 @@ export default function DeveloperProfilePage() {
       {/* Global & Print styles */}
       <style>{`
         @media print {
-          .d-print-none, nav, .sidebar, #topnav, .topnav, .btn, select, .card-header .btn, .footer, .theme-customizer, .page-title-right { display: none !important; }
-          .page-content { padding: 0 !important; margin: 0 !important; }
+          .d-print-none, nav, .sidebar, #topnav, .topnav, .btn, select, .card-header .btn, .footer, .theme-customizer, .page-title-right, .premium-identity-filters, .premium-identity-actions { display: none !important; }
+          .page-content { padding: 20px !important; margin: 0 !important; }
           .main-content { margin-left: 0 !important; }
-          .card { break-inside: avoid; box-shadow: none !important; border: 1px solid #e9ecef !important; }
+          .card { break-inside: avoid; box-shadow: none !important; border: 1px solid #e9ecef !important; margin-bottom: 20px !important; }
           body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .container-fluid { max-width: 100% !important; }
+          .container-fluid { max-width: 100% !important; padding: 0 !important; }
+          .premium-identity-right { display: none !important; }
+          .premium-identity { padding: 20px !important; }
+          .premium-identity-header { margin-bottom: 20px !important; }
+          .kpi-card-wrapper { break-inside: avoid; margin-bottom: 15px !important; }
+          .premium-timeline-container { break-inside: avoid; }
+          .premium-heatmap-stats { break-inside: avoid; }
+          .row { break-inside: avoid; }
+          .col-xl-4, .col-xl-3, .col-6, .col-4 { width: 100% !important; flex: 0 0 100% !important; max-width: 100% !important; }
+          @page { margin: 10mm; }
         }
 
         /* GitHub Style Premium Animaton */
