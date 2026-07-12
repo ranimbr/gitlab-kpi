@@ -957,15 +957,6 @@ export default function DeveloperProfilePage() {
                   {/* Right side: Actions and filters */}
                   <div className="premium-identity-right">
                     <div className="premium-identity-actions">
-                      <button className="premium-identity-action-btn premium-identity-action-danger" onClick={() => {
-                        const originalTitle = document.title;
-                        document.title = `Profil_${(developer.name || developer.gitlab_username).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}`;
-                        window.print();
-                        document.title = originalTitle;
-                      }}>
-                        <i className="ri-file-pdf-line"></i>
-                        <span>PDF</span>
-                      </button>
                     </div>
                     
                     <div className="premium-identity-filters">
