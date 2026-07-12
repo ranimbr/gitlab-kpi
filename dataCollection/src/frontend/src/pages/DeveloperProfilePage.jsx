@@ -1180,7 +1180,7 @@ export default function DeveloperProfilePage() {
                 {/* Premium Stats Row */}
                 <div className="premium-heatmap-stats mt-4 pt-4">
                   <div className="row g-3">
-                    <div className="col-4">
+                    <div className="col-6">
                       <div className="premium-heatmap-stat-card">
                         <div className="premium-heatmap-stat-icon premium-heatmap-stat-icon-success">
                           <i className="ri-git-commit-line"></i>
@@ -1192,7 +1192,7 @@ export default function DeveloperProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <div className="col-4">
+                    <div className="col-6">
                       <div className="premium-heatmap-stat-card">
                         <div className="premium-heatmap-stat-icon premium-heatmap-stat-icon-primary">
                           <i className="ri-calendar-check-line"></i>
@@ -1201,18 +1201,6 @@ export default function DeveloperProfilePage() {
                           <h5 className="premium-heatmap-stat-value">{heatmapMeta?.total_days_active || 0}</h5>
                           <p className="premium-heatmap-stat-label">Jours Actifs</p>
                           <span className="premium-heatmap-stat-sub">Présence Git</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="col-4">
-                      <div className="premium-heatmap-stat-card">
-                        <div className="premium-heatmap-stat-icon premium-heatmap-stat-icon-info">
-                          <i className="ri-bar-chart-line"></i>
-                        </div>
-                        <div className="premium-heatmap-stat-content">
-                          <h5 className="premium-heatmap-stat-value">{fmt(heatmapMeta?.avg_per_day, 1)}</h5>
-                          <p className="premium-heatmap-stat-label">Moy/Jour</p>
-                          <span className="premium-heatmap-stat-sub">Régularité</span>
                         </div>
                       </div>
                     </div>
