@@ -1415,20 +1415,24 @@ export default function DeveloperProfilePage() {
       <style>{`
         @media print {
           .d-print-none, nav, .sidebar, #topnav, .topnav, .btn, select, .card-header .btn, .footer, .theme-customizer, .page-title-right, .premium-identity-filters, .premium-identity-actions { display: none !important; }
-          .page-content { padding: 20px !important; margin: 0 !important; }
+          .page-content { padding: 10px !important; margin: 0 !important; }
           .main-content { margin-left: 0 !important; }
-          .card { break-inside: avoid; box-shadow: none !important; border: 1px solid #e9ecef !important; margin-bottom: 20px !important; }
+          .card { break-inside: avoid; box-shadow: none !important; border: 1px solid #e9ecef !important; margin-bottom: 15px !important; page-break-inside: avoid; }
           body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .container-fluid { max-width: 100% !important; padding: 0 !important; }
           .premium-identity-right { display: none !important; }
-          .premium-identity { padding: 20px !important; }
-          .premium-identity-header { margin-bottom: 20px !important; }
-          .kpi-card-wrapper { break-inside: avoid; margin-bottom: 15px !important; }
-          .premium-timeline-container { break-inside: avoid; }
-          .premium-heatmap-stats { break-inside: avoid; }
-          .row { break-inside: avoid; }
+          .premium-identity { padding: 15px !important; }
+          .premium-identity-header { margin-bottom: 15px !important; }
+          .kpi-card-wrapper { break-inside: avoid; margin-bottom: 10px !important; page-break-inside: avoid; }
+          .premium-timeline-container { break-inside: avoid; page-break-inside: avoid; }
+          .premium-heatmap-stats { break-inside: avoid; page-break-inside: avoid; }
+          .premium-heatmap-wrapper { break-inside: avoid; page-break-inside: avoid; }
+          .row { break-inside: avoid; page-break-inside: avoid; }
           .col-xl-4, .col-xl-3, .col-6, .col-4 { width: 100% !important; flex: 0 0 100% !important; max-width: 100% !important; }
-          @page { margin: 10mm; }
+          .card-body { break-inside: avoid; page-break-inside: avoid; }
+          .apexcharts-canvas { break-inside: avoid; page-break-inside: avoid; }
+          @page { margin: 5mm; size: A4; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
 
         /* GitHub Style Premium Animaton */
