@@ -9,6 +9,7 @@
  * Route : /analytics/comparison?project_id=X
  * 
  * Dernière mise à jour: Restauration après suppression du filtre de période
+ * Note: Prêt pour déploiement Vercel
  */
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, Link } from "react-router-dom";
