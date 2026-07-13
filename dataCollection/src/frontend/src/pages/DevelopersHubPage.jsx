@@ -846,47 +846,7 @@ export default function DevelopersHubPage() {
                 </select>
               </div>
 
-              {/* Inactifs Toggle */}
-              <div className="commits-filter-group">
-                <label className="commits-filter-label">
-                  <i className="ri-user-unfollow-line"></i> Statut
-                </label>
-                <div className="commits-toggle-wrap">
-                  <div
-                    className={`commits-toggle ${showInactive ? "commits-toggle-active" : ""}`}
-                    onClick={() => setShowInactive(!showInactive)}
-                    title="Afficher les développeurs inactifs/sortis"
-                  >
-                    <div className="commits-toggle-thumb"></div>
-                  </div>
-                  <span className="commits-toggle-label">
-                    {showInactive ? "Tous" : "Actifs"}
-                  </span>
-                  <input
-                    type="checkbox"
-                    id="inactiveSwitch"
-                    checked={showInactive}
-                    onChange={e => setShowInactive(e.target.checked)}
-                    style={{ display: "none" }}
-                  />
-                </div>
-              </div>
 
-              {/* Actions */}
-              <div className="commits-filter-group" style={{ flex: '0 0 auto', minWidth: 'auto' }}>
-                <label className="commits-filter-label">Actions</label>
-                <div className="d-flex gap-2">
-                  <button className="btn btn-soft-danger btn-sm" onClick={() => { setSearch(""); setSiteFilter("all"); setGroupFilter("all"); setProjectFilter(""); setSelectedPeriodId(null); setValidatedOnly(false); setShowInactive(false); }} title="Réinitialiser">
-                    <i className="ri-refresh-line"></i>
-                  </button>
-                  
-                  {isTeamLead && isTeamLead() && (
-                    <button className="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm" onClick={() => setShowImportModal(true)} style={{ fontWeight: 600 }}>
-                      <i className="ri-upload-cloud-2-line"></i> Importer
-                    </button>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         </div>
