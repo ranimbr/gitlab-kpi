@@ -841,13 +841,7 @@ function MRTable({ mrs, onDetail, lots = [], filters = {}, developers = [], sele
                       )}
                     </td>
 
-                    {/* ── Commentaires ── */}
-                    <td className="mr-td">
-                      <div className="mr-counter-cell">
-                        <i className="ri-chat-1-line mr-counter-icon"></i>
-                        <span className="mr-counter-val">{String(mr.user_notes_count || 0)}</span>
-                      </div>
-                    </td>
+              
 
                     {/* ── Commits ── */}
                     <td className="mr-td">
@@ -885,11 +879,6 @@ function MRTable({ mrs, onDetail, lots = [], filters = {}, developers = [], sele
                           <i className="ri-calendar-line mr-date-icon"></i>
                           {fmtDate(mr.created_at_gitlab)}
                         </span>
-                        {mr.updated_at_gitlab && (
-                          <span className="mr-date-sub" title="Dernière activité">
-                            <i className="ri-history-line"></i> {fmtDate(mr.updated_at_gitlab)}
-                          </span>
-                        )}
                       </div>
                     </td>
 
