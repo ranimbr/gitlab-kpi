@@ -652,7 +652,8 @@ export default function DevelopersImportPage() {
                 </h6>
               </div>
               <div className="card-body">
-                <div className="row g-3 mb-4">
+                {/* Site par défaut - Commenté */}
+                {/* <div className="row g-3 mb-4">
                   <div className="col-md-6">
                     <label className="form-label fw-medium fs-13">
                       Site par défaut{" "}
@@ -662,8 +663,10 @@ export default function DevelopersImportPage() {
                       <option value="">-- Aucun --</option>
                     </select>
                   </div>
+                </div> */}
 
-                  <div className="col-md-12">
+                {/* Période de Mission - Commenté */}
+                {/* <div className="col-md-12">
                     <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
                       <label className="form-label fw-bold fs-13 mb-2">
                         <i className="ri-calendar-event-line me-1"></i> Période de Mission (Optionnel)
@@ -691,9 +694,10 @@ export default function DevelopersImportPage() {
                         Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
                       </p>
                     </div>
-                  </div>
+                  </div> */}
 
-                  <div className="col-md-6">
+                {/* Groupe par défaut - Commenté */}
+                {/* <div className="col-md-6">
                     <label className="form-label fw-medium fs-13">
                       Groupe par défaut{" "}
                       <span className="text-muted fw-normal">(si colonne "group" absente)</span>
@@ -703,10 +707,12 @@ export default function DevelopersImportPage() {
                       {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
                   </div>
+                </div> */}
 
+                <div className="row">
                   <div className="col-md-12">
                     <label className="form-label fw-medium fs-13">
-                      Instance GitLab par défaut{" "}
+                      Instance GitLab {" "}
                       <span className="text-muted fw-normal">(recommandé si vous créez de nouveaux projets)</span>
                     </label>
                     <div className="input-group">
