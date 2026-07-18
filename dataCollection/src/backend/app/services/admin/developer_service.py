@@ -1142,16 +1142,17 @@ class DeveloperService:
             # ── UPSERT du développeur ─────────────────────────────────────────
             try:
                 # Définir le start_date effectif pour la synchronisation
-                # ✅ SOLUTION SOLIDE : La date d'effet est la MAX(période, onboarding)
-                # pour garantir qu'un dev ne démarre jamais AVANT son onboarding
-                # et ne démarre JAMAIS après aujourd'hui par accident.
+                # ✅ SOLUTION SOLIDE : Priorité à l'onboarding_date (date réelle d'arrivée)
+                # pour garantir qu'un dev commence sa mission à sa date d'arrivée
+                # Fallback sur la période sélectionnée si pas d'onboarding
                 from datetime import datetime, timezone
-                effective_p_start = p_start  # date de la période sélectionnée (ex: 01/01/2026)
+                effective_p_start = None
                 if onboarding_date:
-                    # On prend le MAX : si le dev arrive en cours de période, sa mission commence à son arrivée
-                    onboarding_as_dt = datetime.combine(onboarding_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-                    if not effective_p_start or onboarding_as_dt > effective_p_start:
-                        effective_p_start = onboarding_as_dt
+                    # Priorité : onboarding_date est la date réelle d'arrivée
+                    effective_p_start = datetime.combine(onboarding_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+                elif p_start:
+                    # Fallback : utiliser la période si pas d'onboarding
+                    effective_p_start = p_start
 
                 if existing_dev:
                     # ── [SENIOR] Politique de réactivation Enterprise ──────────
