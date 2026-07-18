@@ -687,8 +687,9 @@ export default function DevelopersImportPage() {
                       </div>
                       <p className="text-muted fs-11 mt-2 mb-0">
                         <i className="ri-information-line me-1"></i>
-                        <strong>Optionnel</strong> : Laissez vide pour l'import initial ou les corrections. 
-                        Sélectionnez une période uniquement pour le <strong>Full Sync</strong> (désactivation des devs absents d'un projet pour ce mois).
+                        Si vous fournissez une date d'onboarding dans le CSV, elle sera utilisée comme date de début de mission.
+                        Sinon, cette période sera utilisée comme date de début.
+                        Sélectionnez une période pour le Full Sync (désactivation des devs absents d'un projet pour ce mois).
                       </p>
                     </div>
                   </div>
