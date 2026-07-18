@@ -653,7 +653,7 @@ export default function DevelopersImportPage() {
               </div>
               <div className="card-body">
                 <div className="row g-3 mb-4">
-                  <div className="col-md-6">
+                  {/* <div className="col-md-6">
                     <label className="form-label fw-medium fs-13">
                       Site par défaut{" "}
                       <span className="text-muted fw-normal">(si colonne "sites" absente)</span>
@@ -661,7 +661,7 @@ export default function DevelopersImportPage() {
                     <select className="form-select" value={siteId} onChange={e => setSiteId(e.target.value)}>
                       <option value="">-- Aucun --</option>
                     </select>
-                  </div>
+                  </div> */}
 
                   <div className="col-md-12">
                     <div className="p-3 rounded-3 mb-2" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
@@ -674,7 +674,7 @@ export default function DevelopersImportPage() {
                           value={periodId} 
                           onChange={e => setPeriodId(e.target.value)}
                         >
-                          <option value="">-- Optionnel (pour Full Sync uniquement) --</option>
+                          <option value="">-- Optionnel (utilisé si pas d'onboarding dans CSV) --</option>
                           {periods.map(p => (
                             <option key={p.id} value={p.id}>
                               {p.month}/{p.year} {p.status === 'open' ? '(Ouverte)' : '(Close)'}
@@ -693,7 +693,7 @@ export default function DevelopersImportPage() {
                     </div>
                   </div>
 
-                  <div className="col-md-6">
+                  {/* <div className="col-md-6">
                     <label className="form-label fw-medium fs-13">
                       Groupe par défaut{" "}
                       <span className="text-muted fw-normal">(si colonne "group" absente)</span>
@@ -702,11 +702,11 @@ export default function DevelopersImportPage() {
                       <option value="">-- Aucun --</option>
                       {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
-                  </div>
+                  </div> */}
 
                   <div className="col-md-12">
                     <label className="form-label fw-medium fs-13">
-                      Instance GitLab par défaut{" "}
+                      Instance GitLab {" "}
                       <span className="text-muted fw-normal">(recommandé si vous créez de nouveaux projets)</span>
                     </label>
                     <div className="input-group">
