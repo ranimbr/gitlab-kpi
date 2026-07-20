@@ -33,7 +33,6 @@ function SiteModal({ site, onClose, onSave }) {
     is_active:site?.is_active ?? true 
   });
   const [loading,  setLoading]  = useState(false);
-  const [guessing, setGuessing] = useState(false);
   const [error,    setError]    = useState("");
   const [tzList,   setTzList]   = useState([]);
 
@@ -44,16 +43,6 @@ function SiteModal({ site, onClose, onSave }) {
   const handle = (e) => { 
     const {name, value, type, checked} = e.target; 
     setForm(f => ({...f, [name]: type === "checkbox" ? checked : value})); 
-  };
-
-  const handleGuess = async () => {
-    if (!form.name.trim()) return setError("Entrez une ville.");
-    setGuessing(true);
-    try {
-      const res = await siteService.guessInfo(form.name);
-      setForm(f => ({ ...f, country: res.country !== "À définir" ? res.country : f.country, timezone: res.timezone || f.timezone }));
-    } catch(e) {}
-    finally { setGuessing(false); }
   };
 
   const submit = async () => {
@@ -95,13 +84,8 @@ function SiteModal({ site, onClose, onSave }) {
 
          <div>
             <label className="fs-11 fw-bold text-uppercase text-muted ls-1 mb-2">Ville / Localité</label>
-            <div className="input-group">
-               <input type="text" name="name" className="form-control py-2 border-0 bg-light-subtle fs-14" 
-                      placeholder="ex: Paris, Tunis..." value={form.name} onChange={handle} autoFocus />
-               <button className="btn btn-soft-primary fs-12 px-3 fw-bold" type="button" onClick={handleGuess} disabled={guessing || !form.name}>
-                  {guessing ? <span className="spinner-border spinner-border-sm"></span> : <><i className="ri-magic-line me-1"></i> IA-Guess</>}
-               </button>
-            </div>
+            <input type="text" name="name" className="form-control py-2 border-0 bg-light-subtle fs-14" 
+                   placeholder="ex: Paris, Tunis..." value={form.name} onChange={handle} autoFocus />
          </div>
 
          <div className="row g-3">
