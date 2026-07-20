@@ -999,6 +999,12 @@ class DeveloperService:
                     "name": name or None, "email": email or None,
                     "reason": "Champs obligatoires manquants (name, email, gitlab_username)",
                 })
+                # En dry-run, on continue quand même pour analyser les entités
+                if dry_run:
+                    self._analyze_dry_run_row(
+                        row, all_sites, all_projects_by_name, all_groups,
+                        unknown_sites_names, unknown_projects_data, unknown_groups_names,
+                    )
                 continue
 
             logger.info("Import Ligne %d: Analyse dev %s (%s) | Groupe CSV: '%s'", row_num, name, username, group_csv_raw)
