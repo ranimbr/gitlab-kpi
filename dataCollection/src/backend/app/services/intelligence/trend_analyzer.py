@@ -150,7 +150,13 @@ class TrendAnalyzer:
 
             # ── Valeur actuelle (dernier mois AVEC données) ───────────────
             latest = history_with_data[-1]
-            current_velocity    = latest.mr_rate_per_site      or 0.0
+            
+            # ✅ FIX: Recalculer dynamiquement comme analytics_service pour cohérence
+            # Utiliser total_mrs_created / nb_devs au lieu de mr_rate_per_site stocké
+            nb_devs = self.dev_repo.count_active_for_period(
+                self.db, self.project_id, latest.period_id, latest.site_id, latest.group_id
+            )
+            current_velocity    = round(float(latest.total_mrs_created or 0) / nb_devs, 2) if nb_devs > 0 else 0.0
             current_review_time = latest.avg_review_time_hours or 0.0
             current_quality     = latest.approved_mr_rate      or 0.0
 
