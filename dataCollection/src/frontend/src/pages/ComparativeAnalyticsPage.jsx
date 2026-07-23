@@ -1653,7 +1653,11 @@ export default function ComparativeAnalyticsPage() {
     const currentData = filteredTrends.filter(t => t.period_label === lastPeriod);
     if (currentData.length === 0) return null;
 
-    const bestVelocity = [...currentData].sort((a, b) => b.metrics.velocity - a.metrics.velocity)[0];
+    // ✅ FIX: Filtrer les valeurs <= 0 pour la vélocité (données manquantes)
+    const validVelocityData = currentData.filter(t => (t.metrics.velocity || 0) > 0);
+    const bestVelocity = validVelocityData.length > 0 
+      ? [...validVelocityData].sort((a, b) => b.metrics.velocity - a.metrics.velocity)[0]
+      : null;
     
     // Filtrer les valeurs 0 pour le temps de revue (pas de données)
     const validReviews = currentData.filter(t => t.metrics.review_time > 0);
@@ -2216,7 +2220,15 @@ export default function ComparativeAnalyticsPage() {
                         prevVal: prevCol && r.cells[prevCol] ? r.cells[prevCol][activeMetricId] : null
                       }));
 
-                      const validRows = currentRows.filter(v => v.val != null);
+                      // ✅ FIX: Filtrer les valeurs invalides (null) et les valeurs <= 0 pour la vélocité
+                      const validRows = currentRows.filter(v => {
+                        if (v.val == null) return false;
+                        // Pour les métriques de vélocité, exclure les valeurs <= 0 (données manquantes)
+                        if (activeMetricId === 'velocity' || activeMetricId === 'mr_rate_per_site' || activeMetricId === 'commit_rate_per_site') {
+                          return v.val > 0;
+                        }
+                        return true;
+                      });
                       if (validRows.length === 0) return <div className="p-4 text-center w-100 text-muted">Collecte de données en cours...</div>;
 
                       const sorted = [...validRows].sort((a, b) => b.val - a.val);
