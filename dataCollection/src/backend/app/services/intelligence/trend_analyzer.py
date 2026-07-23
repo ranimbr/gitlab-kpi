@@ -372,12 +372,13 @@ class TrendAnalyzer:
         ✅ UNIFICATION : Utiliser la même formule que le frontend (Option 1)
         Formule : (Vélocité × 40%) + (Qualité × 40%) + (Revue × 20%)
         
-        Ancienne formule (dépréciée) :
-          - Vélocité    30 pts
-          - Qualité     30 pts
-          - Review time 25 pts
-          - Tendances   15 pts (bonus/malus)
+        ✅ FIX: Détecter les données manquantes (tous les métriques à 0)
+        Si toutes les métriques sont à 0, retourner None pour indiquer données insuffisantes
         """
+        # ✅ FIX: Détecter si toutes les métriques sont à 0 (données manquantes)
+        if velocity == 0 and review_time == 0 and quality == 0:
+            return None  # Indiquer données insuffisantes
+        
         # Normaliser la qualité si elle est en 0-1
         normalized_quality = quality * 100 if quality <= 1.0 else quality
         

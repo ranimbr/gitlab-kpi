@@ -48,6 +48,65 @@ const IntelligenceCard = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
+  // ✅ FIX: Afficher message si les données sont insuffisantes (healthScore = null)
+  if (healthScore === null) {
+    return (
+      <div 
+        className="intelligence-card"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderLeft: "3px solid #64748b",
+          borderRadius: 16,
+          padding: "16px",
+          transition: `all ${TRANSITION_DURATION.normal} ${EASING.snappy}`,
+          cursor: "pointer",
+          boxShadow: isHovered ? "0 8px 32px rgba(0,0,0,0.2)" : "none",
+          transform: isHovered ? "translateY(-3px) scale(1.01)" : "translateY(0) scale(1)"
+        }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onClick={onToggle}
+      >
+        <div className="d-flex align-items-center justify-content-between mb-3">
+          <div className="d-flex align-items-center gap-3">
+            <div style={{
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: 'rgba(100, 116, 139, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <i className="ri-information-line" style={{ fontSize: 20, color: '#94a3b8' }}></i>
+            </div>
+            <div>
+              <div className="text-white fw-bold" style={{ fontSize: 14 }}>{entityName}</div>
+              <div className="opacity-50" style={{ fontSize: 11, color: "#94a3b8" }}>
+                {nPeriods} mois
+              </div>
+            </div>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <span className="fw-semibold px-2 py-0.5 rounded" style={{
+              fontSize: 10,
+              background: 'rgba(100, 116, 139, 0.2)',
+              color: '#94a3b8'
+            }}>
+              Données insuffisantes
+            </span>
+          </div>
+        </div>
+        <div className="text-center mt-3">
+          <div className="opacity-60" style={{ fontSize: 12, color: "#94a3b8" }}>
+            Données insuffisantes pour calculer le score de santé
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Utiliser les seuils partagés depuis metricsThresholds.js
   const scoreInfo = getHealthScoreStatus(healthScore);
 
