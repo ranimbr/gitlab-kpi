@@ -145,8 +145,17 @@ class TrendAnalyzer:
             if not history_with_data:
                 continue
 
-            # Pour les tendances, utiliser uniquement les mois avec données
-            vel_trend     = self._compute_trend([s.mr_rate_per_site        or 0.0 for s in history_with_data])
+            # ✅ FIX: Recalculer dynamiquement comme analytics_service pour cohérence
+            # Utiliser total_mrs_created / nb_devs au lieu de mr_rate_per_site stocké
+            vel_values = []
+            for s in history_with_data:
+                nb_devs = self.dev_repo.count_active_for_period(
+                    self.db, self.project_id, s.period_id, s.site_id, s.group_id
+                )
+                vel = round(float(s.total_mrs_created or 0) / nb_devs, 2) if nb_devs > 0 else 0.0
+                vel_values.append(vel)
+            
+            vel_trend     = self._compute_trend(vel_values)
             rev_trend     = self._compute_trend([s.avg_review_time_hours   or 0.0 for s in history_with_data])
             qual_trend    = self._compute_trend([s.approved_mr_rate        or 0.0 for s in history_with_data])
             commit_trend  = self._compute_trend([s.commit_rate_per_site    or 0.0 for s in history_with_data])
