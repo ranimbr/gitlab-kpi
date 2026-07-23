@@ -44,6 +44,9 @@ class TrendAnalyzer:
         self.project_id = project_id
         self.site_ids = site_ids
         self.group_ids = group_ids
+        # ✅ FIX: Ajouter dev_repo pour le recalcul dynamique
+        from app.repositories.developer_repository import DeveloperRepository
+        self.dev_repo = DeveloperRepository()
         print(f"[DEBUG TrendAnalyzer __init__] db={db is not None}, project_id={project_id}, site_ids={site_ids}, group_ids={group_ids}")
         self.thresholds = self._get_dynamic_thresholds() if db and project_id else self._get_fallback_thresholds()
         print(f"[DEBUG TrendAnalyzer __init__] thresholds={self.thresholds}")
