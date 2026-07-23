@@ -7,9 +7,10 @@
  * Utilisé par :
  * - ComparativeAnalyticsPage.jsx (matrice de performance, santé)
  * - IntelligenceCard.jsx (cartes d'intelligence)
+ * - Backend TrendAnalyzer (analyse d'intelligence)
  */
 
-// ─── Seuils par métrique ─────────────────────────────────────────────────────
+// ─── Seuils par métrique (Option 1 : seuils Frontend plus stricts) ─────────
 export const METRIC_THRESHOLDS = {
   velocity: {
     low: 3.0,
@@ -66,6 +67,56 @@ export const HEALTH_SCORE_THRESHOLDS = {
   excellent: 70,
   warning: 40,
   critical: 0
+};
+
+// ─── Formule unifiée du Score de Santé (Option 1 : formule Frontend) ───────────
+export const HEALTH_SCORE_FORMULA = {
+  // Pondération des composants
+  velocity_weight: 0.4,  // 40%
+  quality_weight: 0.4,   // 40%
+  review_weight: 0.2,    // 20%
+  
+  // Seuils de calcul (pour normaliser à 0-100)
+  velocity_max: 6.0,      // 6.0 commits/dev = 100%
+  review_max: 72.0,       // 72 heures = 0%
+  
+  // Description
+  description: "Score = (Vélocité × 40%) + (Qualité × 40%) + (Revue × 20%)"
+};
+
+// ─── Fonction unifiée de calcul du score de santé ───────────────────────────────
+export const calculateHealthScore = (velocity, quality, review_time) => {
+  /**
+   * Calcule le score de santé 0-100 selon la formule unifiée.
+   * 
+   * Formule : (Vélocité × 40%) + (Qualité × 40%) + (Revue × 20%)
+   * 
+   * Args:
+   *   velocity: Commits par développeur
+   *   quality: Taux d'approbation (0-1)
+   *   review_time: Temps de revue en heures
+   * 
+   * Returns:
+   *   Score de santé 0-100
+   */
+  // Normaliser la qualité si elle est en 0-1
+  const normalizedQuality = quality <= 1.0 ? quality * 100 : quality;
+  
+  // Score de vélocité (40% du total)
+  const vScore = Math.min(100, (velocity / HEALTH_SCORE_FORMULA.velocity_max) * 100);
+  
+  // Score de qualité (40% du total)
+  const qScore = normalizedQuality;
+  
+  // Score de revue (20% du total)
+  const rScore = Math.max(0, 100 - (review_time / HEALTH_SCORE_FORMULA.review_max) * 100);
+  
+  // Score final (moyenne pondérée)
+  const finalScore = (vScore * HEALTH_SCORE_FORMULA.velocity_weight) + 
+                      (qScore * HEALTH_SCORE_FORMULA.quality_weight) + 
+                      (rScore * HEALTH_SCORE_FORMULA.review_weight);
+  
+  return Math.round(finalScore);
 };
 
 // ─── Fonction utilitaire pour obtenir le statut de santé ────────────────────────

@@ -18,7 +18,7 @@ import analyticsService from "../services/analyticsService";
 import projectService from "../services/projectService";
 import developerService from "../services/developerService";
 import authService from "../services/authService";
-import { METRIC_THRESHOLDS, getMetricStatus, getHealthScoreStatus } from "../constants/metricsThresholds";
+import { METRIC_THRESHOLDS, getMetricStatus, getHealthScoreStatus, calculateHealthScore, HEALTH_SCORE_FORMULA } from "../constants/metricsThresholds";
 import { toUserError } from "../services/api";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import EmptyState from "../components/common/EmptyState";
@@ -1657,11 +1657,12 @@ export default function ComparativeAnalyticsPage() {
     const latest = filteredTrends[filteredTrends.length - 1];
     if (!latest) return 0;
 
-    const vScore = Math.min(100, (latest.metrics.velocity / 6) * 100);
-    const qScore = (latest.metrics.quality_score || 0) * 100;
-    const rScore = Math.max(0, 100 - (latest.metrics.review_time / 72) * 100);
-
-    return Math.round((vScore * 0.4) + (qScore * 0.4) + (rScore * 0.2));
+    // Utiliser la formule unifiée depuis metricsThresholds.js
+    return calculateHealthScore(
+      latest.metrics.velocity,
+      latest.metrics.quality_score || 0,
+      latest.metrics.review_time
+    );
   }, [filteredTrends]);
 
   const getChartDataForMetric = (metricId) => {
