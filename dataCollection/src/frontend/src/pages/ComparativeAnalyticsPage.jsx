@@ -1704,7 +1704,7 @@ export default function ComparativeAnalyticsPage() {
     // Calculer le score de santé pour chaque entité
     const entityScores = currentPeriodData.map(entity => 
       calculateHealthScore(
-        entity.metrics.velocity,
+        entity.metrics.mr_rate || 0,  // ✅ FIX: Use mr_rate (MRs/dev) instead of velocity (commits/dev)
         entity.metrics.quality_score || 0,
         entity.metrics.review_time
       )
