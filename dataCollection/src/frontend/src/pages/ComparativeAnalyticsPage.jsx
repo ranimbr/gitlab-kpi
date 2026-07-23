@@ -2611,10 +2611,7 @@ export default function ComparativeAnalyticsPage() {
                   <h5 className="mb-0 fw-bold">{activeMetric.label}</h5>
                   <p className="text-muted mb-0 fs-12">Évolution historique par entité sélectionnée</p>
                 </div>
-                <div className="btn-group">
-                  <button className="btn btn-sm btn-light active">Mensuel</button>
-                  <button className="btn btn-sm btn-light">Trimestriel</button>
-                </div>
+
               </div>
               <div className="card-body p-4 pt-0">
                 {trends.length > 0 ? (
