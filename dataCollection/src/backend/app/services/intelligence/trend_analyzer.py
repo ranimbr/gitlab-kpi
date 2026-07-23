@@ -120,9 +120,10 @@ class TrendAnalyzer:
             # On exclut aussi les snapshots où toutes les KPIs principales (MR rate,
             # approval rate, commit rate) sont à 0.0, ce qui correspond à une absence
             # d'activité enregistrée (ex: mois en cours non clôturé / sans collecte).
+            # ✅ FIX: Utiliser total_mrs_created au lieu de mr_rate_per_site stocké
             def has_data(snap) -> bool:
                 """Retourne True si le snapshot contient au moins une métrique KPI renseignée et non-nulle."""
-                mr_rate = snap.mr_rate_per_site
+                mr_rate = snap.total_mrs_created  # ✅ Utiliser total_mrs_created
                 app_rate = snap.approved_mr_rate
                 comm_rate = snap.commit_rate_per_site
 
