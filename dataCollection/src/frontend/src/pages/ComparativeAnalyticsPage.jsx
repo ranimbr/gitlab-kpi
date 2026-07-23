@@ -544,7 +544,7 @@ const EntityDetailsModal = ({ entity, entityType, onClose }) => {
 
             <div className="d-flex flex-column gap-4">
               {[
-                { label: "Vélocité moyenne (Commits/dev)", trend: entity.velocity_trend, metricType: "velocity", suffix: "", icon: "ri-flashlight-line" },
+                { label: "Vélocité moyenne (MRs/dev)", trend: entity.velocity_trend, metricType: "velocity", suffix: "", icon: "ri-flashlight-line" },
                 { label: "Temps moyen de revue", trend: entity.review_trend, metricType: "review_time", suffix: "h", icon: "ri-time-line" },
                 { label: "Taux moyen d'approbation", trend: entity.quality_trend, metricType: "quality", suffix: "%", multiplier: 100, icon: "ri-shield-check-line" },
                
