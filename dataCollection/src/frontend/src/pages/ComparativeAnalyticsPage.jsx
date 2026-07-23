@@ -18,6 +18,7 @@ import analyticsService from "../services/analyticsService";
 import projectService from "../services/projectService";
 import developerService from "../services/developerService";
 import authService from "../services/authService";
+import { METRIC_THRESHOLDS, getMetricStatus, getHealthScoreStatus } from "../constants/metricsThresholds";
 import { toUserError } from "../services/api";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import EmptyState from "../components/common/EmptyState";
@@ -1718,19 +1719,11 @@ export default function ComparativeAnalyticsPage() {
       return { color: "#64748b", bg: "#f1f5f9", border: "#cbd5e1", label: "N/A", icon: "ri-question-line" };
     }
 
-    const thresholds = {
-      velocity: { low: 3.0, high: 5.0, reverse: false },
-      mr_rate: { low: 1.0, high: 2.0, reverse: false },
-      quality_score: { low: 70, high: 90, reverse: false },
-      merged_rate: { low: 70, high: 90, reverse: false },
-      review_time: { low: 24.0, high: 48.0, reverse: true },
-      avg_commits: { low: 3.0, high: 6.0, reverse: true },
-    };
+    // Utiliser les seuils partagés depuis metricsThresholds.js
+    const t = METRIC_THRESHOLDS[metricId] || { low: 0, high: 0, reverse: false };
 
     let checkVal = value;
     if ((metricId === 'quality_score' || metricId === 'merged_rate') && value <= 1.0) checkVal = value * 100;
-
-    const t = thresholds[metricId] || { low: 0, high: 0, reverse: false };
 
     let status = "medium";
     if (t.reverse) {
@@ -2932,15 +2925,15 @@ export default function ComparativeAnalyticsPage() {
                 <div className="mb-4">
                   <div className="d-flex align-items-center gap-3 mb-3 p-3 rounded-3" style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.15)' }}>
                     <div className="fw-bold text-success" style={{ minWidth: 120 }}>Vélocité (40%)</div>
-                    <div className="text-muted fs-13">Commits par développeur, max 6 = 100 pts</div>
+                    <div className="text-muted fs-13">Commits/dev (excellent ≥5.0, critique &lt;3.0)</div>
                   </div>
                   <div className="d-flex align-items-center gap-3 mb-3 p-3 rounded-3" style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.15)' }}>
                     <div className="fw-bold text-primary" style={{ minWidth: 120 }}>Qualité (40%)</div>
-                    <div className="text-muted fs-13">Taux d'approbation des MRs, en pourcentage</div>
+                    <div className="text-muted fs-13">Taux approbation % (excellent ≥90%, critique &lt;70%)</div>
                   </div>
                   <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.15)' }}>
                     <div className="fw-bold text-warning" style={{ minWidth: 120 }}>Revue (20%)</div>
-                    <div className="text-muted fs-13">Temps moyen de revue, max 72h = 0 pts</div>
+                    <div className="text-muted fs-13">Temps revue heures (excellent ≤24h, critique &gt;48h)</div>
                   </div>
                 </div>
 

@@ -9,6 +9,7 @@
  * - Professional styling with micro-interactions
  */
 import { useState } from "react";
+import { getHealthScoreStatus } from "../../constants/metricsThresholds";
 
 // ─── Custom Branding Constants (Enterprise-Unique) ─────────────────────────────
 const EASING = {
@@ -47,14 +48,8 @@ const IntelligenceCard = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
-  // Determine score color based on health score
-  const getScoreColor = (score) => {
-    if (score >= 70) return { color: "#10b981", bg: "rgba(16,185,129,0.15)", text: "Excellent" };
-    if (score >= 40) return { color: "#f59e0b", bg: "rgba(245,158,11,0.15)", text: "Surveillance" };
-    return { color: "#ef4444", bg: "rgba(239,68,68,0.15)", text: "Critique" };
-  };
-
-  const scoreInfo = getScoreColor(healthScore);
+  // Utiliser les seuils partagés depuis metricsThresholds.js
+  const scoreInfo = getHealthScoreStatus(healthScore);
 
   // Business-specific: Calculate YoY trend if we have enough data
   const velocityValues = metrics.velocity_trend?.values || [];
