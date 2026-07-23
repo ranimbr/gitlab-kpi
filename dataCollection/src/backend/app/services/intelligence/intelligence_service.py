@@ -162,12 +162,15 @@ class IntelligenceService:
     def _get_group_snapshots(self, project_id: int, period_id: Optional[int]) -> List[KpiSnapshot]:
         """Récupère les snapshots par équipe (group) pour une période."""
         if period_id:
-            # Pour une période spécifique, utiliser get_site_comparison avec filtre group_id
-            snapshots = self.snapshot_repo.get_site_comparison(
-                self.db, project_id, period_id, kpi_field="mr_rate_per_site"
-            )
-            # Filtrer pour ne retourner que les snapshots de niveau group
-            return [s for s in snapshots if s.group_id is not None]
+            # ✅ FIX: Utiliser le même filtrage que analytics_service pour les équipes
+            # Filtrer directement par group_id au lieu d'utiliser get_site_comparison
+            snapshots = self.db.query(KpiSnapshot).filter(
+                KpiSnapshot.project_id == project_id,
+                KpiSnapshot.period_id == period_id,
+                KpiSnapshot.group_id.isnot(None),
+                KpiSnapshot.developer_id.is_(None)
+            ).all()
+            return snapshots
         # Utiliser la nouvelle méthode dédiée aux équipes
         return self.snapshot_repo.get_latest_per_group(self.db, project_id)
     
