@@ -1564,6 +1564,25 @@ export default function ComparativeAnalyticsPage() {
 
           console.log("[DEBUG] Fetching intelligence - user role:", user?.role, "siteIds:", effectiveSiteIds, "userAssignments.site_ids:", userAssignments.site_ids, "user.site_id:", user?.site_id);
           const data = await analyticsService.getAdminIntelligence(projectId, null, null, effectiveSiteIds);
+          
+          // ✅ FIX: Filtrer l'intelligence par les périodes sélectionnées pour cohérence avec le reste de la page
+          if (data && data.trend_analysis && selectedPeriods.length > 0 && selectedPeriods.length < availablePeriods.length) {
+            // Filtrer les site_trends pour ne garder que les périodes sélectionnées
+            if (data.trend_analysis.site_trends) {
+              const filteredSiteTrends = {};
+              Object.entries(data.trend_analysis.site_trends).forEach(([siteId, siteData]) => {
+                // Filtrer les alertes pour ne garder que celles des périodes sélectionnées
+                const filteredAlerts = (data.trend_analysis.alerts || []).filter(alert => {
+                  // Les alertes n'ont pas directement de période, mais on peut filtrer par site
+                  return effectiveSiteIds === null || effectiveSiteIds.includes(parseInt(siteId));
+                });
+                filteredSiteTrends[siteId] = siteData;
+              });
+              data.trend_analysis.site_trends = filteredSiteTrends;
+              data.trend_analysis.alerts = filteredAlerts;
+            }
+          }
+          
           setIntelligenceData(data);
         } catch (err) {
           console.warn("Intelligence non disponible:", err);
@@ -1574,7 +1593,7 @@ export default function ComparativeAnalyticsPage() {
       };
       fetchIntelligence();
     }
-  }, [projectId, user]);
+  }, [projectId, user, selectedPeriods, availablePeriods]); // ✅ Ajouter selectedPeriods et availablePeriods comme dépendances
 
   // 5. Chargement Intelligence Équipes (Super Admin, Team Lead, Project Manager et Viewer)
   useEffect(() => {
@@ -1597,9 +1616,25 @@ export default function ComparativeAnalyticsPage() {
 
           // ✅ FIX: Pour team_lead, project_manager et viewer, utiliser group_ids depuis userAssignments au lieu de user.group_id
           const groupIds = (user?.role === 'team_lead' || user?.role === 'project_manager' || user?.role === 'viewer') ? (userAssignments.group_ids.length > 0 ? userAssignments.group_ids : [user?.group_id].filter(Boolean)) : null;
-          console.log("[DEBUG] Fetching team intelligence - user role:", user?.role, "groupIds:", groupIds, "userAssignments.group_ids:", userAssignments.group_ids, "user.group_ids:", user?.group_ids);
+          console.log("[DEBUG] Fetching team intelligence - user role:", user?.role, "groupIds:", groupIds, "userAssignments.group_ids:", userAssignments.group_ids, "user.group_ids:", user?.group_id);
           const data = await analyticsService.getTeamIntelligence(projectId, null, groupIds);
           console.log("[DEBUG] Team intelligence data received:", data);
+          
+          // ✅ FIX: Filtrer l'intelligence équipe par les périodes sélectionnées pour cohérence
+          if (data && data.trend_analysis && selectedPeriods.length > 0 && selectedPeriods.length < availablePeriods.length) {
+            if (data.trend_analysis.team_trends) {
+              const filteredTeamTrends = {};
+              Object.entries(data.trend_analysis.team_trends).forEach(([groupId, teamData]) => {
+                const filteredAlerts = (data.trend_analysis.alerts || []).filter(alert => {
+                  return groupIds === null || groupIds.includes(parseInt(groupId));
+                });
+                filteredTeamTrends[groupId] = teamData;
+              });
+              data.trend_analysis.team_trends = filteredTeamTrends;
+              data.trend_analysis.alerts = filteredAlerts;
+            }
+          }
+          
           setTeamIntelligenceData(data);
         } catch (err) {
           console.warn("Intelligence équipes non disponible:", err);
@@ -1610,7 +1645,7 @@ export default function ComparativeAnalyticsPage() {
       };
       fetchTeamIntelligence();
     }
-  }, [projectId, user, groupIdsLength]);
+  }, [projectId, user, selectedPeriods, availablePeriods]); // ✅ Ajouter selectedPeriods et availablePeriods comme dépendances
 
   const executiveSummary = useMemo(() => {
     if (!filteredTrends.length) return null;
