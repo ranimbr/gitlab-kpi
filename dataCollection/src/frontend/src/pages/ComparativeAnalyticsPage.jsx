@@ -1693,15 +1693,26 @@ export default function ComparativeAnalyticsPage() {
 
   const healthScore = useMemo(() => {
     if (!filteredTrends.length) return 0;
-    const latest = filteredTrends[filteredTrends.length - 1];
-    if (!latest) return 0;
-
-    // Utiliser la formule unifiée depuis metricsThresholds.js
-    return calculateHealthScore(
-      latest.metrics.velocity,
-      latest.metrics.quality_score || 0,
-      latest.metrics.review_time
+    
+    // ✅ FIX: Calculer la moyenne des scores de santé de toutes les entités
+    // au lieu de prendre seulement le dernier élément du tableau
+    const lastPeriod = filteredTrends[filteredTrends.length - 1]?.period_label;
+    const currentPeriodData = filteredTrends.filter(t => t.period_label === lastPeriod);
+    
+    if (currentPeriodData.length === 0) return 0;
+    
+    // Calculer le score de santé pour chaque entité
+    const entityScores = currentPeriodData.map(entity => 
+      calculateHealthScore(
+        entity.metrics.velocity,
+        entity.metrics.quality_score || 0,
+        entity.metrics.review_time
+      )
     );
+    
+    // Retourner la moyenne des scores
+    const averageScore = entityScores.reduce((sum, score) => sum + score, 0) / entityScores.length;
+    return Math.round(averageScore);
   }, [filteredTrends]);
 
   const getChartDataForMetric = (metricId) => {
