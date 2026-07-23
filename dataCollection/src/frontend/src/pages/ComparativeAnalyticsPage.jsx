@@ -1870,13 +1870,13 @@ export default function ComparativeAnalyticsPage() {
   };
 
   const handleExportCSV = () => {
-    if (!trends.length) return;
+    if (!filteredTrends.length) return;
     const projectName = projects.find(p => (p.id || p.project_id) === projectId)?.name || 'dashboard';
     const safeProject = projectName.replace(/[^a-zA-Z0-9]/g, '_');
     const date = new Date().toISOString().slice(0, 10);
 
     const header = ['Entité', 'Période', 'Commits Totaux', 'MRs Totaux', 'Vélocité (C/Dev)', 'Qualité (%)', 'Fusion (%)', 'Review Time (h)'];
-    const rows = trends.map(t => [
+    const rows = filteredTrends.map(t => [
       `"${t.entity_name}"`,
       `"${t.period_label}"`,
       t.metrics.total_commits ?? '',
@@ -1902,11 +1902,11 @@ export default function ComparativeAnalyticsPage() {
   };
 
   const handleExportJSON = () => {
-    if (!trends.length) return;
+    if (!filteredTrends.length) return;
     const projectName = projects.find(p => (p.id || p.project_id) === projectId)?.name || 'dashboard';
     const safeProject = projectName.replace(/[^a-zA-Z0-9]/g, '_');
     const date = new Date().toISOString().slice(0, 10);
-    const payload = { project: projectName, exported_at: new Date().toISOString(), data: trends };
+    const payload = { project: projectName, exported_at: new Date().toISOString(), data: filteredTrends };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -2029,7 +2029,7 @@ export default function ComparativeAnalyticsPage() {
                 <button
                   className="btn btn-primary btn-sm rounded-3 px-3 fw-bold d-flex align-items-center gap-2 shadow-sm"
                   onClick={() => setShowExportMenu(v => !v)}
-                  disabled={!trends.length}
+                  disabled={!filteredTrends.length}
                 >
                   <i className="ri-download-2-line"></i> Export
                   <i className={`ri-arrow-${showExportMenu ? 'up' : 'down'}-s-line`}></i>
@@ -2682,7 +2682,7 @@ export default function ComparativeAnalyticsPage() {
                         </tr>
                       </thead>
                       <tbody className="border-top-0">
-                        {trends.slice().reverse().map((t, idx) => (
+                        {filteredTrends.slice().reverse().map((t, idx) => (
                           <tr key={idx} style={{ transition: "all 0.1s" }}>
                             <td className="ps-4">
                               <span className="fw-bold fs-13 text-dark">{t.entity_name}</span>
@@ -2729,7 +2729,7 @@ export default function ComparativeAnalyticsPage() {
             <div style={{ position: 'absolute', left: '-9999px', top: '0', width: '800px', zIndex: -1000, pointerEvents: 'none' }}>
               <div id="pdf-chart-velocity" style={{ background: '#ffffff', padding: '15px', borderRadius: '10px' }}>
                 <h5 style={{ margin: '0 0 10px 0', fontFamily: CHART_FONT, fontWeight: 700, color: '#0f172a' }}>Velocite (Commits/Dev)</h5>
-                {trends.length > 0 && (
+                {filteredTrends.length > 0 && (
                   <ReactApexChart
                     options={getChartOptionsForMetric('velocity', chartData.categories)}
                     series={getChartDataForMetric('velocity').series}
@@ -2740,7 +2740,7 @@ export default function ComparativeAnalyticsPage() {
               </div>
               <div id="pdf-chart-mr_rate" style={{ background: '#ffffff', padding: '15px', borderRadius: '10px', marginTop: '20px' }}>
                 <h5 style={{ margin: '0 0 10px 0', fontFamily: CHART_FONT, fontWeight: 700, color: '#0f172a' }}>Livraison (MRs/Dev)</h5>
-                {trends.length > 0 && (
+                {filteredTrends.length > 0 && (
                   <ReactApexChart
                     options={getChartOptionsForMetric('mr_rate', chartData.categories)}
                     series={getChartDataForMetric('mr_rate').series}
@@ -2751,7 +2751,7 @@ export default function ComparativeAnalyticsPage() {
               </div>
               <div id="pdf-chart-quality_score" style={{ background: '#ffffff', padding: '15px', borderRadius: '10px', marginTop: '20px' }}>
                 <h5 style={{ margin: '0 0 10px 0', fontFamily: CHART_FONT, fontWeight: 700, color: '#0f172a' }}>Taux d'Approbation (%)</h5>
-                {trends.length > 0 && (
+                {filteredTrends.length > 0 && (
                   <ReactApexChart
                     options={getChartOptionsForMetric('quality_score', chartData.categories)}
                     series={getChartDataForMetric('quality_score').series}
@@ -2762,7 +2762,7 @@ export default function ComparativeAnalyticsPage() {
               </div>
               <div id="pdf-chart-merged_rate" style={{ background: '#ffffff', padding: '15px', borderRadius: '10px', marginTop: '20px' }}>
                 <h5 style={{ margin: '0 0 10px 0', fontFamily: CHART_FONT, fontWeight: 700, color: '#0f172a' }}>Taux de Fusion (%)</h5>
-                {trends.length > 0 && (
+                {filteredTrends.length > 0 && (
                   <ReactApexChart
                     options={getChartOptionsForMetric('merged_rate', chartData.categories)}
                     series={getChartDataForMetric('merged_rate').series}
@@ -2773,7 +2773,7 @@ export default function ComparativeAnalyticsPage() {
               </div>
               <div id="pdf-chart-review_time" style={{ background: '#ffffff', padding: '15px', borderRadius: '10px', marginTop: '20px' }}>
                 <h5 style={{ margin: '0 0 10px 0', fontFamily: CHART_FONT, fontWeight: 700, color: '#0f172a' }}>Temps de Revue Moyen (h)</h5>
-                {trends.length > 0 && (
+                {filteredTrends.length > 0 && (
                   <ReactApexChart
                     options={getChartOptionsForMetric('review_time', chartData.categories)}
                     series={getChartDataForMetric('review_time').series}
