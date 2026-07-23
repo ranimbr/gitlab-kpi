@@ -1329,6 +1329,11 @@ export default function ComparativeAnalyticsPage() {
   const [entityType, setEntityType] = useState('site'); // 'site' or 'group'
   const [selectedEntityIds, setSelectedEntityIds] = useState([]);
   const [intelligenceView, setIntelligenceView] = useState('sites'); // 'sites' or 'teams' - for tabbed navigation
+  
+  // ✅ Filtre de période (côté client uniquement)
+  const [availablePeriods, setAvailablePeriods] = useState([]);
+  const [selectedPeriods, setSelectedPeriods] = useState([]);
+  const [showPeriodFilter, setShowPeriodFilter] = useState(false);
 
   // ✅ Rafraîchir les assignations au chargement du composant (pour les utilisateurs connectés avant l'ajout du endpoint)
   useEffect(() => {
@@ -1488,6 +1493,14 @@ export default function ComparativeAnalyticsPage() {
 
   // Données de tendance
   const [trends, setTrends] = useState([]);
+  
+  // ✅ Données filtrées par période (côté client)
+  const filteredTrends = useMemo(() => {
+    if (selectedPeriods.length === 0 || selectedPeriods.length === availablePeriods.length) {
+      return trends; // Aucun filtre ou toutes les périodes sélectionnées
+    }
+    return trends.filter(t => selectedPeriods.includes(t.period_label));
+  }, [trends, selectedPeriods, availablePeriods]);
 
   // 2. Chargement des données de tendance
   useEffect(() => {
@@ -1504,6 +1517,12 @@ export default function ComparativeAnalyticsPage() {
           groupIds: entityType === "group" ? selectedEntityIds : [],
         });
         setTrends(data);
+        
+        // ✅ Extraire les périodes disponibles
+        const periods = [...new Set(data.map(t => t.period_label))];
+        setAvailablePeriods(periods);
+        // Par défaut, toutes les périodes sont sélectionnées
+        setSelectedPeriods(periods);
       } catch (err) {
         console.error("Erreur fetchTrends:", err);
         setPageError(toUserError(err, "Impossible de charger les tendances comparatives."));
@@ -1590,9 +1609,9 @@ export default function ComparativeAnalyticsPage() {
   }, [projectId, user, groupIdsLength]);
 
   const executiveSummary = useMemo(() => {
-    if (!trends.length) return null;
-    const lastPeriod = trends[trends.length - 1]?.period_label;
-    const currentData = trends.filter(t => t.period_label === lastPeriod);
+    if (!filteredTrends.length) return null;
+    const lastPeriod = filteredTrends[filteredTrends.length - 1]?.period_label;
+    const currentData = filteredTrends.filter(t => t.period_label === lastPeriod);
     if (currentData.length === 0) return null;
 
     const bestVelocity = [...currentData].sort((a, b) => b.metrics.velocity - a.metrics.velocity)[0];
@@ -1627,11 +1646,11 @@ export default function ComparativeAnalyticsPage() {
     }
 
     return { title: `Résumé Exécutif — ${lastPeriod}`, text };
-  }, [trends]);
+  }, [filteredTrends]);
 
   const healthScore = useMemo(() => {
-    if (!trends.length) return 0;
-    const latest = trends[trends.length - 1];
+    if (!filteredTrends.length) return 0;
+    const latest = filteredTrends[filteredTrends.length - 1];
     if (!latest) return 0;
 
     const vScore = Math.min(100, (latest.metrics.velocity / 6) * 100);
@@ -1639,15 +1658,15 @@ export default function ComparativeAnalyticsPage() {
     const rScore = Math.max(0, 100 - (latest.metrics.review_time / 72) * 100);
 
     return Math.round((vScore * 0.4) + (qScore * 0.4) + (rScore * 0.2));
-  }, [trends]);
+  }, [filteredTrends]);
 
   const getChartDataForMetric = (metricId) => {
-    if (!trends.length) return { series: [], categories: [] };
+    if (!filteredTrends.length) return { series: [], categories: [] };
 
-    const periods = [...new Set(trends.map(t => t.period_label))];
+    const periods = [...new Set(filteredTrends.map(t => t.period_label))];
 
     const entityGroups = {};
-    trends.forEach(t => {
+    filteredTrends.forEach(t => {
       if (!entityGroups[t.entity_name]) entityGroups[t.entity_name] = {};
       let val = t.metrics[metricId];
       if ((metricId === 'quality_score' || metricId === 'merged_rate') && val != null && val <= 1.0) {
@@ -1666,25 +1685,25 @@ export default function ComparativeAnalyticsPage() {
 
   const chartData = useMemo(() => {
     return getChartDataForMetric(activeMetricId);
-  }, [trends, activeMetricId]);
+  }, [filteredTrends, activeMetricId]);
 
   const strategicPivotData = useMemo(() => {
-    if (!trends.length) return { rows: [], columns: [] };
+    if (!filteredTrends.length) return { rows: [], columns: [] };
 
-    const columns = [...new Set(trends.map(t => t.period_label))];
-    const entityNames = [...new Set(trends.map(t => t.entity_name))];
+    const columns = [...new Set(filteredTrends.map(t => t.period_label))];
+    const entityNames = [...new Set(filteredTrends.map(t => t.entity_name))];
 
     const rows = entityNames.map(name => {
       const rowData = { entity_name: name, cells: {} };
       columns.forEach(col => {
-        const trend = trends.find(t => t.entity_name === name && t.period_label === col);
+        const trend = filteredTrends.find(t => t.entity_name === name && t.period_label === col);
         rowData.cells[col] = trend ? trend.metrics : null;
       });
       return rowData;
     });
 
     return { rows, columns };
-  }, [trends]);
+  }, [filteredTrends]);
 
   const getMetricHealth = (metricId, value) => {
     if (value == null) return { color: "#64748b", bg: "#f1f5f9", border: "#cbd5e1", label: "N/A", icon: "ri-question-line" };
@@ -1756,9 +1775,9 @@ export default function ComparativeAnalyticsPage() {
 
       // ── Dynamic insights from real data ──────────────────────────────────
       const insightsArray = [];
-      if (trends.length > 0) {
-        const lastPeriodLabel = trends[trends.length - 1]?.period_label;
-        const currentData = trends.filter(
+      if (filteredTrends.length > 0) {
+        const lastPeriodLabel = filteredTrends[filteredTrends.length - 1]?.period_label;
+        const currentData = filteredTrends.filter(
           t => t.period_label === lastPeriodLabel &&
             t.entity_name !== 'Global' &&
             t.entity_name !== 'Autres / Non-assignes'
@@ -2240,6 +2259,105 @@ export default function ComparativeAnalyticsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* ✅ Filtre de Période */}
+            <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: 14 }}>
+              <div className="card-header bg-white border-bottom-0 pt-4 px-4">
+                <div className="d-flex align-items-center justify-content-between">
+                  <h6 className="card-title mb-0 fw-bold text-uppercase" style={{ fontSize: 10, letterSpacing: ".1em", color: "#9ca3af" }}>
+                    <i className="ri-calendar-line me-1"></i> Périodes
+                  </h6>
+                  <button
+                    className="btn btn-link p-0 text-primary fs-10 fw-bold"
+                    onClick={() => {
+                      setSelectedPeriods(availablePeriods);
+                      setShowPeriodFilter(false);
+                    }}
+                    style={{ fontSize: 10 }}
+                  >
+                    Réinitialiser
+                  </button>
+                </div>
+              </div>
+              <div className="card-body px-3 pb-4">
+                {availablePeriods.length > 0 ? (
+                  <>
+                    <div className="d-flex flex-column gap-1.5 mb-3">
+                      {availablePeriods.map((period, idx) => {
+                        const isSelected = selectedPeriods.includes(period);
+                        return (
+                          <div
+                            key={period}
+                            className="d-flex align-items-center justify-content-between py-1.5 px-2 rounded-2 cursor-pointer transition-all"
+                            style={{
+                              background: isSelected ? 'rgba(79, 70, 229, 0.08)' : 'transparent',
+                              border: isSelected ? '1px solid rgba(79, 70, 229, 0.15)' : '1px solid transparent',
+                            }}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedPeriods(selectedPeriods.filter(p => p !== period));
+                              } else {
+                                setSelectedPeriods([...selectedPeriods, period]);
+                              }
+                            }}
+                          >
+                            <div className="d-flex align-items-center gap-2">
+                              <div style={{ 
+                                width: 6, 
+                                height: 6, 
+                                borderRadius: "50%", 
+                                background: isSelected ? BRAND_COLORS.primary : "#ced4da" 
+                              }}></div>
+                              <span className="fs-12 fw-medium" style={{ color: isSelected ? BRAND_COLORS.primaryDark : '#475569' }}>
+                                {period}
+                              </span>
+                            </div>
+                            <div className="form-check form-switch mb-0">
+                              <input 
+                                className="form-check-input" 
+                                type="checkbox" 
+                                checked={isSelected} 
+                                style={{ cursor: 'pointer' }} 
+                                readOnly 
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedPeriods.length !== availablePeriods.length && (
+                      <button
+                        className="btn btn-primary btn-sm w-100 fw-bold rounded-3 shadow-sm"
+                        onClick={() => setShowPeriodFilter(false)}
+                        style={{
+                          background: BRAND_COLORS.primary,
+                          border: 'none',
+                          fontSize: 12,
+                          padding: '8px 16px',
+                          transition: `all ${TRANSITION_DURATION.normal} ${EASING.smooth}`
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(79,70,229,0.3)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(79,70,229,0.2)';
+                        }}
+                      >
+                        <i className="ri-check-line me-1"></i>
+                        Appliquer ({selectedPeriods.length} période{selectedPeriods.length > 1 ? 's' : ''})
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-3 border rounded-3 bg-light-subtle">
+                    <i className="ri-calendar-line fs-1 text-muted opacity-25"></i>
+                    <p className="fs-11 text-muted mt-2 px-2">Aucune période disponible.</p>
+                  </div>
+                )}
               </div>
             </div>
 
