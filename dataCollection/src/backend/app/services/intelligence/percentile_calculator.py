@@ -17,10 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 # Seuils de fallback (hardcodés) si pas assez de données
+# ✅ UNIFICATION : Utiliser les mêmes seuils que le frontend (Option 1)
 FALLBACK_THRESHOLDS = {
-    "velocity_low": 1.0,
-    "review_time_high": 48.0,
-    "quality_low": 0.5,
+    "velocity_low": 3.0,      # Frontend: 3.0 MRs/dev
+    "review_time_high": 48.0,  # Frontend: 48h
+    "quality_low": 0.7,       # Frontend: 70% = 0.7
 }
 
 

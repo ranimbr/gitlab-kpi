@@ -12,9 +12,10 @@ from .percentile_calculator import PercentileCalculator, FALLBACK_THRESHOLDS
 
 
 # ── Seuils métier (fallbacks si pas assez de données) ─────────────────────────
-FALLBACK_VELOCITY_LOW_THRESHOLD    = 1.0   # MRs/dev considéré faible
-FALLBACK_REVIEW_TIME_HIGH_THRESHOLD = 48.0  # heures — au-dessus : goulot
-FALLBACK_QUALITY_LOW_THRESHOLD     = 0.5   # taux d'approbation — en dessous : risque qualité
+# ✅ UNIFICATION : Utiliser les mêmes seuils que le frontend (Option 1)
+FALLBACK_VELOCITY_LOW_THRESHOLD    = 3.0   # MRs/dev considéré faible (frontend: 3.0)
+FALLBACK_REVIEW_TIME_HIGH_THRESHOLD = 48.0  # heures — au-dessus : goulot (frontend: 48h)
+FALLBACK_QUALITY_LOW_THRESHOLD     = 0.7   # taux d'approbation — en dessous : risque qualité (frontend: 70% = 0.7)
 DECLINING_MIN_PERIODS     = 2     # nb de périodes consécutives en déclin pour alerter
 
 
@@ -367,43 +368,32 @@ class TrendAnalyzer:
     ) -> int:
         """
         Score de santé 0-100 basé sur les KPIs actuels + tendances.
-
-        Décomposition :
+        
+        ✅ UNIFICATION : Utiliser la même formule que le frontend (Option 1)
+        Formule : (Vélocité × 40%) + (Qualité × 40%) + (Revue × 20%)
+        
+        Ancienne formule (dépréciée) :
           - Vélocité    30 pts
           - Qualité     30 pts
           - Review time 25 pts
           - Tendances   15 pts (bonus/malus)
         """
-        score = 0
-
-        # Vélocité (30 pts) : > 3 = plein, 0 = zéro
-        vel_score = min(30, (velocity / 3.0) * 30)
-        score += vel_score
-
-        # Qualité (30 pts) : 100% = 30 pts
-        qual_score = quality * 30
-        score += qual_score
-
-        # Review time (25 pts) : 0h = 25 pts, 100h = 0 pts
-        rev_score = max(0.0, 25 - (review_time / 100.0) * 25)
-        score += rev_score
-
-        # Bonus/malus tendances (15 pts)
-        trend_score = 0
-        if vel_trend["direction"] == "improving":
-            trend_score += 5
-        elif vel_trend["direction"] == "declining":
-            trend_score -= 5 * min(3, vel_trend["consecutive_declining"])
-
-        if qual_trend["direction"] == "improving":
-            trend_score += 5
-        elif qual_trend["direction"] == "declining":
-            trend_score -= 5
-
-        trend_score += 5  # baseline
-        score += max(0, min(15, trend_score))
-
-        return max(0, min(100, round(score)))
+        # Normaliser la qualité si elle est en 0-1
+        normalized_quality = quality * 100 if quality <= 1.0 else quality
+        
+        # Score de vélocité (40% du total) : 6.0 = 100%
+        v_score = min(100, (velocity / 6.0) * 100)
+        
+        # Score de qualité (40% du total) : 100% = 100%
+        q_score = normalized_quality
+        
+        # Score de revue (20% du total) : 0h = 100%, 72h = 0%
+        r_score = max(0, 100 - (review_time / 72.0) * 100)
+        
+        # Score final (moyenne pondérée)
+        final_score = (v_score * 0.4) + (q_score * 0.4) + (r_score * 0.2)
+        
+        return max(0, min(100, round(final_score)))
 
     # ── Recommandations RH ─────────────────────────────────────────────────────
 
