@@ -1711,6 +1711,9 @@ export default function ComparativeAnalyticsPage() {
 
     const entityGroups = {};
     filteredTrends.forEach(t => {
+      // ✅ FIX: Vérifier que t et t.metrics existent avant d'y accéder
+      if (!t || !t.metrics) return;
+      
       if (!entityGroups[t.entity_name]) entityGroups[t.entity_name] = {};
       let val = t.metrics[metricId];
       if ((metricId === 'quality_score' || metricId === 'merged_rate') && val != null && val <= 1.0) {
@@ -1741,7 +1744,8 @@ export default function ComparativeAnalyticsPage() {
       const rowData = { entity_name: name, cells: {} };
       columns.forEach(col => {
         const trend = filteredTrends.find(t => t.entity_name === name && t.period_label === col);
-        rowData.cells[col] = trend ? trend.metrics : null;
+        // ✅ FIX: Vérifier que trend et trend.metrics existent
+        rowData.cells[col] = (trend && trend.metrics) ? trend.metrics : null;
       });
       return rowData;
     });
