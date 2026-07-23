@@ -1654,9 +1654,9 @@ export default function ComparativeAnalyticsPage() {
     if (currentData.length === 0) return null;
 
     // ✅ FIX: Filtrer les valeurs <= 0 pour la vélocité MRs/dev (données manquantes)
-    const validVelocityData = currentData.filter(t => (t.metrics.mr_rate_per_site || 0) > 0);
+    const validVelocityData = currentData.filter(t => (t.metrics.mr_rate || 0) > 0);
     const bestVelocity = validVelocityData.length > 0 
-      ? [...validVelocityData].sort((a, b) => b.metrics.mr_rate_per_site - a.metrics.mr_rate_per_site)[0]
+      ? [...validVelocityData].sort((a, b) => b.metrics.mr_rate - a.metrics.mr_rate)[0]
       : null;
     
     // Filtrer les valeurs 0 pour le temps de revue (pas de données)
@@ -1670,7 +1670,7 @@ export default function ComparativeAnalyticsPage() {
       : 0;
     const avgQualityPct = avgQuality <= 1 ? avgQuality * 100 : avgQuality;
 
-    let text = `Pour la période de ${lastPeriod}, l'analyse comparative montre que la dynamique est principalement tirée par ${bestVelocity?.entity_name || 'une entité'} qui se distingue avec la meilleure vélocité (${fmt(bestVelocity?.metrics?.mr_rate_per_site)} MRs/dev). `;
+    let text = `Pour la période de ${lastPeriod}, l'analyse comparative montre que la dynamique est principalement tirée par ${bestVelocity?.entity_name || 'une entité'} qui se distingue avec la meilleure vélocité (${fmt(bestVelocity?.metrics?.mr_rate)} MRs/dev). `;
 
     if (validQuality.length === 0) {
       text += `Aucune donnée de qualité disponible pour cette période. `;
