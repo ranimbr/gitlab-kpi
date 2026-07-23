@@ -1334,6 +1334,9 @@ export default function ComparativeAnalyticsPage() {
   const [availablePeriods, setAvailablePeriods] = useState([]);
   const [selectedPeriods, setSelectedPeriods] = useState([]);
   const [showPeriodFilter, setShowPeriodFilter] = useState(false);
+  
+  // ✅ Modal d'explication du score de santé
+  const [showHealthScoreModal, setShowHealthScoreModal] = useState(false);
 
   // ✅ Rafraîchir les assignations au chargement du composant (pour les utilisateurs connectés avant l'ajout du endpoint)
   useEffect(() => {
@@ -2009,6 +2012,14 @@ export default function ComparativeAnalyticsPage() {
                   <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontWeight: 800, fontSize: 14 }}>{healthScore}%</div>
                 </div>
               </div>
+              <button
+                className="btn btn-link p-0 text-muted"
+                onClick={() => setShowHealthScoreModal(true)}
+                style={{ fontSize: 16, lineHeight: 1 }}
+                title="Comment est calculé ce score ?"
+              >
+                <i className="ri-question-circle-line"></i>
+              </button>
               <div>
                
                 <p className="text-muted mb-0 fs-14 fw-medium">
@@ -2887,6 +2898,101 @@ export default function ComparativeAnalyticsPage() {
               </div>
               <div className="modal-footer border-0">
                 <button type="button" className="btn btn-primary" onClick={() => setShowMatrixHelpModal(false)}>
+                  Compris
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal explicatif Score de Santé */}
+      {showHealthScoreModal && (
+        <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content" style={{ borderRadius: 16 }}>
+              <div className="modal-header border-0 pb-3">
+                <h5 className="modal-title fw-bold">
+                  <i className="ri-heart-pulse-line text-primary me-2"></i>
+                  Comment est calculé le Score de Santé ?
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowHealthScoreModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <p className="text-muted mb-4">Le score de santé est calculé à partir de la dernière période de vos données filtrées. C'est une moyenne pondérée de 3 métriques clés.</p>
+                
+                <h6 className="fw-bold mb-3">Formule de calcul</h6>
+                <div className="alert alert-light border mb-4" style={{ background: '#f8fafc', borderRadius: 12 }}>
+                  <code className="fs-13">
+                    Score = (Vélocité × 40%) + (Qualité × 40%) + (Revue × 20%)
+                  </code>
+                </div>
+
+                <h6 className="fw-bold mb-3">Les 3 composants</h6>
+                <div className="mb-4">
+                  <div className="d-flex align-items-center gap-3 mb-3 p-3 rounded-3" style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.15)' }}>
+                    <div className="fw-bold text-success" style={{ minWidth: 120 }}>Vélocité (40%)</div>
+                    <div className="text-muted fs-13">Commits par développeur, max 6 = 100 pts</div>
+                  </div>
+                  <div className="d-flex align-items-center gap-3 mb-3 p-3 rounded-3" style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.15)' }}>
+                    <div className="fw-bold text-primary" style={{ minWidth: 120 }}>Qualité (40%)</div>
+                    <div className="text-muted fs-13">Taux d'approbation des MRs, en pourcentage</div>
+                  </div>
+                  <div className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.15)' }}>
+                    <div className="fw-bold text-warning" style={{ minWidth: 120 }}>Revue (20%)</div>
+                    <div className="text-muted fs-13">Temps moyen de revue, max 72h = 0 pts</div>
+                  </div>
+                </div>
+
+                <h6 className="fw-bold mb-3">Exemple de calcul</h6>
+                <div className="table-responsive mb-3">
+                  <table className="table table-sm table-bordered" style={{ fontSize: 13 }}>
+                    <thead className="bg-light">
+                      <tr>
+                        <th>Métrique</th>
+                        <th>Valeur</th>
+                        <th>Score partiel</th>
+                        <th>Pondération</th>
+                        <th>Contribution</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Vélocité</td>
+                        <td>3.0 C/Dev</td>
+                        <td>50 pts</td>
+                        <td>40%</td>
+                        <td><strong>20 pts</strong></td>
+                      </tr>
+                      <tr>
+                        <td>Qualité</td>
+                        <td>85%</td>
+                        <td>85 pts</td>
+                        <td>40%</td>
+                        <td><strong>34 pts</strong></td>
+                      </tr>
+                      <tr>
+                        <td>Revue</td>
+                        <td>24h</td>
+                        <td>67 pts</td>
+                        <td>20%</td>
+                        <td><strong>13 pts</strong></td>
+                      </tr>
+                      <tr className="bg-primary-subtle fw-bold">
+                        <td colSpan="4">Score Final</td>
+                        <td>67%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="alert alert-info fs-12 mb-0" style={{ borderRadius: 12 }}>
+                  <i className="ri-information-line me-1"></i>
+                  <strong>Note :</strong> Ce score est calculé sur la dernière période visible dans vos données filtrées. Utilisez le filtre de période pour analyser l'évolution du score dans le temps.
+                </div>
+              </div>
+              <div className="modal-footer border-0">
+                <button type="button" className="btn btn-primary" onClick={() => setShowHealthScoreModal(false)}>
                   Compris
                 </button>
               </div>
