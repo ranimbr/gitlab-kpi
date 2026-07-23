@@ -1791,40 +1791,43 @@ export default function ComparativeAnalyticsPage() {
             });
           }
 
-          // 2. Bottleneck: slow review time
-          const slowReview = currentData.filter(t => (t.metrics.review_time || 0) > 48);
+          // 2. Bottleneck: slow review time (✅ UNIFICATION : utiliser seuil partagé)
+          const slowReview = currentData.filter(t => (t.metrics.review_time || 0) > METRIC_THRESHOLDS.review_time.high); // 48h
           if (slowReview.length > 0) {
             insightsArray.push({
               type: 'danger',
               title: 'Goulot d\'etranglement : Revue de Code Critique',
-              text: `Le temps moyen de revue depasse le seuil critique de 48h sur ${slowReview.length} entite(s) : ${slowReview.map(s => s.entity_name).join(', ')}. Ce retard structurel impacte directement la frequence de deploiement.`,
+              text: `Le temps moyen de revue depasse le seuil critique de ${METRIC_THRESHOLDS.review_time.high}h sur ${slowReview.length} entite(s) : ${slowReview.map(s => s.entity_name).join(', ')}. Ce retard structurel impacte directement la frequence de deploiement.`,
             });
           }
 
-          // 3. Quality alert
+          // 3. Quality alert (✅ UNIFICATION : utiliser seuil partagé)
           const lowQuality = currentData.filter(t => {
             const q = t.metrics.quality_score || 0;
-            return (q <= 1 ? q * 100 : q) < 70;
+            const qPct = q <= 1 ? q * 100 : q;
+            return qPct < METRIC_THRESHOLDS.quality_score.low; // 70%
           });
           if (lowQuality.length > 0) {
             insightsArray.push({
               type: 'warning',
               title: 'Vigilance Qualite : Taux d\'Approbation Insuffisant',
-              text: `Le taux d'approbation est en-dessous de l'objectif de 70% pour : ${lowQuality.map(s => s.entity_name).join(', ')}. Un renforcement des processus de revue et de test est recommande.`,
+              text: `Le taux d'approbation est en-dessous de l'objectif de ${METRIC_THRESHOLDS.quality_score.low}% pour : ${lowQuality.map(s => s.entity_name).join(', ')}. Un renforcement des processus de revue et de test est recommande.`,
             });
           }
 
-          // 4. Excellence signal
+          // 4. Excellence signal (✅ UNIFICATION : utiliser seuils partagés)
           const excellent = currentData.filter(t => {
             const q = t.metrics.quality_score || 0;
             const qPct = q <= 1 ? q * 100 : q;
-            return (t.metrics.velocity || 0) >= 3.0 && qPct >= 80 && (t.metrics.review_time || 0) <= 24;
+            return (t.metrics.velocity || 0) >= METRIC_THRESHOLDS.velocity.high && // 5.0
+                   qPct >= METRIC_THRESHOLDS.quality_score.high && // 90%
+                   (t.metrics.review_time || 0) <= METRIC_THRESHOLDS.review_time.low; // 24h
           });
           if (excellent.length > 0) {
             insightsArray.push({
               type: 'success',
               title: 'Excellence Operationnelle Confirmee',
-              text: `${excellent.map(s => s.entity_name).join(', ')} repondent simultanement aux 3 criteres d'excellence : velocite >= 3.0, qualite >= 80% et delai de revue <= 24h. Modele a repliquer sur l'ensemble du perimetre.`,
+              text: `${excellent.map(s => s.entity_name).join(', ')} repondent simultanement aux 3 criteres d'excellence : velocite >= ${METRIC_THRESHOLDS.velocity.high}, qualite >= ${METRIC_THRESHOLDS.quality_score.high}% et delai de revue <= ${METRIC_THRESHOLDS.review_time.low}h. Modele a repliquer sur l'ensemble du perimetre.`,
             });
           }
 
