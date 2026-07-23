@@ -280,7 +280,7 @@ const IntelligenceCard = ({
       {/* Key Metrics - Compact View */}
       <div className="d-flex flex-column gap-2">
         {[
-          { label: "Vélocité", trend: metrics.velocity_trend, metricType: "velocity", suffix: "", context: "commits/dev" },
+          { label: "Vélocité", trend: metrics.velocity_trend, metricType: "velocity", suffix: "", context: "MRs/dev" },
           { label: "Temps de revue", trend: metrics.review_trend, metricType: "review_time", suffix: "h", context: "délai moyen" },
           { label: "Qualité", trend: metrics.quality_trend, metricType: "quality", suffix: "%", multiplier: 100, context: "taux approbation" }
         ].map((metric, idx) => {
